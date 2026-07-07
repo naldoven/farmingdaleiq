@@ -3574,7 +3574,34 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      my_infractions: {
+        Row: {
+          expires_at: string | null
+          id: string | null
+          issued_at: string | null
+          note: string | null
+          points: number | null
+          type_id: string | null
+          type_name: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "infractions_type_id_fkey"
+            columns: ["type_id"]
+            isOneToOne: false
+            referencedRelation: "infraction_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "infractions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       current_store_id: { Args: never; Returns: string }
