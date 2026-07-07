@@ -3044,6 +3044,29 @@ export type Database = {
         }
         Relationships: []
       }
+      token_processed_events: {
+        Row: {
+          event_id: string
+          processed_at: string
+        }
+        Insert: {
+          event_id: string
+          processed_at?: string
+        }
+        Update: {
+          event_id?: string
+          processed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_processed_events_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "app_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       token_transactions: {
         Row: {
           created_at: string
@@ -3556,6 +3579,27 @@ export type Database = {
     Functions: {
       current_store_id: { Args: never; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
+      redeem_reward: {
+        Args: { p_reward_id: string }
+        Returns: {
+          transaction_id: string
+          claim_id: string
+          balance_after: number
+          cost: number
+        }[]
+      }
+      cancel_reward_claim: {
+        Args: { p_claim_id: string }
+        Returns: { transaction_id: string; balance_after: number }[]
+      }
+      gift_tokens: {
+        Args: { p_to_user_id: string; p_amount: number; p_note?: string | null }
+        Returns: {
+          debit_transaction_id: string
+          credit_transaction_id: string
+          balance_after: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
