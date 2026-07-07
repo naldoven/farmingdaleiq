@@ -284,7 +284,12 @@ export async function materializeSetupFanout(
     });
 
     if (plan.inserts.length > 0) {
-      const { error } = await client.from("checklist_runs").insert(plan.inserts);
+      // FIQ-09: upsert on (schedule_id, run_date) so this fan-out and the
+      // nightly checklists cron converge on one run per schedule per day even
+      // when they race; ignoreDuplicates drops the loser silently.
+      const { error } = await client
+        .from("checklist_runs")
+        .upsert(plan.inserts, { onConflict: "schedule_id,run_date", ignoreDuplicates: true });
       if (!error) result.checklistRunsCreated = plan.inserts.length;
     }
     for (const backfill of plan.backfills) {
@@ -323,7 +328,12 @@ export async function materializeSetupFanout(
     });
 
     if (plan.inserts.length > 0) {
-      const { error } = await client.from("tasks").insert(plan.inserts);
+      // FIQ-14: upsert on (template_id, date) so this fan-out and the tasks
+      // sync cron can't both materialize the same recurring task (which would
+      // double-emit task_complete). ignoreDuplicates drops the loser silently.
+      const { error } = await client
+        .from("tasks")
+        .upsert(plan.inserts, { onConflict: "template_id,date", ignoreDuplicates: true });
       if (!error) result.tasksCreated = plan.inserts.length;
     }
     for (const backfill of plan.backfills) {

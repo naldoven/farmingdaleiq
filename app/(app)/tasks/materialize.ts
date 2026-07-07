@@ -112,7 +112,13 @@ export async function materializeTasksForDate(
     return { created: 0, skipped: due.length };
   }
 
-  const { error: insertError } = await supabase.from("tasks").insert(toInsert);
+  // FIQ-14: upsert on (template_id, date) so a concurrent setup-post fan-out
+  // materializing the same recurring task can't create a duplicate (which
+  // would double-emit task_complete). ignoreDuplicates drops the loser
+  // silently instead of raising 23505.
+  const { error: insertError } = await supabase
+    .from("tasks")
+    .upsert(toInsert, { onConflict: "template_id,date", ignoreDuplicates: true });
   if (insertError) {
     throw new Error(`materializeTasksForDate: insert failed: ${insertError.message}`);
   }

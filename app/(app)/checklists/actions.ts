@@ -110,36 +110,30 @@ export async function saveAnswers(input: SaveAnswersInput): Promise<ActionResult
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { data: existing, error: existingError } = await supabase
-      .from("checklist_answers")
-      .select("id, question_id")
-      .eq("run_id", parsed.runId);
-    if (existingError) return { ok: false, error: existingError.message };
+    // FIQ-10: one upsert on (run_id, question_id) instead of a read-then-
+    // insert/update loop, so two overlapping saves (autosave racing an
+    // explicit save, or two tabs) can't create duplicate answer rows that
+    // would double-count flagged/temp-failed answers on completion.
+    const rows = parsed.answers.map((answer) => ({
+      run_id: parsed.runId,
+      question_id: answer.questionId,
+      value: answer.value,
+      is_na: answer.isNa,
+      corrective_action_note: answer.correctiveActionNote || null,
+      comment: answer.comment || null,
+      photo_url: answer.photoUrl || null,
+      answered_by: user?.id ?? null,
+      answered_at: new Date().toISOString(),
+      // `flagged` is recomputed on completion (evaluateAnswer needs the
+      // question + food item together); persisted here too so partial saves
+      // already reflect a manual flag toggle.
+      flagged: answer.manuallyFlagged,
+    }));
 
-    const existingIdByQuestion = new Map((existing ?? []).map((a) => [a.question_id, a.id]));
-
-    for (const answer of parsed.answers) {
-      const row = {
-        run_id: parsed.runId,
-        question_id: answer.questionId,
-        value: answer.value,
-        is_na: answer.isNa,
-        corrective_action_note: answer.correctiveActionNote || null,
-        comment: answer.comment || null,
-        photo_url: answer.photoUrl || null,
-        answered_by: user?.id ?? null,
-        answered_at: new Date().toISOString(),
-        // `flagged` is recomputed on completion (evaluateAnswer needs the
-        // question + food item together); persisted here too so partial
-        // saves already reflect a manual flag toggle.
-        flagged: answer.manuallyFlagged,
-      };
-
-      const existingId = existingIdByQuestion.get(answer.questionId);
-      const { error } = existingId
-        ? await supabase.from("checklist_answers").update(row).eq("id", existingId)
-        : await supabase.from("checklist_answers").insert(row);
-
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from("checklist_answers")
+        .upsert(rows, { onConflict: "run_id,question_id" });
       if (error) return { ok: false, error: error.message };
     }
 

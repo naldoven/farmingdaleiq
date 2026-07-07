@@ -455,17 +455,23 @@ export async function upsertTile(
     const clamped = clampTileToBounds(parsed);
     const supabase = await createClient();
 
+    // FIQ-17: a real upsert on (layout_id, position_id) so a double-click
+    // re-places the same position's tile instead of stacking two tiles for
+    // one slot. (Area-only tiles carry a null position_id and stay distinct.)
     const { data, error } = await supabase
       .from("layout_tiles")
-      .insert({
-        layout_id: parsed.layoutId,
-        position_id: parsed.positionId,
-        area_label: parsed.areaLabel ? parsed.areaLabel : null,
-        x: clamped.x,
-        y: clamped.y,
-        w: clamped.w,
-        h: clamped.h,
-      })
+      .upsert(
+        {
+          layout_id: parsed.layoutId,
+          position_id: parsed.positionId,
+          area_label: parsed.areaLabel ? parsed.areaLabel : null,
+          x: clamped.x,
+          y: clamped.y,
+          w: clamped.w,
+          h: clamped.h,
+        },
+        { onConflict: "layout_id,position_id" },
+      )
       .select("id")
       .single();
 

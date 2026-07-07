@@ -129,6 +129,10 @@ function fakeSupabase(opts: {
             captured.push(...rows);
             return Promise.resolve({ error: null });
           },
+          upsert(rows: Array<Record<string, unknown>>) {
+            captured.push(...rows);
+            return Promise.resolve({ error: null });
+          },
         };
       }
       throw new Error(`fakeSupabase: unexpected table ${table}`);
