@@ -29,6 +29,22 @@ describe("escapeCsvCell", () => {
   it("quotes a value containing a newline", () => {
     expect(escapeCsvCell("line one\nline two")).toBe('"line one\nline two"');
   });
+
+  it("neutralizes a formula-injection cell (=HYPERLINK) with a leading quote", () => {
+    expect(escapeCsvCell('=HYPERLINK("http://evil","click")')).toBe(
+      '"\'=HYPERLINK(""http://evil"",""click"")"',
+    );
+  });
+
+  it("neutralizes leading +, -, @ on string cells", () => {
+    expect(escapeCsvCell("+1-800-EVIL")).toBe("'+1-800-EVIL");
+    expect(escapeCsvCell("@SUM(A1:A9)")).toBe("'@SUM(A1:A9)");
+    expect(escapeCsvCell("-2+3")).toBe("'-2+3");
+  });
+
+  it("does not alter genuine negative numbers (numeric type, not string)", () => {
+    expect(escapeCsvCell(-5)).toBe("-5");
+  });
 });
 
 describe("toCsv", () => {
