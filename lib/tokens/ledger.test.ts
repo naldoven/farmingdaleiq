@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  awardInsertAllowedByPolicy,
   awardTokens,
   cancelRewardClaim,
   computeBalanceFromTransactions,
@@ -9,6 +10,42 @@ import {
   redeemReward,
   type TokenTransactionRow,
 } from "@/lib/tokens/ledger";
+
+describe("awardInsertAllowedByPolicy (FIQ-01: award holders can't self-mint)", () => {
+  const base = {
+    kind: "earn",
+    hasAwardPermission: true,
+    createdBy: "leader-1",
+    actorId: "leader-1",
+    userId: "member-2",
+  };
+
+  it("allows a tokens.award holder to credit a coworker", () => {
+    expect(awardInsertAllowedByPolicy(base)).toBe(true);
+  });
+
+  it("rejects self-credit even for an award holder", () => {
+    expect(awardInsertAllowedByPolicy({ ...base, userId: "leader-1" })).toBe(false);
+  });
+
+  it("rejects an 'adjust' row inserted directly (must go through adjust_tokens RPC)", () => {
+    expect(awardInsertAllowedByPolicy({ ...base, kind: "adjust" })).toBe(false);
+  });
+
+  it("rejects gift_in / redeem kinds (SECURITY DEFINER only)", () => {
+    expect(awardInsertAllowedByPolicy({ ...base, kind: "gift_in" })).toBe(false);
+    expect(awardInsertAllowedByPolicy({ ...base, kind: "redeem" })).toBe(false);
+  });
+
+  it("rejects a caller without tokens.award", () => {
+    expect(awardInsertAllowedByPolicy({ ...base, hasAwardPermission: false })).toBe(false);
+  });
+
+  it("rejects an unattributed insert (created_by must be the actor)", () => {
+    expect(awardInsertAllowedByPolicy({ ...base, createdBy: null })).toBe(false);
+    expect(awardInsertAllowedByPolicy({ ...base, createdBy: "someone-else" })).toBe(false);
+  });
+});
 
 describe("computeBalanceFromTransactions", () => {
   it("returns 0 for an empty ledger", () => {
@@ -131,7 +168,7 @@ describe("awardTokens", () => {
 });
 
 describe("giftTokens", () => {
-  it("delegates to the gift_tokens RPC and reports both sides' balances", async () => {
+  it("delegates to the gift_tokens RPC and reports the sender's post-gift balance", async () => {
     const client = makeFakeClient({
       onRpc: (fn, args) => {
         expect(fn).toBe("gift_tokens");
@@ -149,7 +186,8 @@ describe("giftTokens", () => {
     );
 
     expect(result.debit).toEqual({ transactionId: "tx-debit", balanceAfter: 40 });
-    expect(result.credit).toEqual({ transactionId: "tx-credit", balanceAfter: 50 });
+    // FIQ-19: credit no longer reports a fabricated recipient balance.
+    expect(result.credit).toEqual({ transactionId: "tx-credit" });
   });
 
   it("throws when the RPC rejects (e.g. insufficient balance)", async () => {
