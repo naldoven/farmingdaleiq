@@ -34,3 +34,57 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: gates
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The E2E suite runs the real app against the LIVE Supabase project --
+      # there is no local Supabase stack in this repo (see playwright.config.ts
+      # and e2e/global-setup.ts) -- so it needs real project secrets to do
+      # anything at all. Fork PRs and repos that haven't configured these
+      # secrets yet skip the job's real steps instead of failing CI on a
+      # missing-secret error; once NEXT_PUBLIC_SUPABASE_URL /
+      # NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are added as
+      # repo secrets (Settings -> Secrets and variables -> Actions), this job
+      # starts actually running the suite on every PR/push to main.
+      - name: Check live Supabase secrets are configured
+        id: check-secrets
+        run: |
+          if [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] && [ -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ] && [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping E2E: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY repo secrets are not configured, and the suite has no local Supabase stack to fall back to."
+          fi
+
+      - name: Install dependencies
+        if: steps.check-secrets.outputs.has_secrets == 'true'
+        run: npm ci
+
+      - name: Install Playwright browsers
+        if: steps.check-secrets.outputs.has_secrets == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E
+        if: steps.check-secrets.outputs.has_secrets == 'true'
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() && steps.check-secrets.outputs.has_secrets == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
