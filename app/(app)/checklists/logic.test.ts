@@ -8,10 +8,31 @@ import {
   isScheduleDueOn,
   isTemperatureOutOfRange,
   planFollowUpInserts,
+  storeLocalNow,
   validateSubmission,
   type FoodItemRangeLike,
   type QuestionLike,
 } from "./logic";
+
+describe("storeLocalNow (FIQ-12: store-timezone-aware cron clock)", () => {
+  it("rolls the calendar date back to the store day in the evening ET window", () => {
+    // 2026-07-08 01:30 UTC is still 2026-07-07 21:30 in America/New_York.
+    const utc = new Date("2026-07-08T01:30:00Z");
+    const local = storeLocalNow(utc, "America/New_York");
+    expect(local.date).toBe("2026-07-07");
+    expect(local.timeOfDay).toBe("21:30:00");
+    // getDay() on the localDate must read the store-local weekday (Tuesday=2).
+    expect(local.localDate.getDay()).toBe(2);
+    expect(local.localDate.getDate()).toBe(7);
+  });
+
+  it("reports store-local morning time, not UTC", () => {
+    // 2026-07-07 13:00 UTC == 09:00 ET (EDT, UTC-4).
+    const local = storeLocalNow(new Date("2026-07-07T13:00:00Z"), "America/New_York");
+    expect(local.date).toBe("2026-07-07");
+    expect(local.timeOfDay).toBe("09:00:00");
+  });
+});
 
 const coldHolding: QuestionLike = {
   id: "q-temp-cold",

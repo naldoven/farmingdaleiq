@@ -218,6 +218,54 @@ export function planFollowUpInserts(
     .map((a) => ({ source_answer_id: a.id }));
 }
 
+export interface StoreLocalNow {
+  /** YYYY-MM-DD in the store's timezone. */
+  date: string;
+  /** HH:MM:SS (24h) in the store's timezone. */
+  timeOfDay: string;
+  /**
+   * A Date whose LOCAL calendar fields (getDay()/getDate()) equal the
+   * store-local weekday / day-of-month, so isScheduleDueOn reads store-local
+   * values regardless of the server runtime's own timezone.
+   */
+  localDate: Date;
+}
+
+/**
+ * Derives the store-local "now" from a UTC instant (FIQ-12). The checklists
+ * cron must compare against stores.timezone (America/New_York), not the UTC
+ * server clock: otherwise runs are flagged 'missed' up to 5 hours early and,
+ * between 19:00-24:00 ET, the date/day rolls forward and schedules
+ * materialize for the wrong calendar day. Pure + unit-testable.
+ */
+export function storeLocalNow(now: Date, timeZone: string): StoreLocalNow {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  // Some engines emit "24" for midnight under hour12:false; normalize to "00".
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  const minute = get("minute");
+  const second = get("second");
+
+  return {
+    date: `${year}-${month}-${day}`,
+    timeOfDay: `${hour}:${minute}:${second}`,
+    localDate: new Date(Number(year), Number(month) - 1, Number(day)),
+  };
+}
+
 export interface ScheduleLike {
   frequency: string;
   days_of_week: number[] | null;
