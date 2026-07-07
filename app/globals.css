@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #f7f7f8;
+  --foreground: #1c1c1e;
+
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+
+  /* CFA-red brand */
+  --primary: #e51636;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f1f1f3;
+  --secondary-foreground: #1c1c1e;
+
+  --muted: #f1f1f3;
+  --muted-foreground: #6b6b70;
+
+  --accent: #fdeaee;
+  --accent-foreground: #9c0f28;
+
+  --destructive: #b00020;
+  --destructive-foreground: #ffffff;
+
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #e51636;
+
+  --radius: 0.75rem;
+
+  --success: #1c8a4b;
+  --warning: #c47f00;
+}
+
+.dark {
+  --background: #121214;
+  --foreground: #f2f2f3;
+
+  --card: #1b1b1e;
+  --card-foreground: #f2f2f3;
+
+  --popover: #1b1b1e;
+  --popover-foreground: #f2f2f3;
+
+  --primary: #ff3b57;
+  --primary-foreground: #1c1c1e;
+
+  --secondary: #232326;
+  --secondary-foreground: #f2f2f3;
+
+  --muted: #232326;
+  --muted-foreground: #a0a0a6;
+
+  --accent: #3a1620;
+  --accent-foreground: #ff8fa3;
+
+  --destructive: #ff5c72;
+  --destructive-foreground: #1c1c1e;
+
+  --border: #2a2a2e;
+  --input: #2a2a2e;
+  --ring: #ff3b57;
+
+  --success: #35c072;
+  --warning: #e8a93c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 0.25rem);
+  --radius-xl: calc(var(--radius) + 0.5rem);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+}
