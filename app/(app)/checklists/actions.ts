@@ -276,6 +276,35 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
       }
     }
 
+    // Idempotency gate under concurrency: atomically transition the run to
+    // completed BEFORE creating follow_ups or emitting events. The
+    // `.neq(status, completed)` filter means only one of two concurrent
+    // completeRun calls (fast double-click, retried request, two tabs) can
+    // flip the row; `.select("id")` reports which call actually won. The loser
+    // returns as an idempotent no-op, so follow_ups are created once and the
+    // checklist_complete / temp_failed / follow_up_assigned events (consumed
+    // by S7 tokens + S10 notifications) fire exactly once. The top-of-function
+    // status check already covers the sequential re-submit case; this covers
+    // the concurrent one, where both callers read in_progress before either
+    // commits.
+    const { data: claimed, error: completeError } = await supabase
+      .from("checklist_runs")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        completed_by: user?.id ?? null,
+      })
+      .eq("id", runId)
+      .neq("status", "completed")
+      .select("id");
+    if (completeError) return { ok: false, error: completeError.message };
+    if (!claimed || claimed.length === 0) {
+      // A concurrent call already completed this run; do not double-create
+      // follow_ups or double-emit events.
+      revalidateRun(runId);
+      return { ok: true, data: undefined };
+    }
+
     const { data: existingFollowUps, error: followUpsError } = flaggedIds.length
       ? await supabase.from("follow_ups").select("source_answer_id").in("source_answer_id", flaggedIds)
       : { data: [] as { source_answer_id: string | null }[], error: null };
@@ -298,17 +327,6 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
       });
       if (error) return { ok: false, error: error.message };
     }
-
-    const { error: completeError } = await supabase
-      .from("checklist_runs")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        completed_by: user?.id ?? null,
-      })
-      .eq("id", runId)
-      .neq("status", "completed");
-    if (completeError) return { ok: false, error: completeError.message };
 
     await emitEventSafely("checklist_complete", {
       runId,

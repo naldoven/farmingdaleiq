@@ -136,14 +136,19 @@ async function run(request: NextRequest) {
     const dueTime = dueTimeBySchedule.get(openRun.schedule_id);
     if (!dueTime || dueTime > nowTimeOfDay) continue;
 
-    const { error: updateError } = await supabase
+    // Claim the transition atomically and only emit if THIS call actually
+    // flipped the row, so overlapping cron invocations can't double-emit
+    // checklist_missed for the same run.
+    const { data: missedRows, error: updateError } = await supabase
       .from("checklist_runs")
       .update({ status: "missed" })
       .eq("id", openRun.id)
-      .in("status", ["pending", "in_progress"]);
+      .in("status", ["pending", "in_progress"])
+      .select("id");
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
+    if (!missedRows || missedRows.length === 0) continue;
     missedCount += 1;
     await emitEventSafely("checklist_missed", { runId: openRun.id, scheduleId: openRun.schedule_id });
   }
