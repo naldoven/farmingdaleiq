@@ -9,11 +9,14 @@
  *   send Web Push payloads to once VAPID keys exist (see lib/notify/push.ts).
  */
 
-const CACHE_VERSION = "fiq-shell-v1";
+// Bumped v1 -> v2 (FIQ-13) so the activate handler evicts any already-poisoned
+// v1 cache (which may hold the login page under "/" or the offline key).
+const CACHE_VERSION = "fiq-shell-v2";
 const OFFLINE_URL = "/offline.html";
 
+// "/" is intentionally NOT precached: it is auth-gated and user-specific, so
+// caching it would serve a stale/foreign home or (pre-auth) the login page.
 const APP_SHELL = [
-  "/",
   OFFLINE_URL,
   "/manifest.webmanifest",
   "/icons/icon-192.png",
@@ -22,10 +25,24 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_VERSION)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting()),
+    caches.open(CACHE_VERSION).then(async (cache) => {
+      await Promise.all(
+        APP_SHELL.map(async (url) => {
+          try {
+            const response = await fetch(url, { cache: "no-store" });
+            // Only cache a real, non-redirected 200. A followed auth redirect
+            // (response.redirected) would otherwise poison the shell with the
+            // login page (FIQ-13).
+            if (response.ok && !response.redirected) {
+              await cache.put(url, response.clone());
+            }
+          } catch {
+            // Offline for this asset during install; skip it.
+          }
+        }),
+      );
+      await self.skipWaiting();
+    }),
   );
 });
 
@@ -51,13 +68,10 @@ self.addEventListener("fetch", (event) => {
   // straight through to the network untouched.
   if (request.method !== "GET") return;
 
-  // Navigations: network-first, offline fallback.
+  // Navigations: network-first, offline fallback. Falls back only to the
+  // dedicated offline page (never "/", which is auth-gated and not cached).
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(() =>
-        caches.match(OFFLINE_URL).then((res) => res ?? caches.match("/")),
-      ),
-    );
+    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
     return;
   }
 
