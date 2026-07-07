@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { isScheduleDueOn } from "@/app/(app)/checklists/logic";
+import { isScheduleDueOn, storeLocalNow } from "@/app/(app)/checklists/logic";
 
 /**
  * Scheduled job for Checklists (ARCHITECTURE.md "Technical architecture":
@@ -54,13 +54,14 @@ async function run(request: NextRequest) {
   }
 
   const supabase = createServiceRoleClient();
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  // Best-effort wall-clock time-of-day comparison for the overdue sweep
-  // below; this compares against the server runtime's local clock rather
-  // than the store's configured timezone (stores.timezone). Flagged for a
-  // P2 fix once a store-timezone-aware "now" helper exists.
-  const nowTimeOfDay = now.toTimeString().slice(0, 8);
+
+  // FIQ-12: derive today / day-of-week / time-of-day from the STORE's
+  // timezone, not the UTC server clock, so runs aren't flagged 'missed' hours
+  // early and schedules don't materialize for the wrong calendar day in the
+  // evening ET window.
+  const { data: store } = await supabase.from("stores").select("timezone").limit(1).maybeSingle();
+  const timeZone = store?.timezone || "America/New_York";
+  const { date: today, timeOfDay: nowTimeOfDay, localDate } = storeLocalNow(new Date(), timeZone);
 
   const [{ data: schedules, error: schedulesError }, { data: templates, error: templatesError }] =
     await Promise.all([
@@ -79,7 +80,7 @@ async function run(request: NextRequest) {
 
   const activeTemplateIds = new Set((templates ?? []).filter((t) => t.active).map((t) => t.id));
   const dueSchedules = (schedules ?? []).filter(
-    (s) => activeTemplateIds.has(s.template_id) && isScheduleDueOn(s, now),
+    (s) => activeTemplateIds.has(s.template_id) && isScheduleDueOn(s, localDate),
   );
 
   let materializedCount = 0;
@@ -101,18 +102,28 @@ async function run(request: NextRequest) {
     for (const schedule of dueSchedules) {
       if (scheduleIdsWithRun.has(schedule.id)) continue;
 
-      const { error: insertError } = await supabase.from("checklist_runs").insert({
-        template_id: schedule.template_id,
-        schedule_id: schedule.id,
-        run_date: today,
-        day_part_id: schedule.day_part_id,
-        assigned_position_id: schedule.assign_position_id,
-        status: "pending",
-      });
+      // FIQ-09: upsert on (schedule_id, run_date) so a concurrent setup-post
+      // fan-out materializing the same run can't produce a duplicate (which
+      // would double-fire checklist_complete). ignoreDuplicates makes the
+      // loser a silent no-op rather than a 23505 error.
+      const { data: inserted, error: insertError } = await supabase
+        .from("checklist_runs")
+        .upsert(
+          {
+            template_id: schedule.template_id,
+            schedule_id: schedule.id,
+            run_date: today,
+            day_part_id: schedule.day_part_id,
+            assigned_position_id: schedule.assign_position_id,
+            status: "pending",
+          },
+          { onConflict: "schedule_id,run_date", ignoreDuplicates: true },
+        )
+        .select("id");
       if (insertError) {
         return NextResponse.json({ error: insertError.message }, { status: 500 });
       }
-      materializedCount += 1;
+      if (inserted && inserted.length > 0) materializedCount += 1;
     }
   }
 

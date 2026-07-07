@@ -66,6 +66,34 @@ export interface TokenTransactionRow {
 type Client = SupabaseClient<Database>;
 
 /**
+ * Executable spec of the `token_transactions_insert_award` RLS WITH CHECK
+ * (supabase/migrations/20260707080000_tokens_award_policy_hardening.sql).
+ * Postgres RLS is the real enforcement; this pure mirror keeps the rule
+ * regression-tested and makes the closed self-mint hole (FIQ-01) explicit:
+ * only the three genuine credit kinds, only by a tokens.award holder crediting
+ * SOMEONE ELSE (never self), with the acting user recorded as created_by, may
+ * be inserted directly. 'adjust' and self-credit are rejected.
+ */
+export const AWARD_CREDIT_KINDS = new Set(["earn", "recognition", "top_performer"]);
+
+export function awardInsertAllowedByPolicy(input: {
+  kind: string;
+  hasAwardPermission: boolean;
+  createdBy: string | null;
+  actorId: string | null;
+  userId: string;
+}): boolean {
+  return (
+    AWARD_CREDIT_KINDS.has(input.kind) &&
+    input.hasAwardPermission &&
+    input.createdBy !== null &&
+    input.actorId !== null &&
+    input.createdBy === input.actorId &&
+    input.userId !== input.actorId
+  );
+}
+
+/**
  * Pure sum-of-deltas helper: a user's balance is ALWAYS the sum of their
  * ledger rows, never a stored column. `getBalance` below loads a user's
  * `token_transactions` rows and reduces them through this function. Kept
@@ -167,7 +195,12 @@ export async function giftTokens(
   client?: Client
 ): Promise<{
   debit: TokenTransactionResult;
-  credit: TokenTransactionResult;
+  // FIQ-19: gift_tokens() only returns the SENDER's post-gift balance, so the
+  // recipient's balance is not knowable here. The old code reported the
+  // sender's PRE-gift balance mislabeled as the recipient's — a meaningless
+  // number. credit therefore exposes only the transaction id; no caller
+  // should read a recipient balance that this path can't compute.
+  credit: { transactionId: string };
 }> {
   const supabase = client ?? (await createClient());
 
@@ -185,7 +218,7 @@ export async function giftTokens(
 
   return {
     debit: { transactionId: data.debit_transaction_id, balanceAfter: data.balance_after },
-    credit: { transactionId: data.credit_transaction_id, balanceAfter: data.balance_after + input.amount },
+    credit: { transactionId: data.credit_transaction_id },
   };
 }
 

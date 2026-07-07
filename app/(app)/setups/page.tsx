@@ -87,14 +87,13 @@ export default async function SetupsPage({
 
   let topPerformerSelected = false;
   if (setup) {
-    const { data: events } = await supabase
-      .from("app_events")
-      .select("payload")
-      .eq("event_key", "top_performer");
-    topPerformerSelected = (events ?? []).some((row) => {
-      const payload = row.payload as { setup_id?: string } | null;
-      return payload?.setup_id === setup.id;
+    // app_events is no longer directly readable by the authenticated client
+    // (FIQ-02): this narrow SECURITY DEFINER function answers just the
+    // "already picked?" question without exposing event payloads.
+    const { data: picked } = await supabase.rpc("setup_has_top_performer", {
+      p_setup_id: setup.id,
     });
+    topPerformerSelected = picked === true;
   }
 
   // Roster view (ARCHITECTURE.md: "roster view (full-day or hourly)"):

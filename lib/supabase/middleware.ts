@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import type { Database } from "@/lib/db/types";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/manifest.webmanifest", "/sw.js"];
+// /offline.html is a static, auth-free asset the service worker precaches and
+// serves as the offline navigation fallback. It must be public (FIQ-13): if it
+// 302s to /login, the SW caches the login page under the offline key and the
+// offline screen shows the login page instead.
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/manifest.webmanifest", "/sw.js", "/offline.html"];
 
 function isPublicPath(pathname: string) {
   return (

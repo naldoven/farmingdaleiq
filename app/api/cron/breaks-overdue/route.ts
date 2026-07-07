@@ -20,7 +20,7 @@
 
 import { NextResponse } from "next/server";
 
-import { markOverdueBreaks } from "@/app/(app)/breaks/actions";
+import { markOverdueBreaks } from "@/lib/breaks/overdue";
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

@@ -13,14 +13,24 @@ export type CsvValue = string | number | boolean | null | undefined;
  * embedded quote) whenever the value contains a comma, quote, or line break.
  * `null`/`undefined` become an empty cell rather than the literal string
  * "null"/"undefined".
+ *
+ * FIQ-07: before RFC-4180 quoting, neutralize CSV formula injection. A
+ * user-entered string cell (task/work-order/reward/guest name) that starts
+ * with =,+,-,@ or a tab/CR is evaluated as a formula when the export is opened
+ * in Excel/Sheets (e.g. `=HYPERLINK(...)`), so we prefix it with a single
+ * quote to force the spreadsheet to treat it as text. The guard applies only
+ * to string values, so genuine numeric cells (including negatives like -5)
+ * are never altered.
  */
 export function escapeCsvCell(value: CsvValue): string {
   if (value === null || value === undefined) return "";
-  const str = typeof value === "string" ? value : String(value);
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const isString = typeof value === "string";
+  const str = isString ? value : String(value);
+  const guarded = isString && /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  if (/[",\r\n]/.test(guarded)) {
+    return `"${guarded.replace(/"/g, '""')}"`;
   }
-  return str;
+  return guarded;
 }
 
 /**

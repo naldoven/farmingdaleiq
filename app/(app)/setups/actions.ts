@@ -90,12 +90,28 @@ export async function createSetup(
       .select("id")
       .single();
 
-    if (error || !data) {
-      return { ok: false, error: error?.message ?? "Could not create setup." };
+    if (error) {
+      // FIQ-11: a concurrent create for the same date + day-part won the
+      // unique index (setups_date_daypart_uq / setups_date_null_daypart_uq);
+      // return the setup that landed instead of surfacing a 23505 error.
+      if (error.code === "23505") {
+        let dupQuery = supabase.from("setups").select("id").eq("date", parsed.date);
+        dupQuery = parsed.dayPartId
+          ? dupQuery.eq("day_part_id", parsed.dayPartId)
+          : dupQuery.is("day_part_id", null);
+        const { data: dup } = await dupQuery.maybeSingle();
+        if (dup) return { ok: true, data: { id: dup.id } };
+      }
+      return { ok: false, error: error.message };
+    }
+    if (!data) {
+      return { ok: false, error: "Could not create setup." };
     }
 
     // Seed one assignment row per template position so the board has a
-    // row to assign into immediately (unassigned: user_id null).
+    // row to assign into immediately (unassigned: user_id null). Upsert on
+    // (setup_id, position_id) so a re-run never duplicates a seed row
+    // (FIQ-15).
     if (parsed.templateId) {
       const { data: templatePositions } = await supabase
         .from("setup_template_positions")
@@ -104,8 +120,9 @@ export async function createSetup(
         .order("sort");
 
       if (templatePositions && templatePositions.length > 0) {
-        await supabase.from("setup_assignments").insert(
+        await supabase.from("setup_assignments").upsert(
           templatePositions.map((tp) => ({ setup_id: data.id, position_id: tp.position_id })),
+          { onConflict: "setup_id,position_id", ignoreDuplicates: true },
         );
       }
     }
@@ -132,24 +149,18 @@ export async function assignPosition(
 
     const arrivalTime = parsed.arrivalTime ? parsed.arrivalTime : null;
 
-    const { data: existing } = await supabase
-      .from("setup_assignments")
-      .select("id")
-      .eq("setup_id", parsed.setupId)
-      .eq("position_id", parsed.positionId)
-      .maybeSingle();
-
-    const { error } = existing
-      ? await supabase
-          .from("setup_assignments")
-          .update({ user_id: parsed.userId, arrival_time: arrivalTime })
-          .eq("id", existing.id)
-      : await supabase.from("setup_assignments").insert({
-          setup_id: parsed.setupId,
-          position_id: parsed.positionId,
-          user_id: parsed.userId,
-          arrival_time: arrivalTime,
-        });
+    // FIQ-15: upsert on (setup_id, position_id) so concurrent assigns to the
+    // same slot update one row instead of racing to create a duplicate that
+    // the board would show twice and break sequencing could double-count.
+    const { error } = await supabase.from("setup_assignments").upsert(
+      {
+        setup_id: parsed.setupId,
+        position_id: parsed.positionId,
+        user_id: parsed.userId,
+        arrival_time: arrivalTime,
+      },
+      { onConflict: "setup_id,position_id" },
+    );
 
     if (error) return { ok: false, error: error.message };
     revalidateBoard();
@@ -318,17 +329,13 @@ export async function selectTopPerformer(
     const parsed = selectTopPerformerSchema.parse(input);
     const supabase = await createClient();
 
-    const { data: existingEvents } = await supabase
-      .from("app_events")
-      .select("id, payload")
-      .eq("event_key", "top_performer");
-
-    const alreadySelected = (existingEvents ?? []).some((row) => {
-      const payload = row.payload as { setup_id?: string } | null;
-      return payload?.setup_id === parsed.setupId;
+    // app_events is no longer directly readable by the authenticated client
+    // (FIQ-02); use the narrow SECURITY DEFINER lookup instead.
+    const { data: alreadySelected } = await supabase.rpc("setup_has_top_performer", {
+      p_setup_id: parsed.setupId,
     });
 
-    if (alreadySelected) {
+    if (alreadySelected === true) {
       return { ok: false, error: "A Top Performer was already selected for this shift." };
     }
 

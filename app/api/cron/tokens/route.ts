@@ -91,18 +91,46 @@ async function run(request: NextRequest) {
     const award = awardByEventId.get(event.id);
 
     try {
-      if (award) {
-        await awardTokens(
-          {
-            userId: award.userId,
-            amount: award.amount,
-            kind: award.kind,
-            ref: { event_id: event.id, event_key: event.event_key },
-            createdBy: null,
-          },
-          supabase
-        );
+      // FIQ-03: claim FIRST. Durably mark this event handled before any
+      // credit, so a retried or overlapping tick can never re-award it. The
+      // upsert is ON CONFLICT DO NOTHING (ignoreDuplicates); an empty result
+      // means another run already claimed this event in the concurrency
+      // window, so skip it. This records the event as handled whether or not
+      // it resolves to an award (no user_id, 0-amount rule), so it isn't
+      // re-evaluated on every tick.
+      const { data: claimedRows, error: claimError } = await supabase
+        .from("token_processed_events")
+        .upsert({ event_id: event.id }, { onConflict: "event_id", ignoreDuplicates: true })
+        .select("event_id");
+      if (claimError) throw new Error(claimError.message);
+      if (!claimedRows || claimedRows.length === 0) {
+        continue;
+      }
 
+      if (award) {
+        try {
+          await awardTokens(
+            {
+              userId: award.userId,
+              amount: award.amount,
+              kind: award.kind,
+              ref: { event_id: event.id, event_key: event.event_key },
+              createdBy: null,
+            },
+            supabase
+          );
+        } catch (awardError) {
+          // The credit itself failed -- release the claim so the next tick
+          // retries this event instead of silently dropping the award.
+          await supabase.from("token_processed_events").delete().eq("event_id", event.id);
+          throw awardError;
+        }
+
+        // The feed post is a best-effort side effect AFTER the credit and the
+        // durable claim, so it can never sit between the credit and the mark.
+        // If it fails we log but keep the claim, so the credit is never
+        // re-awarded (the token_transactions ref unique index backstops that
+        // regardless).
         if (award.kind === "top_performer") {
           const payload = event.payload ?? {};
           const note = typeof payload.note === "string" ? payload.note : null;
@@ -113,22 +141,14 @@ async function run(request: NextRequest) {
             body: note ?? "Shift Top Performer",
             tokens_awarded: award.amount,
           });
-          if (postError) throw new Error(postError.message);
+          if (postError) {
+            console.error(`tokens cron: feed_posts insert for ${event.id} failed`, postError.message);
+          }
         }
 
         awardedCount += 1;
       }
-
-      // Record this event as handled whether or not it resolved to an
-      // award (e.g. no user_id, or a 0-amount rule) -- there's nothing more
-      // to do for it, ever, so it shouldn't be re-evaluated on every tick.
-      const { error: markError } = await supabase
-        .from("token_processed_events")
-        .insert({ event_id: event.id });
-      if (markError) throw new Error(markError.message);
     } catch (error) {
-      // Deliberately do NOT mark this event processed -- leave it for the
-      // next tick to retry.
       errors.push(`${event.id}: ${error instanceof Error ? error.message : "unknown error"}`);
     }
   }
