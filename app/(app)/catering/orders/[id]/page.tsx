@@ -1,0 +1,151 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChecklistSection } from "@/components/catering/checklist-section";
+import { OrderDetailsForm } from "@/components/catering/order-details-form";
+import { OrderItemEditor } from "@/components/catering/order-item-editor";
+import { RescaleButton } from "@/components/catering/rescale-button";
+import { StageSelect } from "@/components/catering/stage-select";
+import { requirePermission } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/server";
+import { CHECKLIST_STAGES, ORDER_STAGE_LABELS, type ChecklistStage, type OrderStage } from "@/app/(app)/catering/logic";
+
+/**
+ * /catering/orders/[id] — ARCHITECTURE.md page map: "Order detail: items,
+ * stage, all checklists, notes, guest history." Not a top-level nav route
+ * (reached from the pipeline board or a stage queue), same convention as
+ * /people/[id].
+ */
+export default async function CateringOrderPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  await requirePermission("catering.view");
+  const { id } = await params;
+
+  const supabase = await createClient();
+
+  const [{ data: order }, { data: orderItems }, { data: menuItems }, { data: checklistItems }] =
+    await Promise.all([
+      supabase
+        .from("catering_orders")
+        .select(
+          "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id",
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      supabase
+        .from("catering_order_items")
+        .select("id, menu_item_id, qty")
+        .eq("order_id", id),
+      supabase.from("catering_menu_items").select("id, name").eq("active", true).order("name"),
+      supabase
+        .from("catering_checklist_items")
+        .select("id, stage, label, done")
+        .eq("order_id", id)
+        .order("sort"),
+    ]);
+
+  if (!order) {
+    notFound();
+  }
+
+  const menuItemNameById = new Map((menuItems ?? []).map((m) => [m.id, m.name]));
+  const itemRows = (orderItems ?? []).map((i) => ({
+    id: i.id,
+    menuItemId: i.menu_item_id,
+    menuItemName: menuItemNameById.get(i.menu_item_id) ?? "Unknown item",
+    qty: i.qty,
+  }));
+
+  let contactHistory: { orderCount: number; lifetimeSpend: number } | null = null;
+  if (order.contact_id) {
+    const { data: contactOrders } = await supabase
+      .from("catering_orders")
+      .select("amount")
+      .eq("contact_id", order.contact_id);
+    contactHistory = {
+      orderCount: (contactOrders ?? []).length,
+      lifetimeSpend: (contactOrders ?? []).reduce((sum, o) => sum + (o.amount ?? 0), 0),
+    };
+  }
+
+  const itemsByStage = (stage: ChecklistStage) =>
+    (checklistItems ?? [])
+      .filter((c) => c.stage === stage)
+      .map((c) => ({ id: c.id, label: c.label, done: c.done }));
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">{order.guest_name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {order.event_date} {order.event_time ?? ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">{ORDER_STAGE_LABELS[order.stage as OrderStage]}</Badge>
+          <StageSelect orderId={order.id} stage={order.stage as OrderStage} />
+        </div>
+      </div>
+
+      {contactHistory && (
+        <p className="text-sm text-muted-foreground">
+          Guest history: {contactHistory.orderCount} order(s), ${contactHistory.lifetimeSpend.toFixed(2)}{" "}
+          lifetime spend.
+        </p>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Order details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OrderDetailsForm
+            order={{
+              id: order.id,
+              guestName: order.guest_name,
+              phone: order.phone,
+              email: order.email,
+              eventDate: order.event_date,
+              eventTime: order.event_time,
+              headcount: order.headcount,
+              amount: order.amount,
+              fulfillment: order.fulfillment,
+              deliveryAddress: order.delivery_address,
+              paperGoods: order.paper_goods,
+              notes: order.notes,
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Menu items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OrderItemEditor orderId={order.id} items={itemRows} menuItems={menuItems ?? []} />
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-medium">Stage checklists</h2>
+        <RescaleButton orderId={order.id} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {CHECKLIST_STAGES.map((stage) => (
+          <ChecklistSection key={stage} orderId={order.id} stage={stage} items={itemsByStage(stage)} />
+        ))}
+      </div>
+
+      <Link href="/catering" className="text-sm text-primary hover:underline">
+        Back to pipeline
+      </Link>
+    </div>
+  );
+}
