@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/checklists/action-types";
 import { getMultiChoiceOptions } from "@/app/(app)/checklists/logic";
 import {
@@ -132,7 +133,7 @@ export async function deleteSection(input: { id: string; templateId: string }): 
  * app/(app)/checklists/logic.ts doc comment -- there's no dedicated schema
  * column for holding mode).
  */
-function buildChoicesColumn(parsed: QuestionInput): unknown {
+function buildChoicesColumn(parsed: QuestionInput): Json | null {
   if (parsed.type === "temperature") {
     return { holding_mode: parsed.holdingMode };
   }
@@ -162,7 +163,7 @@ export async function createQuestion(
         type: parsed.type,
         prompt: parsed.prompt,
         allow_na: parsed.allowNa,
-        choices: buildChoicesColumn(parsed) as never,
+        choices: buildChoicesColumn(parsed),
         food_item_id: parsed.type === "temperature" ? parsed.foodItemId ?? null : null,
         corrective_actions: parsed.correctiveActions || null,
         photo_required: parsed.photoRequired,
