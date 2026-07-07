@@ -1,8 +1,30 @@
 # KitchenIQ Parity Audit: FarmingdaleIQ
 
-> **SECTION PENDING: live-UX comparison (real KitchenIQ vs deployed app) to be appended by the orchestrator.**
+FarmingdaleIQ is an independent reimplementation of KitchenIQ built from the captured `ARCHITECTURE.md` spec and the `PLAN.md` build plan, not a fork or a port of KitchenIQ's own code. This document audits how close the current FarmingdaleIQ code is to the intended KitchenIQ behavior, module by module. The per-module findings come from reading the FarmingdaleIQ source, checking the live Supabase project (project `rzecsczyfindpolkdazl`, via the Management API, read only), and reviewing the existing test suites. The **Live-UX pass** below adds findings from actually driving the deployed app (`farmingdaleiq.vercel.app`) as a Location Manager and comparing to the real KitchenIQ.
 
-FarmingdaleIQ is an independent reimplementation of KitchenIQ built from the captured `ARCHITECTURE.md` spec and the `PLAN.md` build plan, not a fork or a port of KitchenIQ's own code. This document audits how close the current FarmingdaleIQ code is to the intended KitchenIQ behavior, module by module. Every finding here comes from reading the FarmingdaleIQ source, checking the live Supabase project (project `rzecsczyfindpolkdazl`, via the Management API, read only), and reviewing the existing test suites. It does not yet reflect a side-by-side click-through of the real KitchenIQ tablet app against the deployed FarmingdaleIQ app. That live-UX comparison pass is done separately and will be appended above.
+## Live-UX pass (runtime, deployed app)
+
+Driven against the production deployment as an ephemeral Location Manager, with the real KitchenIQ (live login) as the reference. This pass caught two runtime-only failures that the static analysis, `next build`, and the unit suites all missed, because both only surface when a real request renders the page in production.
+
+### Runtime-only HIGH findings (not visible to static analysis)
+
+- **[HIGH] The root route `/` serves the default "Create Next App" starter page.** After login the user lands on `/` and sees the Next.js scaffold ("To get started, edit the page.tsx file", Deploy Now / Documentation), with no app shell. Root `app/page.tsx` is the untouched starter and was never removed; `app/(app)/page.tsx` (the real "my day" home) also resolves to `/`, and in production the starter wins. This makes the Home module's placeholder-card finding below understated: the home screen is not merely half-built, it is unreachable at `/`. Repro: sign in, observe `/`. Files: `app/page.tsx` (delete/replace), `app/(app)/page.tsx`. Fix: remove the starter `app/page.tsx` so the app-group home owns `/`; verify no parallel-route conflict remains.
+- **[HIGH] `/reports` returns HTTP 500 (Server Component render crash) on every load.** The Reporting section below says "the page renders a Dashboard tab (all 8 tiles), 41 unit tests pass" — but in production it throws. Vercel runtime log, repeated for every report table: `Error: Functions cannot be passed directly to Client Components unless you explicitly expose it by marking it with "use server".` The shared `ReportTable` is fed column descriptors carrying `render` / `rowKey` / `csvValue` **function props** from Server Components across the RSC boundary to a Client Component, which is illegal in the App Router. `next build` passed because the error only fires at request-time render of a dynamic route, so gates and unit tests never saw it. Repro: open `/reports` while signed in. Files: `app/(app)/reports/page.tsx`, `components/reports/report-table.tsx` (and the per-report column definitions). Fix: move the column render/rowKey/csvValue functions inside the client `ReportTable` (pass only serializable descriptors), or make `ReportTable` a client component that receives plain data and renders locally.
+
+### Confirmed working at runtime
+
+Login and safe-redirect; the app shell and full left-nav; the checklist template builder end to end (created a template through the UI, redirected to its detail page Active, with the full sections/questions builder and a schedule builder exposing frequency daily/weekly/monthly/persistent, day-part, start/due, all positions, team, and alert-on-incomplete, full spec parity); Tasks (My/Pool/Manage); the Ratings 21-station skills matrix with the "3.0+ qualified, blue-above, red-below" legend; Tokens (balance, gifting, editable earning rules); Accountability (anonymity notice present, infraction-type dropdown reading "Call Out (P3&4) (10 pts)"); Waste (correct empty-state); Rewards (all 7 seeded rewards at exact token costs, Claim disabled at 0 balance); Maintenance; Team Feed; People roster (badges compute, "Leader" on the manager); Catering pipeline (6 stage columns). The write path, permission gating, RLS, and badge computation all work at runtime.
+
+### Real KitchenIQ reference comparison
+
+- **Accountability matches exactly.** Live KitchenIQ shows the same infraction points (Call Out (P3&4) 10, No Call No Show 30, Late to Shift 4, Excused Call Out 0, Coaching 0, Time Theft 4, Violation of Standard Procedures 10), the same Infractions and Disciplinary Actions tabs, and the same Rolling 60 Days period. Our seed and UI reproduce this faithfully.
+- **KitchenIQ's "Remote Monitoring" (temperature sensors) is correctly excluded** from FarmingdaleIQ per the no-hardware locked decision.
+- **[LOW] KitchenIQ has a "Responsible for Accountability" employee assignment** (which employees are accountable) that FarmingdaleIQ does not replicate. Confirm whether this is wanted.
+- **Data emptiness corroborated.** The real KitchenIQ carries full configured content (real checklist questions, dayparts, break rules); FarmingdaleIQ's live DB is near-empty (draft-only templates, no setup templates, no waste items), which matches the static analysis's "empty seed data" theme. This is content/config work, not code defects, but it means most modules cannot be exercised end to end until seeded and until the crons are enabled (`CRON_SECRET`).
+
+> **Total including the 2 runtime findings above: 127 findings (32 High, 50 Med, 45 Low).** The per-module counts below reflect the static (code, DB, test) pass only.
+
+## Executive summary
 
 ## Executive summary
 
@@ -331,6 +353,8 @@ Sorted by severity (high first), then grouped by the systemic theme where one fi
 
 | Rank | Severity | Module | Finding | File/area | Fix hint |
 |---:|---|---|---|---|---|
+| R1 | High | Reporting | **Runtime:** `/reports` 500s on every load (server->client function props across RSC boundary) | `reports/page.tsx`, `components/reports/report-table.tsx` | Move render/rowKey/csvValue into the client table; pass serializable data only |
+| R2 | High | Auth/Home | **Runtime:** `/` serves the Create Next App starter; real home unreachable | `app/page.tsx` (delete), `app/(app)/page.tsx` | Remove starter root page so the app-group home owns `/` |
 | 1 | High | Tokens/Tasks | Task completion never awards tokens (completed_by vs user_id) | `tasks/actions.ts`, `tokens/logic.ts` | Align payload key; add contract test |
 | 2 | High | Tokens/Checklists | Checklist completion never awards tokens (completedBy, no token_value) | `checklists/actions.ts`, `tokens/logic.ts` | Emit `user_id`+token_value; fix fixtures |
 | 3 | High | Tokens/Tasks | Reward claim never creates fulfillment task (claim_id vs reward_claim_id) | `rewards/actions.ts`, `tasks/system-tasks.ts` | Agree field on canonical side |
