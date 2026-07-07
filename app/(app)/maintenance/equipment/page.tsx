@@ -1,6 +1,45 @@
-import { PlaceholderPage } from "@/components/shell/placeholder-page";
-import { findNavItem } from "@/lib/nav/page-map";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EquipmentList } from "@/components/maintenance/equipment-list";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Page() {
-  return <PlaceholderPage item={findNavItem("/maintenance/equipment")!} />;
+/**
+ * /maintenance/equipment — equipment registry (ARCHITECTURE.md "Equipment
+ * registry").
+ */
+export default async function EquipmentPage() {
+  await requirePermission("maintenance.request");
+  const canManage = await hasPermission("maintenance.manage");
+
+  const supabase = await createClient();
+
+  const [{ data: equipment }, { data: vendors }] = await Promise.all([
+    supabase.from("equipment").select("id, name, category, area, status, service_vendor_id").order("name"),
+    supabase.from("vendors").select("id, name").eq("active", true).order("name"),
+  ]);
+
+  const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
+
+  const rows = (equipment ?? []).map((eq) => ({
+    id: eq.id,
+    name: eq.name,
+    category: eq.category,
+    area: eq.area,
+    status: eq.status,
+    service_vendor_name: eq.service_vendor_id ? (vendorNameById.get(eq.service_vendor_id) ?? null) : null,
+  }));
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-4">
+      <h1 className="text-2xl font-semibold">Equipment</h1>
+      <Card>
+        <CardHeader>
+          <CardTitle>Registry</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EquipmentList equipment={rows} vendorOptions={vendors ?? []} canManage={canManage} />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
