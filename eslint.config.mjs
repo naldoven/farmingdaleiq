@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Code tooling + nested agent worktrees are not project source.
+    ".claude/**",
   ]),
 ]);
 
