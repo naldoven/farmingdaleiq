@@ -75,13 +75,51 @@ export async function sendWebPush(
   );
 }
 
-/** Saves a browser's push subscription (from the PWA install/notification-permission flow) to `push_subscriptions`. */
+/** Minimal shape of the Supabase client this function needs; keeps it injectable for tests. */
+interface PushSubscriptionStore {
+  from(table: "push_subscriptions"): {
+    delete(): { eq(col: string, value: string): Promise<{ error: { message: string } | null }> };
+    insert(row: Record<string, unknown>): Promise<{ error: { message: string } | null }>;
+  };
+}
+
+/**
+ * Saves a browser's push subscription (from the PWA
+ * install/notification-permission flow) to `push_subscriptions`.
+ *
+ * Idempotent by `endpoint`: a Web Push endpoint uniquely identifies one
+ * browser/device, and the opt-in flow (components/notifications/push-opt-in.tsx)
+ * can fire more than once — page reload, re-grant, a `pushsubscriptionchange`
+ * re-register. `push_subscriptions` has no unique constraint on `endpoint`
+ * (P0-owned table, S10 can't add one), so a plain insert would stack
+ * duplicate rows for the same device and fan-out (lib/notify/events.ts) would
+ * then send that device N copies of every push. So this first deletes any
+ * existing row for this endpoint, then inserts a fresh one — which also
+ * refreshes rotated p256dh/auth keys. The delete is RLS-scoped to the caller
+ * (`user_id = auth.uid()`), so it only ever clears the current user's own
+ * stale registration for this browser.
+ */
 export async function savePushSubscription(
   userId: string,
   subscription: PushSubscriptionRecord,
+  client?: PushSubscriptionStore,
 ) {
-  const { createClient } = await import("@/lib/supabase/server");
-  const supabase = await createClient();
+  let supabase: PushSubscriptionStore;
+  if (client) {
+    supabase = client;
+  } else {
+    const { createClient } = await import("@/lib/supabase/server");
+    supabase = (await createClient()) as unknown as PushSubscriptionStore;
+  }
+
+  const { error: deleteError } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("endpoint", subscription.endpoint);
+
+  if (deleteError) {
+    throw new Error(`savePushSubscription failed: ${deleteError.message}`);
+  }
 
   const { error } = await supabase.from("push_subscriptions").insert({
     user_id: userId,

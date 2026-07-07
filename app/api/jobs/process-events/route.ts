@@ -13,14 +13,19 @@ import { processAppEvents } from "@/lib/notify/events";
  * that: a Vercel Cron entry hitting `POST /api/jobs/process-events` every
  * 1-2 minutes. See this stream's final report for the exact suggestion.
  *
- * Auth: if `CRON_SECRET` is set, the caller must send it as
- * `Authorization: Bearer <CRON_SECRET>` (Vercel Cron's own convention).
- * Left permissive when the env var is unset so local/dev testing doesn't
- * require it.
+ * Auth: the caller must send `Authorization: Bearer <CRON_SECRET>` (Vercel
+ * Cron's own convention). In production `CRON_SECRET` is REQUIRED — if it's
+ * unset the route fails closed (503) rather than exposing an unauthenticated
+ * trigger for push fan-out and outbox writes. Outside production the check is
+ * skipped when the env var is unset so local/dev testing doesn't require it.
  */
 export async function POST(request: Request) {
   const expected = process.env.CRON_SECRET;
-  if (expected) {
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
+    }
+  } else {
     const auth = request.headers.get("authorization");
     if (auth !== `Bearer ${expected}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
