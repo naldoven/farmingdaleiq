@@ -53,6 +53,38 @@ describe("updateChannelSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects a non-Discord replacement webhook URL (FIQ-08 SSRF/exfil guard)", () => {
+    const result = updateChannelSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      webhookUrl: "http://169.254.169.254/latest/meta-data",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an http (non-https) Discord-looking URL on update", () => {
+    const result = updateChannelSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      webhookUrl: "http://discord.com/api/webhooks/123/abc",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a valid https Discord replacement webhook URL", () => {
+    const result = updateChannelSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      webhookUrl: "https://discord.com/api/webhooks/123/abc",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still allows an empty-string webhook (no replacement)", () => {
+    const result = updateChannelSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      webhookUrl: "",
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("setEventRouteSchema", () => {
