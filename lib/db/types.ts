@@ -3627,6 +3627,14 @@ export type Database = {
           balance_after: number
         }[]
       }
+      setup_has_top_performer: {
+        Args: { p_setup_id: string }
+        Returns: boolean
+      }
+      adjust_tokens: {
+        Args: { p_user_id: string; p_delta: number; p_note?: string | null }
+        Returns: { transaction_id: string; balance_after: number }[]
+      }
     }
     Enums: {
       [_ in never]: never
