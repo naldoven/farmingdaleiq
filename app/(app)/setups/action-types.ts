@@ -9,3 +9,15 @@
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+/**
+ * One ranked auto-place candidate (P2 wiring: real S4 ratings + qualification
+ * flags). `underThreeStars` / `unstampedPassport` let the board warn when
+ * someone is being placed on a position they aren't qualified for.
+ */
+export interface SuggestedCandidate {
+  userId: string;
+  rating: number | null;
+  underThreeStars: boolean;
+  unstampedPassport: boolean;
+}

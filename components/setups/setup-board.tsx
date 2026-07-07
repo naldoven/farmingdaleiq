@@ -24,6 +24,7 @@ import {
   suggestAssignees,
 } from "@/app/(app)/setups/actions";
 import { computeBadges } from "@/lib/setups/badges";
+import type { SuggestedCandidate } from "@/app/(app)/setups/action-types";
 
 export interface ProfileRow {
   id: string;
@@ -81,6 +82,7 @@ export function SetupBoard({
   roles,
   templates,
   breakStatuses,
+  traineeUserIds,
   shiftNotes,
   canManage,
   canPost,
@@ -95,6 +97,7 @@ export function SetupBoard({
   roles: RoleRow[];
   templates: TemplateRow[];
   breakStatuses: BreakStatusRow[];
+  traineeUserIds: string[];
   shiftNotes: ShiftNoteRow[];
   canManage: boolean;
   canPost: boolean;
@@ -106,12 +109,13 @@ export function SetupBoard({
   const [templateId, setTemplateId] = useState<string>(templates[0]?.id ?? "");
   const [noteBody, setNoteBody] = useState("");
   const [topPerformerId, setTopPerformerId] = useState<string>("");
-  const [suggestedOrder, setSuggestedOrder] = useState<Record<string, string[]>>({});
+  const [suggestions, setSuggestions] = useState<Record<string, SuggestedCandidate[]>>({});
 
   const positionName = new Map(positions.map((p) => [p.id, p.name]));
   const roleRankById = new Map(roles.map((r) => [r.id, r.rank]));
   const profileById = new Map(profiles.map((p) => [p.id, p]));
   const breakByUser = new Map(breakStatuses.filter((b) => b.user_id).map((b) => [b.user_id as string, b]));
+  const traineeSet = new Set(traineeUserIds);
   const now = new Date();
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
@@ -198,7 +202,7 @@ export function SetupBoard({
                   hiredOn: assignedProfile.hired_on,
                   birthdate: assignedProfile.birthdate,
                   roleRank: assignedProfile.role_id ? roleRankById.get(assignedProfile.role_id) ?? null : null,
-                  isTrainee: false, // STUB — see lib/setups/badges.ts stubTraineeStatusLookup (P2 wiring to S4)
+                  isTrainee: traineeSet.has(assignedProfile.id), // P2 wiring: real S4 trainee status
                   breakStatus: breakByUser.get(assignedProfile.id)?.status ?? null,
                   breakDueAt: null,
                 },
@@ -206,10 +210,24 @@ export function SetupBoard({
               )
             : [];
 
-          const candidateIds = suggestedOrder[assignment.position_id ?? ""] ?? profiles.map((p) => p.id);
+          const positionKey = assignment.position_id ?? "";
+          const positionSuggestions = suggestions[positionKey];
+          const candidateIds = positionSuggestions
+            ? positionSuggestions.map((c) => c.userId)
+            : profiles.map((p) => p.id);
           const orderedProfiles = candidateIds
             .map((id) => profileById.get(id))
             .filter((p): p is ProfileRow => Boolean(p));
+
+          // P2 wiring: warn when the assigned person is under-qualified for
+          // this position (under 3 stars or missing the position passport
+          // stamp), surfaced from the last auto-place suggestion.
+          const assignedFlag = assignment.user_id
+            ? positionSuggestions?.find((c) => c.userId === assignment.user_id)
+            : undefined;
+          const underQualified = Boolean(
+            assignedFlag && (assignedFlag.underThreeStars || assignedFlag.unstampedPassport),
+          );
 
           return (
             <li
@@ -278,9 +296,9 @@ export function SetupBoard({
                           candidateUserIds: profiles.map((p) => p.id),
                         });
                         if (result.ok && "data" in result) {
-                          setSuggestedOrder((prev) => ({
+                          setSuggestions((prev) => ({
                             ...prev,
-                            [assignment.position_id ?? ""]: result.data.userIds,
+                            [assignment.position_id ?? ""]: result.data.candidates,
                           }));
                         }
                       });
@@ -304,6 +322,11 @@ export function SetupBoard({
               )}
 
               <span className="flex flex-wrap gap-1">
+                {underQualified && (
+                  <Badge variant="destructive" title="Under 3 stars or missing the position passport stamp">
+                    Under-qualified
+                  </Badge>
+                )}
                 {badges.map((badge) => (
                   <Badge key={badge.kind} variant="secondary">
                     {badge.label}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SetupBoard } from "@/components/setups/setup-board";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { loadTraineeUserIds } from "@/lib/integration/people-badges";
 import { createClient } from "@/lib/supabase/server";
 
 function todayIso(): string {
@@ -65,6 +66,12 @@ export default async function SetupsPage({
     .select("id, name, role_id, birthdate, hired_on, active")
     .eq("active", true)
     .order("name");
+
+  // P2 wiring (S3 -> S4): real Trainee badge on the board.
+  const traineeUserIds = await loadTraineeUserIds(
+    supabase,
+    (activeProfiles ?? []).map((p) => p.id),
+  );
 
   const { data: breaks } = setup
     ? await supabase.from("breaks").select("user_id, status, authorized_at").eq("setup_id", setup.id)
@@ -174,6 +181,7 @@ export default async function SetupsPage({
             roles={roles ?? []}
             templates={templatesForDayPart}
             breakStatuses={breaks ?? []}
+            traineeUserIds={[...traineeUserIds]}
             shiftNotes={shiftNotes ?? []}
             canManage={canManage}
             canPost={canPost}

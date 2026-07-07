@@ -21,10 +21,12 @@ import type { z } from "zod";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { rankCandidatesForPosition } from "@/lib/setups/auto-place";
+import { createPositionRatingLookup, loadPositionSuitability } from "@/lib/integration/position-ratings";
+import { materializeSetupFanout } from "@/lib/integration/setup-fanout";
 import { emitEvent } from "@/lib/events/bus";
 import { generateBreaksForSetup } from "@/app/(app)/breaks/actions";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult } from "@/app/(app)/setups/action-types";
+import type { ActionResult, SuggestedCandidate } from "@/app/(app)/setups/action-types";
 import {
   addShiftNoteSchema,
   assignPositionSchema,
@@ -193,7 +195,7 @@ export async function postSetup(
 
     const { data: setup, error: fetchError } = await supabase
       .from("setups")
-      .select("id, posted_at")
+      .select("id, posted_at, shift_leader_id")
       .eq("id", parsed.id)
       .single();
 
@@ -234,14 +236,41 @@ export async function postSetup(
       return { ok: true, data: undefined };
     }
 
+    // Recipient ids for the notification fan-out (lib/notify/recipients.ts
+    // reads `user_ids`) so every assigned person gets a "you're on the
+    // schedule" notification, and a leader id so S2's setup_posted -> lead_duty
+    // consumer (app/(app)/tasks/system-tasks.ts) can create the Lead Duties
+    // task. Without these top-level fields the payload's `assignments` array
+    // is invisible to both consumers.
+    const assignedUserIds = [
+      ...new Set((assignments ?? []).map((a) => a.user_id).filter((id): id is string => Boolean(id))),
+    ];
+    const leaderUserId = setup.shift_leader_id ?? user?.id ?? null;
+
     await emitEvent("setup_posted", {
       setup_id: parsed.id,
       assignments: assignments ?? [],
+      user_ids: assignedUserIds,
+      leader_user_id: leaderUserId,
     });
 
     // Break plan generation is its own idempotent operation (breaks are
     // only inserted for assignment+kind pairs that don't already exist).
     await generateBreaksForSetup(parsed.id);
+
+    // P2 wiring (S3 -> S1/S2): materialize the position-linked checklist runs
+    // and tasks for the assigned people. Best-effort — the nightly checklist
+    // and tasks crons materialize the same schedules/templates regardless of
+    // setup, so a failure here degrades to "runs/tasks exist but aren't yet
+    // attached to the assignee" rather than losing them. Idempotent, so a
+    // manual re-run recovers the attach.
+    try {
+      await materializeSetupFanout(parsed.id);
+      revalidatePath("/checklists");
+      revalidatePath("/tasks");
+    } catch (fanoutError) {
+      console.error("postSetup: materializeSetupFanout failed", fanoutError);
+    }
 
     revalidateBoard();
     return { ok: true, data: undefined };
@@ -321,20 +350,40 @@ export async function selectTopPerformer(
 }
 
 /**
- * Auto-place suggestion: ranks candidates for a position by position
- * rating. lib/setups/auto-place.ts's lookup is a STUB returning null for
- * every candidate until S4's position_ratings table is wired up in P2, so
- * today this only guarantees a deterministic (input-order) fallback.
+ * Auto-place suggestion (P2 wiring, S3 -> S4): ranks candidates for a position
+ * by their REAL current position rating (lib/integration/position-ratings.ts
+ * reads S4's position_ratings) and flags anyone under the 3-star bar or
+ * without the position passport stamp, so the board can warn before placing
+ * an under-qualified person. Higher-rated candidates sort first; unrated
+ * candidates sort last in stable input order.
  */
 export async function suggestAssignees(
   input: z.infer<typeof suggestAssigneesSchema>,
-): Promise<ActionResult<{ userIds: string[] }>> {
+): Promise<ActionResult<{ userIds: string[]; candidates: SuggestedCandidate[] }>> {
   try {
     await requirePermission("setups.manage");
     const parsed = suggestAssigneesSchema.parse(input);
+    const supabase = await createClient();
 
-    const ranked = await rankCandidatesForPosition(parsed.candidateUserIds, parsed.positionId);
-    return { ok: true, data: { userIds: ranked.map((c) => c.userId) } };
+    const lookup = createPositionRatingLookup(supabase);
+    const ranked = await rankCandidatesForPosition(parsed.candidateUserIds, parsed.positionId, lookup);
+    const suitability = await loadPositionSuitability(
+      supabase,
+      parsed.candidateUserIds,
+      parsed.positionId,
+    );
+
+    const candidates: SuggestedCandidate[] = ranked.map((c) => {
+      const s = suitability.get(c.userId);
+      return {
+        userId: c.userId,
+        rating: c.rating,
+        underThreeStars: s?.underThreeStars ?? c.rating === null,
+        unstampedPassport: s?.unstampedPassport ?? false,
+      };
+    });
+
+    return { ok: true, data: { userIds: candidates.map((c) => c.userId), candidates } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }
