@@ -7,7 +7,17 @@ import type { Database } from "@/lib/db/types";
 // serves as the offline navigation fallback. It must be public (FIQ-13): if it
 // 302s to /login, the SW caches the login page under the offline key and the
 // offline screen shows the login page instead.
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/manifest.webmanifest", "/sw.js", "/offline.html"];
+// /set-password is deliberately NOT here: the /auth/callback handler exchanges
+// the invite/recovery code for a real session before redirecting there, so the
+// user is already authenticated and the normal auth guard lets them through.
+const PUBLIC_PATHS = [
+  "/login",
+  "/forgot-password",
+  "/auth/callback",
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/offline.html",
+];
 
 function isPublicPath(pathname: string) {
   return (
