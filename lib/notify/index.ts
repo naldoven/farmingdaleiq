@@ -43,3 +43,33 @@ export async function markNotificationRead(notificationId: string) {
     throw new Error(`markNotificationRead failed: ${error.message}`);
   }
 }
+
+/** Marks every unread notification belonging to `userId` as read. */
+export async function markAllNotificationsRead(userId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("read_at", null);
+
+  if (error) {
+    throw new Error(`markAllNotificationsRead failed: ${error.message}`);
+  }
+}
+
+/** Count of unread notifications for the bell badge. */
+export async function countUnreadNotifications(userId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .is("read_at", null);
+
+  if (error) {
+    throw new Error(`countUnreadNotifications failed: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
