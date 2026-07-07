@@ -3,7 +3,9 @@
 A single-store restaurant operations web app for the Farmingdale store, modeled on the
 workflows of Ecolab KitchenIQ™ (formerly VSBL). This is an independent implementation:
 we replicate the *workflows and features* our team already knows, with our own code,
-design, and branding.
+design, and branding. Two apps already running at the Avondale store, the Talent Hub
+and the Catering Hub, contribute two more pieces: the trainee lifecycle folded into
+Training, and the Catering module (see Reference sources).
 
 ## Locked decisions
 
@@ -14,7 +16,7 @@ design, and branding.
 | Login | Personal accounts only (email/password via Supabase Auth). No shared-tablet PIN kiosk mode. |
 | Hardware | None. No Bluetooth thermometer (never planned), no equipment sensors. Temps are typed in manually. |
 | Employee data | Entered manually in-app (no payroll sync). |
-| Scope | All modules built in one project: People/Teams, Checklists, Tasks, Setups & Shifts, Waste, Infractions/Accountability, Tokens & Rewards, Team Feed, Training, Vendors, Maintenance, Reporting, Notifications. Chat is explicitly excluded. |
+| Scope | All modules built in one project: People/Teams, Checklists, Tasks, Setups & Shifts, Waste, Infractions/Accountability, Tokens & Rewards, Team Feed, Training, Vendors, Maintenance, Catering, Reporting, Notifications. Chat is explicitly excluded. |
 | Vendors module | Directory + contacts only (no ordering/inventory sync). |
 | Maintenance | Full module modeled on UpKeep: requests → leader approval → work orders assigned in-house or to a vendor; equipment registry with repair history; time-based preventive maintenance auto-generating work orders; cost + invoice tracking. No parts inventory, no meters/IoT. |
 | Position ratings | Adopted from OneClick: star ratings per person per position (quick-rate + full rubric), 30-day re-rate prompts, color-coded views, and rating-driven auto-placement suggestions when building setups. |
@@ -25,6 +27,11 @@ design, and branding.
 | Discord | Team chat lives in Discord (we build no chat). The app posts to Discord via channel webhooks with per-user @mentions (Discord IDs stored on profiles). Tasks and other items carry a "Notify Discord" flag; overdue/incomplete alerts, maintenance events, wins & announcements, and reward claims auto-post to configurable channels. No bot/DMs in v1; the event routing is designed so a bot can be added later. Personal/sensitive events (infractions, disciplinary actions) never post to Discord except optionally to a private leaders-only channel. |
 | Tokens | Full economy replica: auto-earn on task/checklist completion, Top Performer awards, Recognitions, peer-to-peer gifting, rewards store with fulfillment tasks. |
 | Locations | Single store. A `stores` table exists so multi-location could be added later without a rewrite, but all UI assumes one store. |
+| Catering | Full module modeled on our Avondale Catering Hub: a stage pipeline (New → Confirmation call → FOH Setup → Pickup/Delivery → Follow-up → Closed) with per-stage checklists, order records built from a menu catalog, FOH setup lists that auto-scale from headcount and items, a guest-contacts CRM with follow-up calls, and catering analytics. Catering orders are their own records, separate from the daily-ops Setups module. |
+| Talent lifecycle | Adopted from our Avondale Talent Hub and folded INTO the passport model, not built as a second system. The station-scoring grid and trainee weekly schedule are views over passport data; graduation + the 30-day audit (PASS locks, PIP returns to development) are passport lifecycle stages; the Masters and Leadership stage pipelines are leadership passports expressed as stage tracks; the editable org chart reads filled/vacant slots from roles + pipeline promotions. |
+| Store config | Seeded from the live Farmingdale KitchenIQ (dayparts, roles, infraction types + points, disciplinary ladder, rewards, break rule, food holding ranges). Real values captured in "Store configuration (Farmingdale)" below; they replace the placeholder examples in the open questions. |
+| Not adopted from Avondale | The Talent Hub hiring board (hours forecast, green/yellow/red staffing zones) and the access-code page gate (personal logins already handle auth). |
+| Scheduling | KitchenIQ pulls the working roster from an external scheduling provider (mapped to store areas) rather than scheduling in-app. FarmingdaleIQ builds its own Setups but assumes employee availability is entered/managed elsewhere; no scheduling-provider sync in v1. |
 
 ## How the reference app works (research summary)
 
@@ -131,6 +138,43 @@ The plain courses/plans model is replaced by OneClick's passport model:
 - Passports make the "how do I move up" path visible to everyone: each person sees
   every passport, their progress, and exactly what remains.
 
+### Trainee lifecycle (adopted from the Avondale Talent Hub)
+One training system: everything here is a view or stage over passports and ratings,
+not a second model.
+
+- Each side of the store (FOH, Kitchen) has an **onboarding roadmap**: an ordered
+  list of stations (positions) grouped into phases. Avondale's FOH roadmap runs 21
+  stations across Onboarding, Ordering (Register 1/2, iPOS 1/2), Assembly (FC Bag,
+  DTD, DT Bag), Staging (Mobile Cash, STAR), and Delivery (Expo, Serving, Dining,
+  Mobile Host, FHK); Farmingdale's own list is an open question. A new hire is
+  enrolled as a trainee on one roadmap.
+- **Station grid**: a roster view, one row per trainee, one column per station
+  grouped by phase. Each cell cycles Not started → In training → scored 1 to 5 with
+  the trainer's initials recorded. A score writes a quick position rating (the same
+  `position_ratings` the Ratings module uses) and updates the passport item progress
+  for that station. Per-phase averages, an overall average, and a completed-stations
+  count (e.g. 12/21) render per trainee.
+- **Trainee schedule**: a week grid (trainee by day). A cell assigns a station, a
+  time block, and the master or trainer running the session, plus session tags
+  (Learn, Position Overview, Nug Review; the tag list is editable). Weekly hour
+  totals show per trainee; the view prints for the wall.
+- **Graduation**: finishing all stations on the roadmap marks the trainee a
+  graduate. Thirty days later a graduation audit is due: PASS locks graduation in;
+  PIP moves the person back into development with a note. The graduates list shows
+  side, start and completion dates, duration, average score, and audit status.
+- **Masters and leadership pipelines**: progression programs are leadership
+  passports whose items are the program's stages (Avondale's Masters run: Apply,
+  Orientation, Review, Mock Train, Quiz, Touchpoint, Promote; leads run: Apply,
+  Workbook, Field weeks 1 to 3, Mock, Promote). An enrollment carries a track (e.g.
+  DT/FC/OT/Both for FOH masters, focus areas for kitchen). Completing the final
+  stage stamps the passport, which can auto-upgrade the person's role (see
+  Leadership Passports above).
+- **Org chart**: departments (FOH, Kitchen, store level) with tiers (e.g. Area
+  Leads, Ops Leads, Zone Leads, Masters), each tier carrying a goal count. Slots
+  show filled or vacant (dashed) and are editable in place; stamping a pipeline
+  passport auto-fills a slot in its mapped tier. Vacancy counts roll up to the
+  store dashboard.
+
 ### Position Ratings (adopted from OneClick)
 - Leaders rate each team member per position. Two modes: **quick rate** (single
   0–5 star score; 3.0+ = qualified) and **full rubric** (4 categories × 5 stars
@@ -194,6 +238,41 @@ management system). The workflow we reproduce, right-sized for one store:
 - **Reporting hooks**: open/overdue work orders and down equipment surface on the
   store dashboard; reports cover time-to-resolution, spend by equipment and by
   month, and repeat-failure equipment.
+
+### Catering (modeled on the Avondale Catering Hub)
+Replicates the catering workflow already running at the Avondale store, built as a
+module in this app. Farmingdale's KitchenIQ already carries catering checklists
+(Catering Follow-Up, Night FOH Catering), so the workflow is proven in-house.
+
+- **Orders**: guest name and contact, event date and time, headcount, dollar
+  amount, fulfillment method (pickup, or delivery with address), a paper-goods
+  yes/no, notes, and line items picked from a **menu catalog**. Menu items know
+  their component breakdown (a packaged meal expands to sandwich, chips, cookie),
+  which lets downstream checklists scale quantities.
+- **Pipeline**: every open order sits on a kanban board with stages New →
+  Confirmation call → FOH Setup → Pickup/Delivery → Follow-up → Closed. Cards move
+  by drag or a stage dropdown; a "new order came in" strip highlights today's
+  intake; stage changes are timestamped.
+- **Stage checklists**: each order materializes editable checklists from per-stage
+  default templates: confirmation call (called guest, date and time confirmed,
+  headcount confirmed, menu confirmed, payment confirmed), FOH setup (serving
+  utensils, sauces, dressings, toppings, chips), kitchen prep (food items, sauces,
+  paper goods, drinks, utensils and napkins, special requests), and
+  pickup/delivery handoff (tender out, all food packed, cold items from the
+  cooler, sauces and condiments included, drinks and ice). FOH setup quantities
+  auto-scale from order items and headcount; items can be added or removed per
+  order.
+- **Views**: a This Week calendar (day-by-day order cards for staffing and prep
+  planning) and stage work queues (Confirmation Calls, FOH Setup, Pickup/Delivery)
+  that show only orders sitting in that stage.
+- **Contacts and follow-up**: every guest becomes a contact carrying order count,
+  lifetime spend, and last event date. Closing an order queues a follow-up call to
+  re-book; the History page lists follow-ups due and the full order history with
+  period filters (month, quarter, year, all time).
+- **Analytics**: total orders, total revenue, average order, repeat-guest
+  percentage, revenue by week, busiest days, top guests.
+- **Discord**: catering events route like every other event (a new order or a
+  stage change can post to a catering channel).
 
 ### Reporting
 - **Store dashboard**: at-a-glance action items and insights (overdue to-dos, flagged
@@ -297,11 +376,21 @@ Ratings & passports:
 - `rerate_prompts` (id, user_id, position_id, due_on, resolved_at) — generated 30 days after a current rating on an active position
 - `passports` (id, kind: position|leadership, position_id, target_role_id, name, active) — auto-created per position
 - `passport_items` (id, passport_id, sort, type: check|slider|photo|signature|course, label, course_id)
-- `passport_enrollments` (id, passport_id, user_id, started_at, stamped_by, stamped_at)
+- `passport_enrollments` (id, passport_id, user_id, started_at, stamped_by, stamped_at, track): track holds the pipeline variant (DT/FC/OT/Both, kitchen focus areas)
 - `passport_item_progress` (enrollment_id, item_id, value jsonb, photo_url, signed_by, completed_at)
 
+Trainee lifecycle (views and stages over passports):
+- `onboarding_roadmaps` (id, side: foh|kitchen, name, active)
+- `roadmap_stations` (id, roadmap_id, position_id, phase, sort): phase is the grid column group (Onboarding, Ordering, Assembly, Staging, Delivery)
+- `trainee_enrollments` (id, user_id, roadmap_id, started_on, status: active|graduated|pip, graduated_on)
+- `station_progress` (enrollment_id, roadmap_station_id, status: not_started|in_training|scored, score, scored_by, scored_at): scoring also writes a `position_ratings` row and passport item progress
+- `graduation_audits` (id, enrollment_id, due_on, result: pass|pip, notes, recorded_by, recorded_at): due_on = graduated_on + 30 days
+- `training_sessions` (id, enrollment_id, date, position_id, start_time, end_time, trainer_user_id, tags text[], note): the trainee week schedule; tags default to Learn, Position Overview, Nug Review
+- `org_tiers` (id, department: foh|kitchen|store, name, goal_count, sort)
+- `org_slots` (id, tier_id, user_id, label, sort): vacant when user_id is null; `passports.org_tier_id` maps a pipeline passport to the tier its stamp fills
+
 Checklists:
-- `food_items` (id, name, min_temp_f, max_temp_f)
+- `food_items` (id, name, cold_min_f, cold_max_f, hot_min_f, hot_max_f): KitchenIQ holds separate cold-holding and hot-holding compliant ranges per item (e.g. cold 33 to 41°F, hot 140 to 210°F); a temperature question picks which holding mode applies
 - `checklist_templates` (id, name, description, active)
 - `checklist_sections` (id, template_id, name, sort)
 - `checklist_questions` (id, section_id, sort, type: yes_no|number|temperature|text|multi_choice, prompt, allow_na, choices jsonb, food_item_id, corrective_actions text, photo_required, token_value)
@@ -353,6 +442,15 @@ Maintenance:
 - `equipment_downtime` (id, equipment_id, work_order_id, started_at, ended_at)
 - `pm_schedules` (id, equipment_id, title, description, interval_days, lead_days, next_due_on, checklist_template_id, assign_user_id, vendor_id, priority, active)
 
+Catering:
+- `catering_menu_items` (id, name, category, components jsonb, scaling_rules jsonb, active): components list what a line item expands to; scaling_rules drive utensil/sauce quantities per headcount
+- `catering_contacts` (id, name, phone, email, notes, created_at): order count, lifetime spend, and last event are computed from orders
+- `catering_orders` (id, contact_id, guest_name, phone, email, event_date, event_time, headcount, amount numeric, stage: new|confirm|setup|out|followup|closed, fulfillment: pickup|delivery, delivery_address, paper_goods bool, source, notes, created_by, created_at, stage_changed_at)
+- `catering_order_items` (order_id, menu_item_id, qty)
+- `catering_checklist_defaults` (id, stage: confirm|setup|kitchen_prep|out, label, sort, active): per-stage template items
+- `catering_checklist_items` (id, order_id, stage, label, done bool, done_by, done_at, sort): materialized per order, add/remove allowed
+- `catering_followups` (id, order_id, contact_id, due_on, done_at, outcome, note): queued when an order closes
+
 Notifications:
 - `notifications` (id, user_id, kind, title, body, link, read_at, created_at)
 - `push_subscriptions` (id, user_id, endpoint, p256dh, auth, created_at)
@@ -360,7 +458,7 @@ Notifications:
 Discord:
 - `profiles.discord_user_id` (added to profiles) — for @mentions
 - `discord_channels` (id, name, webhook_url, purpose, active) — webhook_url server-side only, never exposed via RLS
-- `discord_event_routes` (event_key, channel_id, enabled) — e.g. task_overdue, checklist_missed, break_overdue, temp_failed, maint_request, work_order_status, equipment_down, pm_due, recognition, top_performer, broadcast, reward_claim
+- `discord_event_routes` (event_key, channel_id, enabled) — e.g. task_overdue, checklist_missed, break_overdue, temp_failed, maint_request, work_order_status, equipment_down, pm_due, recognition, top_performer, broadcast, reward_claim, catering_order_new, catering_stage_change
 - `notify_discord` + `discord_channel_id` columns on: `tasks`, `task_templates`, `checklist_schedules`, `work_orders`, `pm_schedules`
 - `discord_outbox` (id, channel_id, payload jsonb, status: pending|sent|failed, attempts, next_retry_at, created_at, sent_at)
 
@@ -383,9 +481,23 @@ Discord:
 | `/team` | Feed (recognitions, top performers, broadcasts), likes/comments |
 | `/people` | Roster, profiles, roles & permissions, teams |
 | `/training` | Passports: my progress, all passports, trainer sign-offs, leader stamping; admin: passport items, courses |
+| `/training/grid` | Station grid: trainees by stations, click-to-cycle and score, phase averages |
+| `/training/schedule` | Trainee week schedule: station + time + trainer per day, session tags, print view |
+| `/training/graduates` | Graduates list and 30-day audits (PASS / PIP) |
+| `/training/pipelines` | Masters and leadership stage pipelines with per-person progress |
+| `/people/org-chart` | Editable org chart: tiers, goal counts, filled and vacant slots |
 | `/vendors` | Vendor directory |
 | `/maintenance` | Submit requests; triage queue; work order board & detail (comments, photos, cost) |
 | `/maintenance/equipment` | Equipment registry, unit pages with history, PM schedules |
+| `/catering` | Order pipeline board: stage columns, drag/dropdown moves, new-order intake |
+| `/catering/week` | This Week calendar of upcoming orders |
+| `/catering/confirm` | Confirmation-call queue with per-order call checklist |
+| `/catering/setup` | FOH setup queue: auto-scaled setup checklists per order |
+| `/catering/dispatch` | Pickup/delivery queue with handoff checklist |
+| `/catering/orders/[id]` | Order detail: items, stage, all checklists, notes, guest history |
+| `/catering/history` | Contacts, follow-ups due, order history with period filters |
+| `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
+| `/catering/menu` | Menu item catalog admin (components, scaling rules) |
 | `/reports` | Store dashboard + per-module reports, CSV export |
 | `/notifications` | Notification center |
 | `/settings` | Day-parts, earning rules, store settings |
@@ -395,44 +507,107 @@ Discord:
 
 Foundation (auth, profiles, roles/permissions, day-parts, positions, PWA shell,
 notifications plumbing) → Checklists + Tasks → Setups & Shifts (incl. layout
-editor, badges, break engine) → Ratings → Passports (needs ratings + courses) →
-Waste → Accountability → Tokens/Rewards/Feed → Vendors → Maintenance (needs
-vendors + checklists) → Reporting dashboard → polish + seed data + RLS audit.
+editor, badges, break engine) → Ratings → Passports + trainee lifecycle (station
+grid, trainee schedule, graduates/audits, pipelines, org chart; needs ratings +
+courses) → Waste → Accountability → Tokens/Rewards/Feed → Vendors → Maintenance
+(needs vendors + checklists) → Catering (needs foundation only; can run in
+parallel with any post-checklist phase) → Reporting dashboard → polish + seed
+data + RLS audit.
+
+## Store configuration (Farmingdale, captured from live KitchenIQ)
+
+Captured 2026-07-06 from the store's KitchenIQ admin portal. These are the real
+values the app ships seeded with.
+
+- **Store**: Farmingdale, 1991 Broadhollow Road, Farmingdale NY 11735 (EBS 2585040).
+- **Dayparts (6)**: Morning 6:00-11:00 AM, Lunch 11:00 AM-3:00 PM, Mid 3:00-5:00 PM,
+  Dinner 5:00-7:00 PM, Night 7:00-11:00 PM, Closing 11:00-11:45 PM.
+- **Roles (ranked 1-10)**: Location Manager, Director, Assistant Director,
+  Operations Lead, Shift Supervisor, Team Leader, FOH Trainer, BOH Trainer,
+  FOH Brand Ambassadors, Team Member. Per-role permissions still to map.
+- **Accountability period**: rolling 60 days.
+- **Infraction types (points)**: Call Out (P3&4) 10, No Call No Show (P3&4) 30,
+  Late to Shift 5-30 mins (P3&4) 4, Excused Call Out 0, Coaching 0, Time Theft
+  (P4) 4, Violation of Standard Procedures (P5&6) 10. (List continues in
+  KitchenIQ; capture the tail when seeding.)
+- **Disciplinary ladder (threshold points)**: Coaching 10, Verbal Warning 15,
+  Written Warning 20, 1 Week Suspension 30, Employment Review 50.
+- **Rewards (token cost)**: Cookie/Brownie (TM) 25, Drink Cup (TM) 25, LTO/Iced
+  Coffee (TM) 40, Treasure Box (TM) 50, Drink Cup (L) 50, Medium Side (TM) 50,
+  Cookie/Brownie (L) 50. (List continues; capture the tail when seeding.)
+- **Break rule (current store policy)**: one rule, scheduled 6 hours → one
+  30-minute break. Far simpler than the OneClick-style engine we planned; the
+  engine stays (NY-law and minor bands still preload) but this is the only rule
+  active on day one.
+- **Food items**: KitchenIQ tracks holding compliance as separate ranges: Cold
+  Foods cold-holding 33 to 41°F, Hot Foods hot-holding 140 to 210°F. Only these
+  two generic items exist today; per-item entries can come later.
+- **Checklists**: 67 active templates today, sectioned with numbered questions
+  (yes/no and temperature types observed). Real names include Safe Count,
+  Breakfast Checklist, Suggestive Selling and Upselling, Pickles Check-in (Smart
+  Shop), FOH - Closing Shift Leader, QIV - Nuggets & Strips, BOH Dishes/Dish Put
+  Back/Boards/Breading/Machines Closing Checklists, Bi-Weekly Clean Prep, Prep
+  Closing, Brand Ambassador WHED/Systems/Outlook Audits, and two catering ones
+  (Catering Follow-Up, Night FOH Catering). Migrate these as templates.
+- **Training courses**: 52 active, named by position and shift (Desserts [Shift
+  1/2], Drinks [Shift 1/2], Serving [Hospitality], M-Serving, FC Serving, ...).
+  These become passport-linked course items.
+- **Scheduling**: KitchenIQ maps "Areas" to schedule types from an external
+  scheduling provider and pulls the roster from it when leaders build setups.
+  FarmingdaleIQ keeps setups internal in v1 and does not sync a provider.
 
 ## Open questions (store-specific content needed)
 
-1. **Day-parts**: names + hours (e.g. Breakfast 6:00–11:00, Lunch 11:00–16:00, Dinner 16:00–close?).
-2. **Positions**: position groups and the positions in each (FOH/BOH lists as you run them).
-3. **Infractions**: your infraction types + point values, the disciplinary ladder
-   (names + thresholds), and the accountability period (rolling 60 days?).
-4. **Waste**: categories and items you track, and whether each is counted or weighed;
-   track cost per item?
-5. **Rewards & tokens**: reward list + token prices; tokens per task/checklist;
-   Top Performer amount (default 20?).
-6. **Training**: the passport content per position (skill items, courses); which
-   leadership roles get Leadership Passports?
-7. **Ratings**: which positions need the full 4-category rubric (and the category
+Answered by the KitchenIQ capture above: day-parts, infractions + ladder + period,
+break rule, role list, reward names + prices, food holding ranges, checklist
+inventory, course inventory. Still open:
+
+1. **Positions**: position groups and the positions in each (FOH/BOH lists as you
+   run them). The Avondale FOH station list is a starting point; confirm
+   Farmingdale's stations and phase grouping for the onboarding roadmaps.
+2. **Waste**: categories and items you track, and whether each is counted or
+   weighed; track cost per item? (No waste config found in the KitchenIQ portal.)
+3. **Tokens**: tokens per task/checklist completion and the Top Performer amount
+   (default 20?). Reward prices are captured; the tails of the reward and
+   infraction lists still need a full export when seeding.
+4. **Training**: passport content per position (skill items, which of the 52
+   courses attach where); which leadership roles get Leadership Passports; stage
+   lists and tracks for Farmingdale's Masters and lead pipelines if they differ
+   from Avondale's.
+5. **Ratings**: which positions need the full 4-category rubric (and the category
    names) vs. quick-rate only?
-8. **Breaks**: confirm your break policy bands (we preload NY law defaults; store
-   policy may be more generous — e.g. OneClick-style bands like a 10-min rest +
-   30-min meal at 5–6 hours, more for minors).
-9. **Store layout**: a photo/sketch of your setup whiteboard or floor plan so the
+6. **Org chart**: Farmingdale's tiers and goal counts per department.
+7. **Store layout**: a photo/sketch of your setup whiteboard or floor plan so the
    layout editor's default arrangement matches your store.
-10. **Roles**: which roles do you want (e.g. Team Member, Trainer, Team Lead,
-    Director, Executive/Admin) and any permission differences from the defaults?
-11. **Reports**: which reports you actually pull weekly/monthly.
-12. **Branding**: app name ("FarmingdaleIQ"?), colors/logo.
-13. **Screenshots**: photos of the screens you use most (home, a checklist in
-    progress, setup board, waste sheet, accountability, rewards store) so layouts
-    match what the team already knows — redact names.
-14. **Equipment list**: your equipment (or photos of data plates) and existing
+8. **Permissions**: per-role permission differences from the defaults (role list
+   itself is captured).
+9. **Reports**: which reports you actually pull weekly/monthly.
+10. **Branding**: app name ("FarmingdaleIQ"?), colors/logo.
+11. **Screenshots**: photos of the screens the team uses most (home, a checklist
+    in progress, setup board, accountability, rewards store) so layouts match
+    what the team already knows; redact names.
+12. **Equipment list**: your equipment (or photos of data plates) and existing
     service schedules (hood cleaning, filter changes) to seed the maintenance
     module.
-15. **Discord**: your server's channel plan (which channels for tasks, maintenance,
-    leaders-only alerts, team wins), webhook URLs once created, and each member's
-    Discord user ID (or usernames — we can help collect these at first login).
+13. **Discord**: your server's channel plan (which channels for tasks,
+    maintenance, leaders-only alerts, team wins, catering), webhook URLs once
+    created, and each member's Discord user ID (or usernames; we can help
+    collect these at first login).
+14. **Catering menu**: Farmingdale's catering menu items with component
+    breakdowns and utensil/sauce scaling rules; where orders arrive from (phone,
+    EZCater, CFA catering site) and the default checklist items per stage if they
+    differ from Avondale's.
+15. **Catering contacts**: export existing guest contacts and order history (from
+    Avondale-style records or receipts) to seed the CRM, if wanted.
 
 ## Reference sources
+
+Avondale reference apps (ours, live):
+- [Avondale Talent Hub](https://avondale-talenthub.vercel.app/): trainee station grid, trainee schedule, graduates + 30-day audit, masters and leadership pipelines, org chart, hiring board (hiring board not adopted)
+- [Avondale Catering Hub](https://avondalecatering.vercel.app/): order pipeline, stage checklists, contacts + follow-up, catering analytics
+
+Live store data:
+- Farmingdale KitchenIQ admin portal (portal.kitcheniq.ecolab.com, login required): source of the captured store configuration above
 
 - [KitchenIQ in 2026 (support)](https://support.vsblapp.com/hc/en-us/articles/45010922078356-KitchenIQ-in-2026)
 - [Intro for Leaders (support)](https://support.vsblapp.com/hc/en-us/articles/22348470922644-Intro-to-Ecolab-KitchenIQ-for-Leaders)
