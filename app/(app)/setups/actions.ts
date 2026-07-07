@@ -215,13 +215,24 @@ export async function postSetup(
       .select("position_id, user_id, arrival_time")
       .eq("setup_id", parsed.id);
 
-    const { error: updateError } = await supabase
+    const { data: claimed, error: updateError } = await supabase
       .from("setups")
       .update({ posted_at: new Date().toISOString(), posted_by: user?.id ?? null })
       .eq("id", parsed.id)
-      .is("posted_at", null); // guards a concurrent double-post race
+      .is("posted_at", null) // guards a concurrent double-post race
+      .select("id");
 
     if (updateError) return { ok: false, error: updateError.message };
+
+    // A 0-row update means a concurrent call already claimed this setup
+    // (the .is("posted_at", null) filter matched nothing). Supabase returns
+    // no error for that case, so without this guard both callers would fall
+    // through and emit setup_posted twice + regenerate breaks twice — both
+    // fan out cross-module (S1/S2 auto-assign, token rules). Bail out as an
+    // idempotent no-op instead.
+    if (!claimed || claimed.length === 0) {
+      return { ok: true, data: undefined };
+    }
 
     await emitEvent("setup_posted", {
       setup_id: parsed.id,

@@ -258,13 +258,18 @@ export async function markOverdueBreaks(): Promise<{ flagged: number }> {
     const elapsedMinutes = (now.getTime() - new Date(breakRow.authorized_at).getTime()) / 60_000;
     if (elapsedMinutes <= 10) continue;
 
-    const { error } = await supabase
+    const { data: claimed, error } = await supabase
       .from("breaks")
       .update({ status: "overdue" })
       .eq("id", breakRow.id)
-      .eq("status", "authorized"); // guards a concurrent double-run race
+      .eq("status", "authorized") // guards a concurrent double-run race
+      .select("id");
 
-    if (!error) {
+    // Only emit if THIS run actually flipped the row. A 0-row update
+    // (concurrent run already flagged it) returns no error, so without the
+    // claimed-rows check both runs would emit break_overdue for the same
+    // break — and break_overdue fans out to notifications/Discord.
+    if (!error && claimed && claimed.length > 0) {
       flagged += 1;
       await emitEvent("break_overdue", {
         break_id: breakRow.id,
