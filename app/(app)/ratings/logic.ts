@@ -1,0 +1,60 @@
+/**
+ * Pure helpers for Position Ratings (ARCHITECTURE.md "Position Ratings").
+ * Kept side-effect-free so they're directly unit-testable without a DB.
+ */
+
+/** 3.0+ stars = qualified for the position. */
+export const QUALIFIED_THRESHOLD = 3;
+
+/** 30-day re-rate cadence (ARCHITECTURE.md "Re-rate prompts"). */
+export const RERATE_INTERVAL_DAYS = 30;
+
+export function isQualified(stars: number): boolean {
+  return stars >= QUALIFIED_THRESHOLD;
+}
+
+export function computeAverage(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sum = values.reduce((acc, v) => acc + v, 0);
+  return Math.round((sum / values.length) * 100) / 100;
+}
+
+/** Averages the (up to) 4 rubric category scores into a single stars value. */
+export function averageCategoryScores(scores: {
+  category_1?: number | null;
+  category_2?: number | null;
+  category_3?: number | null;
+  category_4?: number | null;
+}): number {
+  const values = [scores.category_1, scores.category_2, scores.category_3, scores.category_4].filter(
+    (v): v is number => typeof v === "number" && !Number.isNaN(v),
+  );
+  return computeAverage(values) ?? 0;
+}
+
+export type RatingColor = "above" | "below" | "even" | "none";
+
+/** Skills-matrix color coding: above store average = blue, below = red. */
+export function colorForRating(stars: number | null, storeAverage: number | null): RatingColor {
+  if (stars === null) return "none";
+  if (storeAverage === null) return "even";
+  if (stars > storeAverage) return "above";
+  if (stars < storeAverage) return "below";
+  return "even";
+}
+
+/** True when `ratedAt` is at least RERATE_INTERVAL_DAYS in the past. */
+export function isRerateDue(ratedAt: string | Date, now: Date = new Date()): boolean {
+  const rated = typeof ratedAt === "string" ? new Date(ratedAt) : ratedAt;
+  const diffMs = now.getTime() - rated.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays >= RERATE_INTERVAL_DAYS;
+}
+
+/** due_on for a rerate prompt generated from a current rating's rated_at. */
+export function rerateDueDate(ratedAt: string | Date): Date {
+  const rated = typeof ratedAt === "string" ? new Date(ratedAt) : ratedAt;
+  const due = new Date(rated);
+  due.setDate(due.getDate() + RERATE_INTERVAL_DAYS);
+  return due;
+}
