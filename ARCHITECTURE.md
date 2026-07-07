@@ -21,7 +21,8 @@ design, and branding.
 | Training model | Adopted from OneClick: Development Passports (position passports + leadership passports with leader stamping, 3-star gate) replace the plain courses/plans model. Vendor-linked courses survive as passport items. |
 | Breaks | Adopted from OneClick: full compliance engine — rule-based eligibility (hours, minor status, time of day; NY rules preloaded), auto-sequencing by arrival, authorized-vs-actual tracking, overdue alerts, compliance reports. |
 | UI touches | Adopted from OneClick: highlight status badges (New/Minor/Trainee/Leader/Birthday/Needs Break), a visual drag-and-drop store layout for the setup board, and monthly + persistent checklist repeat modes with non-completion alerts. |
-| Notifications | In-app notification center + Web Push (PWA). |
+| Notifications | In-app notification center + Web Push (PWA) + Discord. |
+| Discord | Team chat lives in Discord (we build no chat). The app posts to Discord via channel webhooks with per-user @mentions (Discord IDs stored on profiles). Tasks and other items carry a "Notify Discord" flag; overdue/incomplete alerts, maintenance events, wins & announcements, and reward claims auto-post to configurable channels. No bot/DMs in v1; the event routing is designed so a bot can be added later. Personal/sensitive events (infractions, disciplinary actions) never post to Discord except optionally to a private leaders-only channel. |
 | Tokens | Full economy replica: auto-earn on task/checklist completion, Top Performer awards, Recognitions, peer-to-peer gifting, rewards store with fulfillment tasks. |
 | Locations | Single store. A `stores` table exists so multi-location could be added later without a rewrite, but all UI assumes one store. |
 
@@ -210,6 +211,35 @@ management system). The workflow we reproduce, right-sized for one store:
   worker (users on iPhone must add the PWA to their home screen; the app will
   prompt with instructions).
 
+### Discord integration
+Discord is the store's chat, so the app pushes operational events into it instead
+of building messaging:
+
+- **Transport**: Discord **incoming webhooks** — an admin creates a webhook per
+  channel in the Discord server settings and pastes each URL into the app's
+  Discord settings page. Webhook URLs are secrets (anyone holding one can post);
+  they are stored server-side only and never sent to the browser.
+- **Mentions**: each profile can store a Discord user ID; messages that concern a
+  person embed a real @mention so it pings them in Discord.
+- **The flag**: tasks, task templates, checklist schedules, work orders, and PM
+  schedules carry a `notify_discord` flag + target channel. When the item is
+  created/assigned (and when it goes overdue), the app posts to that channel.
+  Leaders toggle it on for the important stuff.
+- **Auto-post routes** (each mappable to a channel, all editable):
+  - *Overdue & incomplete* → leaders channel: task overdue, scheduled checklist
+    missed at due time, break overdue, out-of-range temperature recorded.
+  - *Maintenance* → #maintenance: new request submitted, work order status change,
+    equipment marked down/up, PM coming due.
+  - *Wins & announcements* → #team: recognitions, Top Performer, broadcasts.
+  - *Reward claims* → leaders channel: claim posted so delivery happens fast.
+- **Privacy rule**: infractions and disciplinary events never auto-post; the only
+  allowed routing for them is an explicitly-configured private leaders channel,
+  and even then without point details — just "X received an infraction".
+- **Reliability**: events write to a `discord_outbox` table and a worker delivers
+  with retry/backoff, so a Discord outage never blocks or loses app actions.
+- **Upgrade path**: routes are keyed by event type, not by transport, so a Discord
+  bot (for private DMs) can replace webhooks later without schema changes.
+
 ## Technical architecture
 
 ```
@@ -327,6 +357,13 @@ Notifications:
 - `notifications` (id, user_id, kind, title, body, link, read_at, created_at)
 - `push_subscriptions` (id, user_id, endpoint, p256dh, auth, created_at)
 
+Discord:
+- `profiles.discord_user_id` (added to profiles) — for @mentions
+- `discord_channels` (id, name, webhook_url, purpose, active) — webhook_url server-side only, never exposed via RLS
+- `discord_event_routes` (event_key, channel_id, enabled) — e.g. task_overdue, checklist_missed, break_overdue, temp_failed, maint_request, work_order_status, equipment_down, pm_due, recognition, top_performer, broadcast, reward_claim
+- `notify_discord` + `discord_channel_id` columns on: `tasks`, `task_templates`, `checklist_schedules`, `work_orders`, `pm_schedules`
+- `discord_outbox` (id, channel_id, payload jsonb, status: pending|sent|failed, attempts, next_retry_at, created_at, sent_at)
+
 ## Page map
 
 | Route | Purpose |
@@ -352,6 +389,7 @@ Notifications:
 | `/reports` | Store dashboard + per-module reports, CSV export |
 | `/notifications` | Notification center |
 | `/settings` | Day-parts, earning rules, store settings |
+| `/settings/discord` | Register channel webhooks, map event routes, link members' Discord IDs |
 
 ## Internal build order (single delivery)
 
@@ -390,6 +428,9 @@ vendors + checklists) → Reporting dashboard → polish + seed data + RLS audit
 14. **Equipment list**: your equipment (or photos of data plates) and existing
     service schedules (hood cleaning, filter changes) to seed the maintenance
     module.
+15. **Discord**: your server's channel plan (which channels for tasks, maintenance,
+    leaders-only alerts, team wins), webhook URLs once created, and each member's
+    Discord user ID (or usernames — we can help collect these at first login).
 
 ## Reference sources
 
