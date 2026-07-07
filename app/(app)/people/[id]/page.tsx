@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileEditForm } from "@/components/people/profile-edit-form";
 import { RoleAssignForm } from "@/components/people/role-assign-form";
+import { PersonBadges } from "@/components/people/person-badges";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { computeBadges } from "@/lib/setups/badges";
+import { loadTraineeUserIds } from "@/lib/integration/people-badges";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -39,6 +42,18 @@ export default async function ProfilePage({
     notFound();
   }
 
+  const roleRankById = new Map((roles ?? []).map((r) => [r.id, r.rank]));
+  const traineeUserIds = await loadTraineeUserIds(supabase, [profile.id]);
+  const badges = computeBadges(
+    {
+      hiredOn: profile.hired_on,
+      birthdate: profile.birthdate,
+      roleRank: profile.role_id ? roleRankById.get(profile.role_id) ?? null : null,
+      isTrainee: traineeUserIds.has(profile.id),
+    },
+    new Date(),
+  );
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <div className="flex items-center gap-2">
@@ -47,9 +62,10 @@ export default async function ProfilePage({
         </Link>
       </div>
 
-      <div>
+      <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">{profile.name}</h1>
         <p className="text-sm text-muted-foreground">{profile.email}</p>
+        <PersonBadges badges={badges} />
       </div>
 
       <Card>

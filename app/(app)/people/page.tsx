@@ -12,8 +12,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BadgesPlaceholder } from "@/components/people/badges-placeholder";
+import { PersonBadges } from "@/components/people/person-badges";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { computeBadges } from "@/lib/setups/badges";
+import { loadTraineeUserIds } from "@/lib/integration/people-badges";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -39,12 +41,23 @@ export default async function PeoplePage({
   const [{ data: profiles }, { data: roles }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, name, email, role_id, active")
+      .select("id, name, email, role_id, active, birthdate, hired_on")
       .order("name"),
     supabase.from("roles").select("id, name, rank").order("rank"),
   ]);
 
   const roleNameById = new Map((roles ?? []).map((r) => [r.id, r.name]));
+  const roleRankById = new Map((roles ?? []).map((r) => [r.id, r.rank]));
+
+  // P2 wiring: real cross-module badges on the roster. Break status is a
+  // live-shift signal (a person is only "Needs Break" relative to a posted
+  // setup), so the roster shows the profile-derived badges (New, Minor,
+  // Trainee, Leader, Birthday); the setup board adds Needs Break in context.
+  const traineeUserIds = await loadTraineeUserIds(
+    supabase,
+    (profiles ?? []).map((p) => p.id),
+  );
+  const now = new Date();
 
   const filtered = (profiles ?? []).filter((p) => {
     if (active === "active" && !p.active) return false;
@@ -138,7 +151,19 @@ export default async function PeoplePage({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <BadgesPlaceholder />
+                    <PersonBadges
+                      badges={computeBadges(
+                        {
+                          hiredOn: profile.hired_on,
+                          birthdate: profile.birthdate,
+                          roleRank: profile.role_id
+                            ? roleRankById.get(profile.role_id) ?? null
+                            : null,
+                          isTrainee: traineeUserIds.has(profile.id),
+                        },
+                        now,
+                      )}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
