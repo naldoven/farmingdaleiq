@@ -34,6 +34,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
@@ -153,9 +154,23 @@ export async function inviteUser(
     const parsed = inviteUserSchema.parse(input);
     const admin = createServiceRoleClient();
 
+    // Point the invite link at our auth callback so the invited user lands on
+    // /set-password (via /auth/callback, which exchanges the code for a
+    // session). Without a redirectTo the invite defaults to the Supabase Site
+    // URL (the app root), where there is no code handler and the invite breaks.
+    const hdrs = await headers();
+    const forwardedProto = hdrs.get("x-forwarded-proto");
+    const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+    const origin =
+      hdrs.get("origin") ??
+      (host ? `${forwardedProto ?? "https"}://${host}` : "");
+    const redirectTo = origin
+      ? `${origin}/auth/callback?next=${encodeURIComponent("/set-password")}`
+      : undefined;
+
     const { data, error } = await admin.auth.admin.inviteUserByEmail(
       parsed.email,
-      { data: { name: parsed.name } },
+      { data: { name: parsed.name }, redirectTo },
     );
 
     if (error || !data.user) {
