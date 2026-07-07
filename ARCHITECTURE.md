@@ -14,8 +14,9 @@ design, and branding.
 | Login | Personal accounts only (email/password via Supabase Auth). No shared-tablet PIN kiosk mode. |
 | Hardware | None. No Bluetooth thermometer (never planned), no equipment sensors. Temps are typed in manually. |
 | Employee data | Entered manually in-app (no payroll sync). |
-| Scope | All modules built in one project: People/Teams, Checklists, Tasks, Setups & Shifts, Waste, Infractions/Accountability, Tokens & Rewards, Team Feed, Training, Vendors, Reporting, Notifications. Chat is explicitly excluded. |
+| Scope | All modules built in one project: People/Teams, Checklists, Tasks, Setups & Shifts, Waste, Infractions/Accountability, Tokens & Rewards, Team Feed, Training, Vendors, Maintenance, Reporting, Notifications. Chat is explicitly excluded. |
 | Vendors module | Directory + contacts only (no ordering/inventory sync). |
+| Maintenance | Full module modeled on UpKeep: requests → leader approval → work orders assigned in-house or to a vendor; equipment registry with repair history; time-based preventive maintenance auto-generating work orders; cost + invoice tracking. No parts inventory, no meters/IoT. |
 | Notifications | In-app notification center + Web Push (PWA). |
 | Tokens | Full economy replica: auto-earn on task/checklist completion, Top Performer awards, Recognitions, peer-to-peer gifting, rewards store with fulfillment tasks. |
 | Locations | Single store. A `stores` table exists so multi-location could be added later without a rewrite, but all UI assumes one store. |
@@ -117,6 +118,32 @@ below describes observed behavior we intend to reproduce.
 ### Vendors
 - Directory: vendor name, category, rep contact info, account number, delivery days,
   notes. Read access for everyone; manage access gated by permission.
+
+### Maintenance (modeled on UpKeep)
+Researched separately from KitchenIQ — UpKeep is a CMMS (computerized maintenance
+management system). The workflow we reproduce, right-sized for one store:
+
+- **Requests**: any team member submits a maintenance request — title, description,
+  priority suggestion, optional equipment tag, area of the store, photos. The
+  requester is notified as the request's status changes.
+- **Triage**: a leader with the maintenance permission reviews the queue and either
+  approves (setting priority, assignee, due date) or declines with a reason that is
+  sent back to the requester. Approval converts the request into a work order.
+- **Work orders**: statuses open → in progress → on hold → complete (or cancelled).
+  Assigned to a team member (in-house fix) **or** a vendor from the Vendors
+  directory (with a scheduled visit date). Carry a comment/photo thread
+  (before/after shots), and record cost + invoice photo on completion.
+- **Equipment registry**: each unit (fryer, ice machine, hood, AC, …) has a page
+  with category, store area, model/serial, service vendor, install date, warranty
+  expiry, attached manuals, and its full work-order history. Equipment can be
+  marked *down* / *operational*; downtime spans are recorded from work orders.
+- **Preventive maintenance**: time-based schedules per equipment (e.g. hood cleaning
+  every 90 days) auto-generate a work order N days before due, optionally attaching
+  one of our checklist templates as the procedure. Meter- and sensor-based triggers
+  from UpKeep are intentionally omitted (no hardware).
+- **Reporting hooks**: open/overdue work orders and down equipment surface on the
+  store dashboard; reports cover time-to-resolution, spend by equipment and by
+  month, and repeat-failure equipment.
 
 ### Reporting
 - **Store dashboard**: at-a-glance action items and insights (overdue to-dos, flagged
@@ -229,6 +256,15 @@ Training:
 Vendors:
 - `vendors` (id, name, category, rep_name, phone, email, account_number, delivery_days, website, notes, active)
 
+Maintenance:
+- `equipment` (id, name, category, area, model, serial, service_vendor_id, installed_on, warranty_expires_on, status: operational|down, photo_url, notes)
+- `equipment_files` (id, equipment_id, file_url, label) — manuals, warranties
+- `maintenance_requests` (id, title, description, equipment_id, area, suggested_priority, photo_urls text[], submitted_by, submitted_at, status: pending|approved|declined, declined_reason, reviewed_by, reviewed_at, work_order_id)
+- `work_orders` (id, request_id, pm_schedule_id, title, description, equipment_id, priority: low|medium|high|urgent, status: open|in_progress|on_hold|complete|cancelled, assigned_user_id, vendor_id, scheduled_for, due_at, completed_at, completed_by, cost numeric, invoice_url, checklist_run_id, created_by, created_at)
+- `work_order_comments` (id, work_order_id, author_id, body, photo_url, created_at)
+- `equipment_downtime` (id, equipment_id, work_order_id, started_at, ended_at)
+- `pm_schedules` (id, equipment_id, title, description, interval_days, lead_days, next_due_on, checklist_template_id, assign_user_id, vendor_id, priority, active)
+
 Notifications:
 - `notifications` (id, user_id, kind, title, body, link, read_at, created_at)
 - `push_subscriptions` (id, user_id, endpoint, p256dh, auth, created_at)
@@ -251,6 +287,8 @@ Notifications:
 | `/people` | Roster, profiles, roles & permissions, teams |
 | `/training` | My training; admin: courses, plans, assignments, sign-offs |
 | `/vendors` | Vendor directory |
+| `/maintenance` | Submit requests; triage queue; work order board & detail (comments, photos, cost) |
+| `/maintenance/equipment` | Equipment registry, unit pages with history, PM schedules |
 | `/reports` | Store dashboard + per-module reports, CSV export |
 | `/notifications` | Notification center |
 | `/settings` | Day-parts, earning rules, store settings |
@@ -259,8 +297,8 @@ Notifications:
 
 Foundation (auth, profiles, roles/permissions, day-parts, positions, PWA shell,
 notifications plumbing) → Checklists + Tasks → Setups & Shifts → Waste →
-Accountability → Tokens/Rewards/Feed → Training → Vendors → Reporting dashboard →
-polish + seed data + RLS audit.
+Accountability → Tokens/Rewards/Feed → Training → Vendors → Maintenance (needs
+vendors + checklists) → Reporting dashboard → polish + seed data + RLS audit.
 
 ## Open questions (store-specific content needed)
 
@@ -295,3 +333,7 @@ polish + seed data + RLS audit.
 - [Create & Edit Training Plans](https://support.vsblapp.com/hc/en-us/articles/28276269561236-Create-Edit-Training-Plans)
 - [Contact a Vendor](https://support.vsblapp.com/hc/en-us/articles/21775147144212-Contact-a-Vendor) / [Vendor Bridge](https://support.vsblapp.com/hc/en-us/articles/21675666353300-How-to-Connect-Vendor-Bridge-if-enabled-for-your-organization)
 - [Ecolab KitchenIQ product page](https://www.ecolab.com/offerings/fss/kitcheniq) / [App Store listing](https://apps.apple.com/us/app/ecolab-kitcheniq/id1600735829) / [Google Play listing](https://play.google.com/store/apps/details?id=com.vsblapp.vsbl&hl=en_US)
+
+Maintenance module (UpKeep):
+- [UpKeep CMMS](https://upkeep.com/) / [Work order software](https://upkeep.com/product/work-order-software/) / [Preventive maintenance](https://upkeep.com/product/preventive-maintenance/)
+- [Create and manage work requests](https://help.onupkeep.com/en/articles/4730330-how-to-create-and-manage-work-requests) / [Public request portal](https://help.onupkeep.com/en/articles/4730258-how-to-utilize-your-company-request-portal) / [PM section overview](https://help.onupkeep.com/en/articles/9621157-preventive-maintenance-section-overview)
