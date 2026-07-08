@@ -2,7 +2,20 @@
 
 import type { ReactNode } from "react";
 
-import { toCsv, type CsvValue } from "@/app/(app)/reports/csv";
+import { toCsv } from "@/app/(app)/reports/csv";
+import {
+  badgeLabel,
+  cellCsvValue,
+  formatDate,
+  formatDateTime,
+  formatPercent,
+  type CellFormat,
+  type CellPrimitive,
+  type ReportCell,
+  type ReportColumn,
+  type ReportRow,
+} from "@/components/reports/cells";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,15 +27,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export interface ReportColumn<T> {
-  key: string;
-  header: string;
-  /** What renders in the table cell. */
-  render: (row: T) => ReactNode;
-  /** What goes in the CSV export for this column (defaults to `render`'s return value if omitted). */
-  csvValue?: (row: T) => CsvValue;
-}
-
 /**
  * Generic report table with a built-in "Export CSV" button
  * (ARCHITECTURE.md "Reporting": "CSV export on report tables"). Every
@@ -30,31 +34,32 @@ export interface ReportColumn<T> {
  * renders through this one component so the export behavior (and its
  * escaping rules, see app/(app)/reports/csv.ts) is implemented exactly once.
  *
- * Data is fetched server-side by page.tsx and passed in as plain rows; this
- * component only needs "use client" for the CSV download itself (Blob +
- * anchor click requires the DOM).
+ * FIQ R1: this is a client component, so its props must be serializable.
+ * The server (page.tsx) passes plain data only -- serializable `columns`
+ * (header + a `CellFormat` enum) and `rows` (raw cell values) -- never
+ * render/csv/rowKey FUNCTIONS, which cannot cross the RSC boundary and used
+ * to 500 the page. All cell rendering and CSV shaping happens here, keyed off
+ * each column's `format` (see components/reports/cells.ts).
  */
-export function ReportTable<T>({
+export function ReportTable({
   title,
   description,
   columns,
   rows,
-  rowKey,
   csvFilename,
   emptyMessage = "Nothing to show.",
 }: {
   title: string;
   description?: string;
-  columns: ReportColumn<T>[];
-  rows: T[];
-  rowKey: (row: T) => string;
+  columns: ReportColumn[];
+  rows: ReportRow[];
   csvFilename: string;
   emptyMessage?: string;
 }) {
   function handleExport() {
     const csv = toCsv(
       columns.map((c) => c.header),
-      rows.map((row) => columns.map((c) => (c.csvValue ? c.csvValue(row) : cellToCsvValue(c.render(row))))),
+      rows.map((row) => columns.map((c) => cellCsvValue(cellFor(row, c.key), c.format))),
     );
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -89,9 +94,9 @@ export function ReportTable<T>({
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={rowKey(row)}>
+              <TableRow key={row.key}>
                 {columns.map((c) => (
-                  <TableCell key={c.key}>{c.render(row)}</TableCell>
+                  <TableCell key={c.key}>{renderCell(cellFor(row, c.key).value, c.format)}</TableCell>
                 ))}
               </TableRow>
             ))}
@@ -109,16 +114,26 @@ export function ReportTable<T>({
   );
 }
 
-/**
- * Best-effort fallback when a column has no explicit `csvValue`: only
- * string/number/boolean render output round-trips cleanly into a CSV cell,
- * so anything else (a Badge, an icon, `null`) exports as an empty cell
- * rather than "[object Object]". Every column that renders a rich node
- * should supply its own `csvValue`.
- */
-function cellToCsvValue(node: ReactNode): CsvValue {
-  if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
-    return node;
+function cellFor(row: ReportRow, key: string): ReportCell {
+  return row.cells[key] ?? { value: null };
+}
+
+/** Renders a raw cell value per its column's format (see components/reports/cells.ts). */
+function renderCell(value: CellPrimitive, format: CellFormat = "text"): ReactNode {
+  switch (format) {
+    case "datetime":
+      return formatDateTime(value);
+    case "date":
+      return formatDate(value);
+    case "percent":
+      return formatPercent(value);
+    case "badge":
+      return value == null ? "—" : <Badge variant="outline">{badgeLabel(value)}</Badge>;
+    case "overdue":
+      return value ? <Badge variant="destructive">Overdue</Badge> : "—";
+    case "number":
+    case "text":
+    default:
+      return value == null ? "" : String(value);
   }
-  return "";
 }
