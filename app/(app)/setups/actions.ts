@@ -247,12 +247,17 @@ export async function postSetup(
       return { ok: true, data: undefined };
     }
 
-    // Recipient ids for the notification fan-out (lib/notify/recipients.ts
-    // reads `user_ids`) so every assigned person gets a "you're on the
-    // schedule" notification, and a leader id so S2's setup_posted -> lead_duty
-    // consumer (app/(app)/tasks/system-tasks.ts) can create the Lead Duties
-    // task. Without these top-level fields the payload's `assignments` array
-    // is invisible to both consumers.
+    // Recipient ids for the notification fan-out (canonical payload contract:
+    // `user_ids` for many recipients) so every assigned person gets a
+    // "you're on the schedule" notification, and a leader id so S2's
+    // setup_posted -> lead_duty consumer (app/(app)/tasks/system-tasks.ts,
+    // which reads `leader_user_id`) can create the Lead Duties task.
+    // `actor_id` records who posted the setup, separately from the
+    // recipients — the contract's actor field, distinct from
+    // `leader_user_id` (the shift leader the Lead Duties task gets assigned
+    // to, which may not be the person who clicked Post). Without these
+    // top-level fields the payload's `assignments` array is invisible to
+    // both consumers.
     const assignedUserIds = [
       ...new Set((assignments ?? []).map((a) => a.user_id).filter((id): id is string => Boolean(id))),
     ];
@@ -263,6 +268,7 @@ export async function postSetup(
       assignments: assignments ?? [],
       user_ids: assignedUserIds,
       leader_user_id: leaderUserId,
+      actor_id: user?.id ?? null,
     });
 
     // Break plan generation is its own idempotent operation (breaks are
