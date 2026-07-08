@@ -107,6 +107,18 @@ export type MoveTileInput = z.infer<typeof moveTileSchema>;
 export const deleteTileSchema = z.object({ id: z.string().uuid() });
 export type DeleteTileInput = z.infer<typeof deleteTileSchema>;
 
+/**
+ * True once any of the seed's own group names already exist. Pure so it's
+ * unit-testable without a database (HIGH parity-audit fix: the old gate
+ * checked "position_groups is empty", which never re-fires once an unrelated
+ * group — e.g. S4's training-roadmap "FOH" group — exists; the real question
+ * is whether THIS seed's groups are there).
+ */
+export function hasSeedPositionGroups(existingGroupNames: string[]): boolean {
+  const seedNames = new Set(SEED_DEFAULT_POSITION_GROUPS.map((g) => g.name));
+  return existingGroupNames.some((name) => seedNames.has(name));
+}
+
 /** SEED-DEFAULT Avondale FOH/BOH position list — used only when no positions exist yet. */
 export const SEED_DEFAULT_POSITION_GROUPS: { name: string; positions: string[] }[] = [
   {

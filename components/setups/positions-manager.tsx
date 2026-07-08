@@ -19,6 +19,7 @@ import {
   deletePositionGroup,
   seedDefaultPositions,
 } from "@/app/(app)/setups/templates/actions";
+import { hasSeedPositionGroups } from "@/app/(app)/setups/templates/validation";
 
 export interface PositionGroupRow {
   id: string;
@@ -58,6 +59,13 @@ export function PositionsManager({
     positionsByGroup.set(key, list);
   }
 
+  // HIGH parity-audit fix: the self-heal seed button used to show only when
+  // *no* positions existed at all, so it never appeared once the unrelated
+  // training-roadmap group (S4's onboarding stations) was seeded. Gate
+  // instead on whether any of this seed's own group names are present —
+  // that's the real "have setup positions been seeded" question.
+  const hasSeedGroups = hasSeedPositionGroups(groups.map((g) => g.name));
+
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
     startTransition(async () => {
@@ -72,9 +80,9 @@ export function PositionsManager({
 
   return (
     <div className="flex flex-col gap-6">
-      {groups.length === 0 && positions.length === 0 && (
+      {!hasSeedGroups && (
         <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-          No positions yet.{" "}
+          No setup positions yet.{" "}
           <button
             type="button"
             className="font-medium text-primary hover:underline disabled:opacity-50"
@@ -84,6 +92,7 @@ export function PositionsManager({
             Seed the Avondale FOH/BOH default list
           </button>{" "}
           to get started (marked SEED-DEFAULT; edit or delete anything after).
+          Safe to click even if other groups (e.g. a training roadmap) already exist.
         </div>
       )}
 
