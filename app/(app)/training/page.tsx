@@ -5,6 +5,8 @@ import { CreateCourseForm } from "@/components/training/create-course-form";
 import { PassportCard } from "@/components/training/passport-card";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { CourseAttachmentsPanel } from "@/app/(app)/training/course-attachments-panel";
+import { CourseFeedbackForm } from "@/app/(app)/training/course-feedback-form";
 
 /**
  * /training — Passports: my progress, all passports, trainer sign-offs,
@@ -28,6 +30,8 @@ export default async function TrainingPage() {
     { data: progress },
     { data: ratings },
     { data: courses },
+    { data: vendors },
+    { data: attachments },
   ] = await Promise.all([
     supabase.from("profiles").select("id, name").eq("active", true).order("name"),
     supabase
@@ -39,10 +43,13 @@ export default async function TrainingPage() {
     supabase.from("passport_enrollments").select("id, passport_id, user_id, track, stamped_at"),
     supabase.from("passport_item_progress").select("enrollment_id, item_id, completed_at"),
     supabase.from("position_ratings").select("user_id, position_id, stars").eq("is_current", true),
-    supabase.from("training_courses").select("id, name, description, sort").order("sort"),
+    supabase.from("training_courses").select("id, name, description, content, vendor_id, sort").order("sort"),
+    supabase.from("vendors").select("id, name"),
+    supabase.from("course_attachments").select("id, course_id, file_url, label"),
   ]);
 
   const people = profiles ?? [];
+  const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
   const nameById = new Map(people.map((p) => [p.id, p.name]));
   const starsByUserPosition = new Map(
     (ratings ?? []).map((r) => [`${r.user_id}:${r.position_id}`, r.stars]),
@@ -159,13 +166,25 @@ export default async function TrainingPage() {
             <CardHeader>
               <CardTitle>Courses ({(courses ?? []).length})</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {(courses ?? []).map((c) => (
-                <div key={c.id} className="rounded-md border p-2">
-                  <p className="font-medium">{c.name}</p>
-                  {c.description && <p className="text-sm text-muted-foreground">{c.description}</p>}
-                </div>
-              ))}
+            <CardContent className="flex flex-col gap-3">
+              {(courses ?? []).map((c) => {
+                const courseAttachments = (attachments ?? [])
+                  .filter((a) => a.course_id === c.id)
+                  .map((a) => ({ id: a.id, fileUrl: a.file_url, label: a.label }));
+                const vendorName = c.vendor_id ? vendorNameById.get(c.vendor_id) : null;
+                return (
+                  <div key={c.id} className="flex flex-col gap-1 rounded-md border p-2">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{c.name}</p>
+                      {vendorName && <Badge variant="outline">{vendorName}</Badge>}
+                    </div>
+                    {c.description && <p className="text-sm text-muted-foreground">{c.description}</p>}
+                    {c.content && <p className="whitespace-pre-wrap text-sm">{c.content}</p>}
+                    <CourseAttachmentsPanel courseId={c.id} attachments={courseAttachments} canManage={canManage} />
+                    <CourseFeedbackForm courseId={c.id} />
+                  </div>
+                );
+              })}
               {(courses ?? []).length === 0 && <p className="text-sm text-muted-foreground">No courses yet.</p>}
             </CardContent>
           </Card>
