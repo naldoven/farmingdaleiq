@@ -21,7 +21,7 @@ export default async function SettingsPage() {
       <h1 className="text-2xl font-semibold">Settings</h1>
 
       <Link href="/settings/discord">
-        <Card className="transition-colors hover:bg-accent/50">
+        <Card className="transition-colors hover:bg-accent-soft">
           <CardHeader>
             <CardTitle>Discord</CardTitle>
             <CardDescription>

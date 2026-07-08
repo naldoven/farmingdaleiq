@@ -1,43 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeFeed, summarizePositions, summarizeTasks } from "./page";
-
-describe("summarizePositions", () => {
-  it("returns nothing when there are no assignments today", () => {
-    expect(summarizePositions([], new Map(), new Map())).toEqual([]);
-  });
-
-  it("resolves position and day-part names for each assignment", () => {
-    const assignments = [
-      { position_id: "pos-1", setup_id: "setup-1" },
-      { position_id: "pos-2", setup_id: "setup-2" },
-    ];
-    const positionNameById = new Map([
-      ["pos-1", "Register"],
-      ["pos-2", "Drive Thru"],
-    ]);
-    const dayPartNameBySetupId = new Map<string, string | null>([
-      ["setup-1", "Breakfast"],
-      ["setup-2", null],
-    ]);
-
-    expect(summarizePositions(assignments, positionNameById, dayPartNameBySetupId)).toEqual([
-      { positionName: "Register", dayPartName: "Breakfast" },
-      { positionName: "Drive Thru", dayPartName: null },
-    ]);
-  });
-
-  it("drops assignments with a null position_id and falls back to a label for unknown positions", () => {
-    const assignments = [
-      { position_id: null, setup_id: "setup-1" },
-      { position_id: "missing", setup_id: "setup-1" },
-    ];
-
-    expect(summarizePositions(assignments, new Map(), new Map())).toEqual([
-      { positionName: "Unknown position", dayPartName: null },
-    ]);
-  });
-});
+import {
+  countActiveDisciplinaryActions,
+  summarizeActivity,
+  summarizeCompletion,
+  summarizeTaskScope,
+  summarizeTasks,
+  summarizeTokenActivity,
+} from "./page";
 
 describe("summarizeTasks", () => {
   it("reports all caught up when there are no open tasks", () => {
@@ -67,62 +37,86 @@ describe("summarizeTasks", () => {
   });
 });
 
-describe("summarizeFeed", () => {
-  it("builds a recipient headline for recognition/top_performer posts", () => {
-    const posts = [
-      {
-        id: "post-1",
-        kind: "recognition",
-        body: "Great hustle today",
-        author_id: "leader-1",
-        subject_user_id: "employee-1",
-        created_at: "2026-07-08T12:00:00Z",
-      },
-    ];
-    const nameById = new Map([
-      ["leader-1", "Jamie"],
-      ["employee-1", "Alex"],
-    ]);
-
-    expect(summarizeFeed(posts, nameById)).toEqual([
-      {
-        id: "post-1",
-        kind: "recognition",
-        headline: "Jamie → Alex",
-        body: "Great hustle today",
-        createdAt: "2026-07-08T12:00:00Z",
-      },
-    ]);
+describe("summarizeCompletion", () => {
+  it("returns a 0% zero-state when there are no items", () => {
+    expect(summarizeCompletion([])).toEqual({ completed: 0, total: 0, pct: 0 });
   });
 
-  it("uses only the author for a broadcast headline", () => {
-    const posts = [
-      {
-        id: "post-2",
-        kind: "broadcast",
-        body: "Store closes early Friday",
-        author_id: "leader-1",
-        subject_user_id: null,
-        created_at: "2026-07-08T12:00:00Z",
-      },
-    ];
-    const nameById = new Map([["leader-1", "Jamie"]]);
-
-    expect(summarizeFeed(posts, nameById)[0].headline).toBe("Jamie");
+  it("computes x/y and a rounded percent completed", () => {
+    expect(summarizeCompletion(["completed", "completed", "pending"])).toEqual({
+      completed: 2,
+      total: 3,
+      pct: 67,
+    });
   });
 
-  it("falls back to generic labels when names are unknown", () => {
-    const posts = [
-      {
-        id: "post-3",
-        kind: "recognition",
-        body: null,
-        author_id: null,
-        subject_user_id: null,
-        created_at: "2026-07-08T12:00:00Z",
-      },
+  it("accepts a custom completed status (checklist_runs uses the same shape)", () => {
+    expect(summarizeCompletion(["missed", "completed"], "completed")).toEqual({
+      completed: 1,
+      total: 2,
+      pct: 50,
+    });
+  });
+});
+
+describe("summarizeTaskScope", () => {
+  it("reports zero assigned/overdue when the scope has no tasks", () => {
+    expect(summarizeTaskScope([])).toEqual({ assigned: 0, overdue: 0 });
+  });
+
+  it("counts pending + overdue as assigned, and overdue as its own subset", () => {
+    const tasks = [{ status: "pending" }, { status: "overdue" }, { status: "completed" }];
+
+    expect(summarizeTaskScope(tasks)).toEqual({ assigned: 2, overdue: 1 });
+  });
+});
+
+describe("countActiveDisciplinaryActions", () => {
+  it("counts only pending (not yet acknowledged) actions", () => {
+    const actions = [{ status: "pending" }, { status: "acknowledged" }, { status: "pending" }];
+
+    expect(countActiveDisciplinaryActions(actions)).toBe(2);
+  });
+
+  it("returns 0 when there are no disciplinary actions", () => {
+    expect(countActiveDisciplinaryActions([])).toBe(0);
+  });
+});
+
+describe("summarizeActivity", () => {
+  it("counts unread notifications and the priority subset of those", () => {
+    const notifications = [
+      { kind: "infraction_issued", read_at: null },
+      { kind: "task_assigned", read_at: null },
+      { kind: "recognition", read_at: "2026-07-08T00:00:00Z" },
     ];
 
-    expect(summarizeFeed(posts, new Map())[0].headline).toBe("Someone → a coworker");
+    expect(summarizeActivity(notifications)).toEqual({ unreadCount: 2, priorityCount: 1 });
+  });
+
+  it("returns zero counts when everything is read", () => {
+    const notifications = [{ kind: "infraction_issued", read_at: "2026-07-08T00:00:00Z" }];
+
+    expect(summarizeActivity(notifications)).toEqual({ unreadCount: 0, priorityCount: 0 });
+  });
+});
+
+describe("summarizeTokenActivity", () => {
+  it("prefers the transaction note when present", () => {
+    const rows = [{ id: "t1", delta: 5, kind: "earn", note: "Completed Task" }];
+
+    expect(summarizeTokenActivity(rows)).toEqual([{ id: "t1", label: "Completed Task", delta: 5 }]);
+  });
+
+  it("falls back to the kind label when there is no note", () => {
+    const rows = [{ id: "t2", delta: -10, kind: "redeem", note: null }];
+
+    expect(summarizeTokenActivity(rows)).toEqual([{ id: "t2", label: "Reward redeemed", delta: -10 }]);
+  });
+
+  it("falls back to the kind label when the note is blank", () => {
+    const rows = [{ id: "t3", delta: 5, kind: "earn", note: "   " }];
+
+    expect(summarizeTokenActivity(rows)).toEqual([{ id: "t3", label: "Earned", delta: 5 }]);
   });
 });

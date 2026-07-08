@@ -3,76 +3,140 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * FarmingdaleIQ design tokens (KitchenIQ mobile design language, CFA red).
+ * Two layers live here:
+ *   1. Named design tokens (--ink, --canvas, --line, --accent, --accent-soft,
+ *      semantic colors). These are the language pass-2 screens build in.
+ *   2. The shadcn primitive aliases (--primary, --secondary, --muted, ...) kept
+ *      intact so every existing ui/* component keeps working; their VALUES are
+ *      re-pointed at the tokens above.
+ * See docs/DESIGN-SYSTEM.md for the full reference.
+ */
+
 :root {
-  --background: #f7f7f8;
-  --foreground: #1c1c1e;
+  /* --- Named design tokens --- */
+  --ink: #1f2a44; /* headings / primary text */
+  --muted-ink: #6b7280; /* secondary text */
+  --canvas: #f4f6f8; /* page background */
+  --card: #ffffff; /* surfaces */
+  --line: #e5e7eb; /* hairlines */
 
-  --card: #ffffff;
-  --card-foreground: #1c1c1e;
+  --accent: #e51636; /* CFA red: primary action, active nav, links, focus */
+  --accent-ink: #9c0f28; /* readable red text on tinted backgrounds */
+  --accent-soft: #fde7eb; /* tinted pill / hover background */
 
+  --success: #16a34a; /* active / completed / +earn */
+  --danger: #dc2626; /* overdue / alert numbers */
+  --warning: #f59e0b; /* broadcast / warning / token gold */
+  --info: #2563eb; /* used sparingly */
+
+  --success-soft: #dcfce7;
+  --danger-soft: #fee2e2;
+  --warning-soft: #fef3c7;
+  --info-soft: #dbeafe;
+
+  /* --- shadcn primitive aliases (values re-pointed at tokens above) --- */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+
+  --card-foreground: var(--ink);
   --popover: #ffffff;
-  --popover-foreground: #1c1c1e;
+  --popover-foreground: var(--ink);
 
-  /* CFA-red brand */
-  --primary: #e51636;
+  --primary: var(--accent);
   --primary-foreground: #ffffff;
 
-  --secondary: #f1f1f3;
-  --secondary-foreground: #1c1c1e;
+  --secondary: #eef1f4;
+  --secondary-foreground: var(--ink);
 
-  --muted: #f1f1f3;
-  --muted-foreground: #6b6b70;
+  --muted: #eef1f4;
+  --muted-foreground: var(--muted-ink);
 
-  --accent: #fdeaee;
-  --accent-foreground: #9c0f28;
+  /* shadcn "accent" is the subtle hover/tint surface, which maps to accent-soft */
+  --accent-foreground: var(--accent-ink);
 
-  --destructive: #b00020;
+  --destructive: var(--danger);
   --destructive-foreground: #ffffff;
 
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #e51636;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent);
 
+  /* Radius: buttons/tiles 12px, cards 16px, pills fully rounded */
   --radius: 0.75rem;
+  --radius-card: 1rem;
 
-  --success: #1c8a4b;
-  --warning: #c47f00;
+  /* Card shadow */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
 .dark {
-  --background: #121214;
-  --foreground: #f2f2f3;
+  --ink: #f2f5fa;
+  --muted-ink: #9aa4b2;
+  --canvas: #0f141c;
+  --card: #1a2029;
+  --line: #2a3140;
 
-  --card: #1b1b1e;
-  --card-foreground: #f2f2f3;
-
-  --popover: #1b1b1e;
-  --popover-foreground: #f2f2f3;
-
-  --primary: #ff3b57;
-  --primary-foreground: #1c1c1e;
-
-  --secondary: #232326;
-  --secondary-foreground: #f2f2f3;
-
-  --muted: #232326;
-  --muted-foreground: #a0a0a6;
-
-  --accent: #3a1620;
-  --accent-foreground: #ff8fa3;
-
-  --destructive: #ff5c72;
-  --destructive-foreground: #1c1c1e;
-
-  --border: #2a2a2e;
-  --input: #2a2a2e;
-  --ring: #ff3b57;
+  --accent: #ff3b57;
+  --accent-ink: #ff8fa3;
+  --accent-soft: #3a1620;
 
   --success: #35c072;
+  --danger: #ff5c72;
   --warning: #e8a93c;
+  --info: #5b8def;
+
+  --success-soft: #10281a;
+  --danger-soft: #2c1517;
+  --warning-soft: #2b2210;
+  --info-soft: #152036;
+
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card-foreground: var(--ink);
+  --popover: var(--card);
+  --popover-foreground: var(--ink);
+
+  --primary: var(--accent);
+  --primary-foreground: #12161d;
+
+  --secondary: #232b36;
+  --secondary-foreground: var(--ink);
+
+  --muted: #232b36;
+  --muted-foreground: var(--muted-ink);
+
+  --accent-foreground: var(--accent-ink);
+
+  --destructive: var(--danger);
+  --destructive-foreground: #12161d;
+
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 @theme inline {
+  /* Named design tokens -> Tailwind utilities (text-ink, bg-canvas, ...) */
+  --color-ink: var(--ink);
+  --color-muted-ink: var(--muted-ink);
+  --color-canvas: var(--canvas);
+  --color-line: var(--line);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* shadcn primitives */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -85,23 +149,26 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  /* The "accent" utility is the brand red (spec: --accent #E51636). shadcn's
+     soft hover/focus surface is bg-accent-soft with text-accent-ink instead. */
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-foreground: #ffffff;
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
 
   --radius-sm: calc(var(--radius) - 0.25rem);
   --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 0.25rem);
-  --radius-xl: calc(var(--radius) + 0.5rem);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: calc(var(--radius-card) + 0.25rem);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow-card);
+
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-jakarta);
 }
 
 @layer base {
@@ -115,7 +182,31 @@
     color-scheme: dark;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: Arial, Helvetica, sans-serif;
+    @apply bg-canvas text-ink;
+    font-family: var(--font-sans), "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  /* Icon-only + interactive controls get a visible focus ring in the accent */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Hide horizontal scrollbars on snap rows without losing scrollability */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* iOS safe-area helper for the fixed bottom tab bar */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom, 0px);
 }

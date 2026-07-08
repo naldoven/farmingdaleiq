@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { AppShell } from "@/components/shell/app-shell";
+import { AppShell } from "@/components/mobile/app-shell";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AuthenticatedLayout({

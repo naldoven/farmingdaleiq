@@ -47,7 +47,7 @@ export default async function CateringWeekPage() {
                 <Link
                   key={order.id}
                   href={`/catering/orders/${order.id}`}
-                  className="flex flex-col gap-1 rounded-md border border-border p-2 text-xs hover:bg-accent"
+                  className="flex flex-col gap-1 rounded-md border border-border p-2 text-xs hover:bg-accent-soft"
                 >
                   <span className="font-medium">{order.guest_name}</span>
                   <span className="text-muted-foreground">
