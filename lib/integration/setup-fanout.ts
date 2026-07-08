@@ -54,12 +54,14 @@ export interface ScheduleRow extends ScheduleLike {
   template_id: string;
   day_part_id: string | null;
   assign_position_id: string | null;
+  assign_team_id: string | null;
 }
 
 export interface ExistingRunRow {
   id: string;
   schedule_id: string | null;
   assigned_user_id: string | null;
+  assigned_team_id: string | null;
 }
 
 export interface ExistingTaskRow {
@@ -68,9 +70,16 @@ export interface ExistingTaskRow {
   assigned_user_id: string | null;
 }
 
+export interface ExistingAdhocTaskRow {
+  id: string;
+  assigned_position_id: string;
+  day_part_id: string | null;
+}
+
 export interface Backfill {
   id: string;
   assigned_user_id: string;
+  assigned_team_id?: string;
 }
 
 export interface ChecklistRunPlan {
@@ -94,9 +103,9 @@ export function parseSetupDate(dateStr: string): Date {
 function dayPartMatches(scheduleDayPart: string | null, setupDayPart: string | null): boolean {
   // A position-linked schedule/template with no day-part of its own applies
   // to whatever day-part the setup is for. One that names a day-part only
-  // applies when it matches the setup's day-part.
+  // applies when the setup is for that same day-part; a day-part-specific
+  // schedule must never match a null-day-part (day-part-agnostic) setup.
   if (!scheduleDayPart) return true;
-  if (!setupDayPart) return true;
   return scheduleDayPart === setupDayPart;
 }
 
@@ -139,10 +148,15 @@ export function planChecklistRunsForSetup(args: {
         day_part_id: schedule.day_part_id ?? args.setupDayPartId,
         assigned_position_id: schedule.assign_position_id,
         assigned_user_id: userId,
+        assigned_team_id: schedule.assign_team_id ?? null,
         status: "pending",
       });
     } else if (!existing.assigned_user_id) {
-      backfills.push({ id: existing.id, assigned_user_id: userId });
+      const backfill: Backfill = { id: existing.id, assigned_user_id: userId };
+      if (schedule.assign_team_id && !existing.assigned_team_id) {
+        backfill.assigned_team_id = schedule.assign_team_id;
+      }
+      backfills.push(backfill);
     }
   }
 
@@ -192,6 +206,30 @@ export function planTasksForSetup(args: {
   }
 
   return { inserts, backfills };
+}
+
+/**
+ * Pure planner for backfilling ad hoc (non-template, one-off/pool) tasks that
+ * were created position-linked (assigned_position_id set, assigned_user_id
+ * null) before the position was staffed on a posted setup. The recurring-task
+ * planner above only ever looks at task_templates, so a position-linked ad
+ * hoc task created directly (e.g. a leader delegating "sweep the lobby" to a
+ * position) never resolved to a person; this backfills it the same way a
+ * cron-created recurring task is backfilled.
+ */
+export function planAdhocTaskBackfillsForSetup(args: {
+  setupDayPartId: string | null;
+  positionUser: Map<string, string>;
+  tasks: ExistingAdhocTaskRow[];
+}): Backfill[] {
+  const backfills: Backfill[] = [];
+  for (const task of args.tasks) {
+    const userId = args.positionUser.get(task.assigned_position_id);
+    if (!userId) continue;
+    if (!dayPartMatches(task.day_part_id, args.setupDayPartId)) continue;
+    backfills.push({ id: task.id, assigned_user_id: userId });
+  }
+  return backfills;
 }
 
 export interface FanoutResult {
@@ -254,7 +292,9 @@ export async function materializeSetupFanout(
   // --- Checklists (S1) ---------------------------------------------------
   const { data: schedules } = await client
     .from("checklist_schedules")
-    .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id")
+    .select(
+      "id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, assign_team_id",
+    )
     .in("assign_position_id", positionIds);
 
   const scheduleRows = (schedules ?? []) as ScheduleRow[];
@@ -269,7 +309,7 @@ export async function materializeSetupFanout(
     const scheduleIds = scheduleRows.map((s) => s.id);
     const { data: existingRuns } = await client
       .from("checklist_runs")
-      .select("id, schedule_id, assigned_user_id")
+      .select("id, schedule_id, assigned_user_id, assigned_team_id")
       .eq("run_date", setup.date)
       .in("schedule_id", scheduleIds);
 
@@ -295,7 +335,10 @@ export async function materializeSetupFanout(
     for (const backfill of plan.backfills) {
       const { error } = await client
         .from("checklist_runs")
-        .update({ assigned_user_id: backfill.assigned_user_id })
+        .update({
+          assigned_user_id: backfill.assigned_user_id,
+          ...(backfill.assigned_team_id ? { assigned_team_id: backfill.assigned_team_id } : {}),
+        })
         .eq("id", backfill.id)
         .is("assigned_user_id", null);
       if (!error) result.checklistRunsBackfilled += 1;
@@ -344,6 +387,32 @@ export async function materializeSetupFanout(
         .is("assigned_user_id", null);
       if (!error) result.tasksBackfilled += 1;
     }
+  }
+
+  // --- Ad hoc position-linked tasks (S2) ----------------------------------
+  // Position-assigned one-off/pool tasks (template_id null) never resolve to
+  // a person on their own; backfill them the same way a cron-created
+  // recurring task is backfilled above, once their position is staffed.
+  const { data: adhocTasks } = await client
+    .from("tasks")
+    .select("id, assigned_position_id, day_part_id")
+    .eq("date", setup.date)
+    .is("template_id", null)
+    .is("assigned_user_id", null)
+    .in("assigned_position_id", positionIds);
+
+  const adhocBackfills = planAdhocTaskBackfillsForSetup({
+    setupDayPartId: setup.day_part_id,
+    positionUser,
+    tasks: (adhocTasks ?? []) as ExistingAdhocTaskRow[],
+  });
+  for (const backfill of adhocBackfills) {
+    const { error } = await client
+      .from("tasks")
+      .update({ assigned_user_id: backfill.assigned_user_id })
+      .eq("id", backfill.id)
+      .is("assigned_user_id", null);
+    if (!error) result.tasksBackfilled += 1;
   }
 
   return result;
