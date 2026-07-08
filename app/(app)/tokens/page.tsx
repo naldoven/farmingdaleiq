@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import { Coins } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, SectionLabel } from "@/components/mobile";
 import { EarningRulesAdmin, type EarningRuleRow } from "@/components/tokens/earning-rules-admin";
 import { GiftForm } from "@/components/tokens/gift-form";
 import { TransactionHistory } from "@/components/tokens/transaction-history";
@@ -21,7 +22,8 @@ const DEFAULT_EARNING_RULE_KEYS = Object.keys(EARNING_RULE_LABELS);
  * /tokens: balance, ledger history, send tokens (ARCHITECTURE.md page map).
  * Balance and history are always the sum of / a read of token_transactions
  * -- never a stored column (ARCHITECTURE.md "Technical architecture":
- * "Token integrity").
+ * "Token integrity"). Restyled to the KitchenIQ mobile design system
+ * (docs/DESIGN-SYSTEM.md) -- data, actions, and permission checks unchanged.
  */
 export default async function TokensPage() {
   const supabase = await createClient();
@@ -71,37 +73,32 @@ export default async function TokensPage() {
     : [];
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Tokens</h1>
-        <p className="text-sm text-muted-foreground">Your balance, history, and gifting.</p>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Your balance</CardDescription>
-          <CardTitle className="text-4xl">{balance}</CardTitle>
-        </CardHeader>
-      </Card>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      {/* Balance hero: gold coin + big number, the KitchenIQ Tokens card. */}
+      <section className="flex items-center gap-4 rounded-2xl border border-line bg-card p-5 shadow-card">
+        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+          <Coins className="h-7 w-7" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13px] text-muted-ink">Your balance</p>
+          <p className="text-[34px] font-bold leading-tight tabular-nums text-ink">
+            {balance} <span className="text-[15px] font-semibold text-muted-ink">tokens</span>
+          </p>
+        </div>
+      </section>
 
       {canGift && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Send tokens</CardTitle>
-            <CardDescription>Gift your own tokens to a coworker.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel>Send</SectionLabel>
+          <SectionCard>
             <GiftForm recipients={profiles ?? []} balance={balance} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>History</CardTitle>
-          <CardDescription>Your most recent token activity.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="flex flex-col gap-3">
+        <SectionLabel>History</SectionLabel>
+        <SectionCard flush>
           <TransactionHistory
             rows={(transactions ?? []).map((t) => ({
               id: t.id,
@@ -111,31 +108,28 @@ export default async function TokensPage() {
               createdAt: t.created_at,
             }))}
           />
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </section>
 
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Earning rules</CardTitle>
-            <CardDescription>How many tokens each event is worth.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel>Earning rules</SectionLabel>
+          <SectionCard flush>
             <EarningRulesAdmin rules={earningRules} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
 
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Manual adjustment</CardTitle>
-            <CardDescription>Correct an employee&apos;s balance. Recorded in the ledger.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel>Manual adjustment</SectionLabel>
+          <SectionCard>
+            <p className="mb-3 text-[13px] text-muted-ink">
+              Correct an employee&apos;s balance. Recorded in the ledger.
+            </p>
             <AdjustTokensForm recipients={adjustRecipientsResult.data ?? []} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
     </div>
   );

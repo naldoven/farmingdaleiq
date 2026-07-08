@@ -1,12 +1,6 @@
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+
+import { ListRow } from "@/components/mobile";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 
 export interface TransactionHistoryRow {
@@ -22,39 +16,35 @@ export interface TransactionHistoryRow {
  * "Balance, history, send tokens"). Read-only render of the rows
  * app/(app)/tokens/page.tsx already fetched via
  * lib/tokens/ledger.ts getRecentTransactions() -- never a stored balance,
- * just the raw deltas.
+ * just the raw deltas. Styled as a KitchenIQ ledger list: each row is a
+ * ListRow with the +/- amount as the trailing content.
  */
 export function TransactionHistory({ rows }: { rows: TransactionHistoryRow[] }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No token activity yet.</p>;
+    return <p className="p-4 text-[15px] text-muted-ink">No token activity yet.</p>;
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>When</TableHead>
-          <TableHead>Kind</TableHead>
-          <TableHead>Note</TableHead>
-          <TableHead className="text-right">Amount</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="text-muted-foreground">
-              {new Date(row.createdAt).toLocaleString()}
-            </TableCell>
-            <TableCell>
-              <Badge variant="outline">{transactionKindLabel(row.kind)}</Badge>
-            </TableCell>
-            <TableCell className="text-muted-foreground">{row.note ?? "—"}</TableCell>
-            <TableCell className={`text-right font-medium ${row.delta >= 0 ? "text-emerald-600" : "text-destructive"}`}>
-              {row.delta >= 0 ? `+${row.delta}` : row.delta}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="divide-y divide-line">
+      {rows.map((row) => {
+        const isCredit = row.delta >= 0;
+        return (
+          <ListRow
+            key={row.id}
+            icon={isCredit ? ArrowUpRight : ArrowDownRight}
+            iconTone={isCredit ? "success" : "danger"}
+            title={transactionKindLabel(row.kind)}
+            description={
+              row.note ? `${new Date(row.createdAt).toLocaleString()} · ${row.note}` : new Date(row.createdAt).toLocaleString()
+            }
+            trailing={
+              <span className={`text-[15px] font-bold tabular-nums ${isCredit ? "text-success" : "text-danger"}`}>
+                {isCredit ? `+${row.delta}` : row.delta}
+              </span>
+            }
+          />
+        );
+      })}
+    </div>
   );
 }

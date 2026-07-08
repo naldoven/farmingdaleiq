@@ -71,7 +71,7 @@ export function GiftForm({
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="gift-recipient">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="gift-recipient">
           Send to
         </label>
         <Select value={toUserId} onValueChange={setToUserId} disabled={recipients.length === 0}>
@@ -89,7 +89,7 @@ export function GiftForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="gift-amount">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="gift-amount">
           Amount (you have {balance})
         </label>
         <Input
@@ -105,15 +105,15 @@ export function GiftForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="gift-note">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="gift-note">
           Note (optional)
         </label>
         <Textarea id="gift-note" value={note} onChange={(event) => setNote(event.target.value)} rows={2} />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <Button type="submit" disabled={isPending || !toUserId}>
+      <Button type="submit" className="rounded-full" disabled={isPending || !toUserId}>
         {isPending ? "Sending..." : "Send tokens"}
       </Button>
     </form>

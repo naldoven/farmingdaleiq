@@ -67,7 +67,7 @@ export function AdjustTokensForm({ recipients }: { recipients: AdjustRecipientOp
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="adjust-user">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="adjust-user">
           Employee
         </label>
         <Select value={userId} onValueChange={setUserId} disabled={recipients.length === 0}>
@@ -85,7 +85,7 @@ export function AdjustTokensForm({ recipients }: { recipients: AdjustRecipientOp
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="adjust-delta">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="adjust-delta">
           Adjustment (use a minus sign to remove tokens)
         </label>
         <Input
@@ -100,16 +100,16 @@ export function AdjustTokensForm({ recipients }: { recipients: AdjustRecipientOp
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="adjust-note">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="adjust-note">
           Reason (optional)
         </label>
         <Textarea id="adjust-note" value={note} onChange={(event) => setNote(event.target.value)} rows={2} />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
+      {message && <p className="text-[13px] text-muted-ink">{message}</p>}
 
-      <Button type="submit" disabled={isPending || !userId}>
+      <Button type="submit" className="rounded-full" disabled={isPending || !userId}>
         {isPending ? "Applying..." : "Apply adjustment"}
       </Button>
     </form>

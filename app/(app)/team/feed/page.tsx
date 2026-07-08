@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, SectionLabel } from "@/components/mobile";
 import { BroadcastForm } from "@/components/feed/broadcast-form";
 import { PostCard, type FeedPostData } from "@/components/feed/post-card";
 import { RecognitionForm } from "@/components/feed/recognition-form";
@@ -104,34 +104,27 @@ export default async function TeamFeedPage() {
   }));
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <div>
-        <h1 className="text-[30px] font-bold text-ink">Team Feed</h1>
-        <p className="text-[15px] text-muted-ink">Recognitions, Top Performer shoutouts, and broadcasts.</p>
-      </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <p className="text-[15px] text-muted-ink">Recognitions, Top Performer shoutouts, and broadcasts.</p>
 
       {canRecognize && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Send a recognition</CardTitle>
-            <CardDescription>Tokens + a public shoutout.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel as="h3">Send a recognition</SectionLabel>
+          <SectionCard>
+            <p className="mb-3 text-[13px] text-muted-ink">Tokens + a public shoutout.</p>
             <RecognitionForm subjects={recognitionSubjects ?? []} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
 
       {canBroadcast && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Post a broadcast</CardTitle>
-            <CardDescription>Announce a rollout, event, or policy update.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel as="h3">Post a broadcast</SectionLabel>
+          <SectionCard>
+            <p className="mb-3 text-[13px] text-muted-ink">Announce a rollout, event, or policy update.</p>
             <BroadcastForm />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
 
       <div className="flex flex-col gap-3">

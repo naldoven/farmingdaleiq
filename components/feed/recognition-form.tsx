@@ -60,7 +60,7 @@ export function RecognitionForm({ subjects }: { subjects: RecognitionSubjectOpti
     >
       <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="recognition-subject">
+          <label className="text-[13px] font-semibold text-muted-ink" htmlFor="recognition-subject">
             Who
           </label>
           <Select value={subjectUserId} onValueChange={setSubjectUserId} disabled={subjects.length === 0}>
@@ -77,7 +77,7 @@ export function RecognitionForm({ subjects }: { subjects: RecognitionSubjectOpti
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="recognition-amount">
+          <label className="text-[13px] font-semibold text-muted-ink" htmlFor="recognition-amount">
             Tokens
           </label>
           <Input
@@ -93,7 +93,7 @@ export function RecognitionForm({ subjects }: { subjects: RecognitionSubjectOpti
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="recognition-body">
+        <label className="text-[13px] font-semibold text-muted-ink" htmlFor="recognition-body">
           What did they do well?
         </label>
         <Textarea
@@ -105,9 +105,9 @@ export function RecognitionForm({ subjects }: { subjects: RecognitionSubjectOpti
         />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <Button type="submit" disabled={isPending || !subjectUserId}>
+      <Button type="submit" className="rounded-full" disabled={isPending || !subjectUserId}>
         {isPending ? "Posting..." : "Send recognition"}
       </Button>
     </form>

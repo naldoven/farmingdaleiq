@@ -43,9 +43,9 @@ export function BroadcastForm() {
         onChange={(event) => setBody(event.target.value)}
       />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <Button type="submit" disabled={isPending || !body.trim()}>
+      <Button type="submit" className="rounded-full" disabled={isPending || !body.trim()}>
         {isPending ? "Posting..." : "Post broadcast"}
       </Button>
     </form>

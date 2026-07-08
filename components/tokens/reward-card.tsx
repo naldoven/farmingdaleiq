@@ -2,10 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Coins } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { claimReward } from "@/app/(app)/rewards/actions";
 import { claimBlockedLabel, whyCantClaim, type RewardForClaim } from "@/app/(app)/rewards/logic";
 
@@ -20,7 +19,8 @@ export interface RewardCardData extends RewardForClaim {
  * claims"). The claim button's disabled state is advisory (app/(app)/
  * rewards/logic.ts whyCantClaim) -- the real check happens inside
  * redeem_reward() when claimReward() is called, so a stale client (balance
- * changed in another tab) still can't overspend.
+ * changed in another tab) still can't overspend. A white rounded KitchenIQ
+ * card: name, token-cost pill, description, stock caption, Claim button.
  */
 export function RewardCard({ reward, balance, canClaimAtAll }: { reward: RewardCardData; balance: number; canClaimAtAll: boolean }) {
   const router = useRouter();
@@ -32,42 +32,48 @@ export function RewardCard({ reward, balance, canClaimAtAll }: { reward: RewardC
   const disabled = !canClaimAtAll || blockedReason !== null || isPending || claimed;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base">{reward.name}</CardTitle>
-          <Badge variant="secondary">{reward.tokenCost} tokens</Badge>
-        </div>
-        {reward.description && <CardDescription>{reward.description}</CardDescription>}
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">
+    <div className="flex flex-col gap-2 rounded-2xl border border-line bg-card p-3.5 shadow-card">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-ink">{reward.name}</p>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[12px] font-bold text-warning">
+          <Coins className="h-3.5 w-3.5" aria-hidden="true" />
+          {reward.tokenCost}
+        </span>
+      </div>
+
+      {reward.description && (
+        <p className="line-clamp-2 text-[13px] text-muted-ink">{reward.description}</p>
+      )}
+
+      <p className="text-[13px] text-muted-ink">
         {reward.stock !== null ? `${reward.stock} left` : "In stock"}
-      </CardContent>
-      <CardFooter className="flex flex-col items-stretch gap-1">
-        {canClaimAtAll && (
-          <Button
-            disabled={disabled}
-            onClick={() => {
-              setError(null);
-              startTransition(async () => {
-                const result = await claimReward({ rewardId: reward.id });
-                if (!result.ok) {
-                  setError(result.error);
-                  return;
-                }
-                setClaimed(true);
-                router.refresh();
-              });
-            }}
-          >
-            {isPending ? "Claiming..." : claimed ? "Claimed" : "Claim"}
-          </Button>
-        )}
-        {blockedReason && !claimed && (
-          <p className="text-xs text-muted-foreground">{claimBlockedLabel(blockedReason)}</p>
-        )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </CardFooter>
-    </Card>
+      </p>
+
+      {canClaimAtAll && (
+        <Button
+          size="sm"
+          className="mt-1 w-full rounded-full"
+          disabled={disabled}
+          onClick={() => {
+            setError(null);
+            startTransition(async () => {
+              const result = await claimReward({ rewardId: reward.id });
+              if (!result.ok) {
+                setError(result.error);
+                return;
+              }
+              setClaimed(true);
+              router.refresh();
+            });
+          }}
+        >
+          {isPending ? "Claiming..." : claimed ? "Claimed" : "Claim"}
+        </Button>
+      )}
+      {blockedReason && !claimed && (
+        <p className="text-[12px] text-muted-ink">{claimBlockedLabel(blockedReason)}</p>
+      )}
+      {error && <p className="text-[12px] text-danger">{error}</p>}
+    </div>
   );
 }
