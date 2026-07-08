@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RotateCcw } from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
 import { RateCell } from "@/components/training/rate-cell";
 import { ResolveRerateButton } from "@/components/training/resolve-rerate-button";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -17,6 +18,11 @@ import { computeAverage } from "@/app/(app)/ratings/logic";
 /**
  * /ratings — skills matrix (people x positions, color-coded), rate/re-rate
  * flows, re-rate queue. ARCHITECTURE.md "Position Ratings".
+ *
+ * Restyled to the KitchenIQ mobile design system (docs/DESIGN-SYSTEM.md):
+ * the re-rate queue and matrix now sit in SectionCards with ListRow/
+ * StatusBadge in place of the old shadcn Card/Badge shell. Same queries,
+ * RateCell rating flow, and permission checks as before.
  */
 export default async function RatingsPage() {
   await requirePermission("ratings.view");
@@ -63,39 +69,30 @@ export default async function RatingsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Ratings</h1>
-        <p className="text-sm text-muted-foreground">
-          3.0+ = qualified. Blue = above store average, red = below.
-        </p>
-      </div>
+    <div className="mx-auto flex max-w-[720px] flex-col gap-4">
+      <p className="text-[13px] text-muted-ink">
+        3.0+ = qualified. Blue = above store average, red = below.
+      </p>
 
       {(rerates ?? []).length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Re-rate queue</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        <SectionCard title="Re-rate Queue" flush>
+          <div className="divide-y divide-line">
             {(rerates ?? []).map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
-                <span>
-                  {nameById.get(r.user_id ?? "") ?? "Unknown"} —{" "}
-                  {positionNameById.get(r.position_id ?? "") ?? "Unknown position"}{" "}
-                  <span className="text-muted-foreground">(due {r.due_on})</span>
-                </span>
-                {canRate && <ResolveRerateButton id={r.id} />}
-              </div>
+              <ListRow
+                key={r.id}
+                icon={RotateCcw}
+                iconTone="warning"
+                title={nameById.get(r.user_id ?? "") ?? "Unknown"}
+                description={`${positionNameById.get(r.position_id ?? "") ?? "Unknown position"} · due ${r.due_on}`}
+                trailing={canRate ? <ResolveRerateButton id={r.id} /> : undefined}
+              />
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Skills matrix</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
+      <SectionCard title="Skills Matrix">
+        <div className="-mx-4 overflow-x-auto px-4">
           <Table>
             <TableHeader>
               <TableRow>
@@ -116,13 +113,11 @@ export default async function RatingsPage() {
 
                 return (
                   <TableRow key={person.id}>
-                    <TableCell className="sticky left-0 whitespace-nowrap bg-card font-medium">
-                      {person.name}
-                      {overall !== null && (
-                        <Badge variant="outline" className="ml-2">
-                          avg {overall.toFixed(1)}
-                        </Badge>
-                      )}
+                    <TableCell className="sticky left-0 whitespace-nowrap bg-card font-semibold text-ink">
+                      <span className="flex items-center gap-2">
+                        {person.name}
+                        {overall !== null && <StatusBadge tone="neutral">avg {overall.toFixed(1)}</StatusBadge>}
+                      </span>
                     </TableCell>
                     {positionList.map((position) => {
                       const rating = ratingByPair.get(`${person.id}:${position.id}`);
@@ -147,15 +142,15 @@ export default async function RatingsPage() {
               })}
               {people.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={positionList.length + 1} className="text-center text-muted-foreground">
+                  <TableCell colSpan={positionList.length + 1} className="text-center text-muted-ink">
                     No active people yet.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }
