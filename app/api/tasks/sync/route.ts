@@ -4,39 +4,33 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { materializeTasksForDate } from "@/app/(app)/tasks/materialize";
 import { markOverdueTasks } from "@/app/(app)/tasks/overdue";
 import { processTaskEvents } from "@/app/(app)/tasks/system-tasks";
+import { isCronAuthorized } from "@/app/api/tasks/cron-auth";
 
 /**
- * Scheduled job for the Tasks module (PLAN.md S2 brief: "Nightly run
- * materialization as a Supabase scheduled function" + "due handling" +
- * "System-created task kinds ... accepted via event bus consumer").
+ * Nightly full sync for the Tasks module (PLAN.md S2 brief: "Nightly run
+ * materialization" + "due handling" + "System-created task kinds ... accepted
+ * via event bus consumer"). Scheduled in vercel.json at `0 4 * * *`.
  *
- * This repo has no Supabase Edge Functions yet (supabase/functions doesn't
- * exist) and root-level scheduler config (vercel.json) is shared across
- * every stream that needs a periodic job (S1 checklist runs, S6
- * accountability expiry, S8 PM schedules, ...), so it isn't touched here to
- * avoid cross-stream conflicts. Instead this is a plain route handler; wire
- * ONE of the following up externally once all streams have landed:
- *   - Vercel Cron: add a `crons` entry in vercel.json calling
- *     `POST /api/tasks/sync` (recommended: every 15 minutes covers both the
- *     "nightly" materialization — idempotent, so running it more often than
- *     once a day is harmless — and timely overdue/event processing).
- *   - Supabase pg_cron + `net.http_post` calling this URL on the same
- *     schedule, if the team prefers to keep scheduling inside Postgres.
- * Either way, set TASKS_CRON_SECRET in the environment and have the
- * scheduler send it as `X-Cron-Secret` so this endpoint isn't publicly
- * triggerable.
+ * Vercel Cron invokes scheduled paths via GET with an
+ * `Authorization: Bearer $CRON_SECRET` header, so this route exports GET (with
+ * POST delegating to it for manual/pg_cron triggers) and authenticates with
+ * the shared `CRON_SECRET`, exactly like every sibling cron route
+ * (app/api/cron/*). Auth fails CLOSED: with no `CRON_SECRET` set the endpoint
+ * refuses every request instead of running unauthenticated.
  *
- * Uses the service-role client because this runs with no signed-in user;
- * every write here is scoped to tables S2 owns (tasks, task_templates) plus
- * reads of the shared app_events table.
+ * The time-sensitive half (overdue sweep + event->system-task processing) also
+ * runs on the more frequent `/api/tasks/events` route so a reward claim or a
+ * flagged-answer follow-up becomes a task within minutes, not up to 24h. This
+ * route keeps doing the full run (including the once-a-day materialization) so
+ * a deployment that only schedules `/api/tasks/sync` still works end to end.
+ *
+ * Uses the service-role client because this runs with no signed-in user; every
+ * write here is scoped to tables S2 owns (tasks, task_templates) plus reads of
+ * the shared app_events table.
  */
-export async function POST(request: NextRequest) {
-  const expected = process.env.TASKS_CRON_SECRET;
-  if (expected) {
-    const provided = request.headers.get("x-cron-secret");
-    if (provided !== expected) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+async function run(request: NextRequest) {
+  if (!isCronAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createServiceRoleClient();
@@ -49,4 +43,12 @@ export async function POST(request: NextRequest) {
   ]);
 
   return NextResponse.json({ materialized, overdue, events });
+}
+
+export function GET(request: NextRequest) {
+  return run(request);
+}
+
+export function POST(request: NextRequest) {
+  return run(request);
 }
