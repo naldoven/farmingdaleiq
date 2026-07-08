@@ -3,8 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { issueInfraction } from "@/app/(app)/accountability/actions";
 
 interface PersonOption {
@@ -67,14 +65,14 @@ export function IssueInfractionForm({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="infraction-person" className="text-sm font-medium">
+          <label htmlFor="infraction-person" className="text-[13px] font-semibold text-ink">
             Person
           </label>
           <select
             id="infraction-person"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
             required
           >
             {people.map((p) => (
@@ -85,14 +83,14 @@ export function IssueInfractionForm({
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="infraction-type" className="text-sm font-medium">
+          <label htmlFor="infraction-type" className="text-[13px] font-semibold text-ink">
             Infraction type
           </label>
           <select
             id="infraction-type"
             value={typeId}
             onChange={(e) => setTypeId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
             required
           >
             {types.map((t) => (
@@ -105,26 +103,31 @@ export function IssueInfractionForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="infraction-note" className="text-sm font-medium">
+        <label htmlFor="infraction-note" className="text-[13px] font-semibold text-ink">
           Note (optional)
         </label>
-        <Textarea
+        <textarea
           id="infraction-note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Context for this infraction"
           rows={2}
+          className="rounded-lg border border-line bg-card px-3 py-2 text-[15px] text-ink placeholder:text-muted-ink"
         />
       </div>
 
       <div>
-        <Button type="submit" disabled={isPending || !userId || !typeId}>
-          {isPending ? "Issuing..." : "Issue infraction"}
-        </Button>
+        <button
+          type="submit"
+          disabled={isPending || !userId || !typeId}
+          className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-[15px] font-semibold text-white transition-transform active:scale-95 disabled:opacity-50"
+        >
+          {isPending ? "Issuing…" : "Issue infraction"}
+        </button>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {success && <p className="text-sm text-success">{success}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
+      {success && <p className="text-[13px] text-success">{success}</p>}
     </form>
   );
 }

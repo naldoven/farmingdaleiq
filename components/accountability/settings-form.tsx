@@ -3,8 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { updateAccountabilitySettings } from "@/app/(app)/accountability/actions";
 import type { PeriodKind } from "@/app/(app)/accountability/logic";
 
@@ -27,7 +25,7 @@ export function AccountabilitySettingsForm({
 
   return (
     <form
-      className="flex flex-wrap items-end gap-2"
+      className="flex flex-wrap items-end gap-3"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -48,37 +46,41 @@ export function AccountabilitySettingsForm({
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="period-kind" className="text-sm font-medium">
+        <label htmlFor="period-kind" className="text-[13px] font-semibold text-ink">
           Period kind
         </label>
         <select
           id="period-kind"
           value={kind}
           onChange={(e) => setKind(e.target.value as PeriodKind)}
-          className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+          className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
         >
           <option value="rolling">Rolling</option>
           <option value="fixed">Fixed window</option>
         </select>
       </div>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="period-days" className="text-sm font-medium">
+        <label htmlFor="period-days" className="text-[13px] font-semibold text-ink">
           Period length (days)
         </label>
-        <Input
+        <input
           id="period-days"
           type="number"
           min={1}
           value={days}
           onChange={(e) => setDays(e.target.value)}
-          className="w-28"
+          className="h-10 w-28 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
         />
       </div>
-      <Button type="submit" disabled={isPending}>
-        {isPending ? "Saving..." : "Save"}
-      </Button>
-      {error && <p className="w-full text-sm text-destructive">{error}</p>}
-      {saved && !error && <p className="w-full text-sm text-success">Saved.</p>}
+      <button
+        type="submit"
+        disabled={isPending}
+        className="inline-flex h-10 shrink-0 items-center rounded-full bg-accent px-4 text-[15px] font-semibold text-white transition-transform active:scale-95 disabled:opacity-50"
+      >
+        {isPending ? "Saving…" : "Save"}
+      </button>
+      {error && <p className="w-full text-[13px] text-danger">{error}</p>}
+      {saved && !error && <p className="w-full text-[13px] text-success">Saved.</p>}
     </form>
   );
 }

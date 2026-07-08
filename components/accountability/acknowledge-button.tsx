@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { acknowledgeDisciplinaryAction } from "@/app/(app)/accountability/actions";
 
 /** Acknowledges a pending disciplinary action (self, or a manager on someone's behalf). */
@@ -14,11 +13,10 @@ export function AcknowledgeButton({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button
+      <button
         type="button"
-        size="sm"
-        variant="secondary"
         disabled={isPending}
+        className="inline-flex h-7 shrink-0 items-center rounded-full bg-accent px-3 text-[12px] font-semibold text-white transition-transform active:scale-95 disabled:opacity-60"
         onClick={() => {
           setError(null);
           startTransition(async () => {
@@ -31,9 +29,9 @@ export function AcknowledgeButton({ id }: { id: string }) {
           });
         }}
       >
-        {isPending ? "Acknowledging..." : "Acknowledge"}
-      </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+        {isPending ? "Acknowledging…" : "Acknowledge"}
+      </button>
+      {error && <p className="text-[11px] text-danger">{error}</p>}
     </div>
   );
 }
