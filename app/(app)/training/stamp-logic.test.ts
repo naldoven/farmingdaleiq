@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { allItemsComplete, canStampLeadership, canStampPosition, pickVacantSlot } from "./stamp-logic";
+import {
+  allItemsComplete,
+  canStampLeadership,
+  canStampPosition,
+  isItemProgressComplete,
+  pickVacantSlot,
+  SLIDER_COMPLETE_THRESHOLD,
+} from "./stamp-logic";
 
 describe("allItemsComplete", () => {
   it("is false with zero items (nothing to stamp)", () => {
@@ -58,5 +65,33 @@ describe("pickVacantSlot", () => {
   it("returns null when the tier is full", () => {
     const slots = [{ id: "1", user_id: "u1", sort: 1 }];
     expect(pickVacantSlot(slots)).toBeNull();
+  });
+});
+
+describe("isItemProgressComplete", () => {
+  it("check item: complete only when checked is exactly true", () => {
+    expect(isItemProgressComplete("check", { checked: true })).toBe(true);
+    expect(isItemProgressComplete("check", { checked: false })).toBe(false);
+    expect(isItemProgressComplete("check", {})).toBe(false);
+  });
+
+  it("slider item: complete only at/above the threshold", () => {
+    expect(isItemProgressComplete("slider", { sliderValue: SLIDER_COMPLETE_THRESHOLD })).toBe(true);
+    expect(isItemProgressComplete("slider", { sliderValue: SLIDER_COMPLETE_THRESHOLD - 1 })).toBe(false);
+    expect(isItemProgressComplete("slider", { sliderValue: 0 })).toBe(false);
+    expect(isItemProgressComplete("slider", {})).toBe(false);
+  });
+
+  it("photo item: complete only with a non-blank photoUrl", () => {
+    expect(isItemProgressComplete("photo", { photoUrl: "https://example.com/a.jpg" })).toBe(true);
+    expect(isItemProgressComplete("photo", { photoUrl: "" })).toBe(false);
+    expect(isItemProgressComplete("photo", { photoUrl: "   " })).toBe(false);
+    expect(isItemProgressComplete("photo", {})).toBe(false);
+  });
+
+  it("signature/course/unknown types fall back to the checked flag", () => {
+    expect(isItemProgressComplete("signature", { checked: true })).toBe(true);
+    expect(isItemProgressComplete("course", { checked: true })).toBe(true);
+    expect(isItemProgressComplete(null, {})).toBe(false);
   });
 });

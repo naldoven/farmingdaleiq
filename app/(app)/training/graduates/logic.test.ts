@@ -12,7 +12,7 @@ describe("enrollmentStatusAfterAudit", () => {
   it("keeps 'graduated' on pass", () => {
     expect(enrollmentStatusAfterAudit("pass")).toBe("graduated");
   });
-  it("moves back to 'active' on pip", () => {
-    expect(enrollmentStatusAfterAudit("pip")).toBe("active");
+  it("moves to the dedicated 'pip' status so the trainee stays visible on Graduates", () => {
+    expect(enrollmentStatusAfterAudit("pip")).toBe("pip");
   });
 });

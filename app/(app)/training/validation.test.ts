@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createCourseAttachmentSchema,
   createPassportItemSchema,
+  deleteCourseAttachmentSchema,
   enrollPassportSchema,
   signItemSchema,
   stampPassportSchema,
@@ -61,5 +63,24 @@ describe("submitCourseFeedbackSchema", () => {
     expect(submitCourseFeedbackSchema.safeParse({ courseId: uuid, rating: 5 }).success).toBe(true);
     expect(submitCourseFeedbackSchema.safeParse({ courseId: uuid, rating: 6 }).success).toBe(false);
     expect(submitCourseFeedbackSchema.safeParse({ courseId: uuid, rating: 0 }).success).toBe(false);
+  });
+});
+
+describe("createCourseAttachmentSchema / deleteCourseAttachmentSchema", () => {
+  it("requires a non-blank file URL", () => {
+    expect(
+      createCourseAttachmentSchema.safeParse({ courseId: uuid, fileUrl: "https://example.com/a.pdf" }).success,
+    ).toBe(true);
+    expect(createCourseAttachmentSchema.safeParse({ courseId: uuid, fileUrl: "" }).success).toBe(false);
+  });
+  it("allows a blank label", () => {
+    expect(
+      createCourseAttachmentSchema.safeParse({ courseId: uuid, fileUrl: "https://example.com/a.pdf", label: "" })
+        .success,
+    ).toBe(true);
+  });
+  it("requires a uuid to delete", () => {
+    expect(deleteCourseAttachmentSchema.safeParse({ id: uuid }).success).toBe(true);
+    expect(deleteCourseAttachmentSchema.safeParse({ id: "nope" }).success).toBe(false);
   });
 });

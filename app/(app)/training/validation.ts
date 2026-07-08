@@ -57,3 +57,13 @@ export const submitCourseFeedbackSchema = z.object({
   feedback: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 export type SubmitCourseFeedbackInput = z.infer<typeof submitCourseFeedbackSchema>;
+
+export const createCourseAttachmentSchema = z.object({
+  courseId: z.string().uuid(),
+  fileUrl: z.string().trim().min(1, "File URL is required").max(2000),
+  label: z.string().trim().max(200).optional().or(z.literal("")),
+});
+export type CreateCourseAttachmentInput = z.infer<typeof createCourseAttachmentSchema>;
+
+export const deleteCourseAttachmentSchema = z.object({ id: z.string().uuid() });
+export type DeleteCourseAttachmentInput = z.infer<typeof deleteCourseAttachmentSchema>;

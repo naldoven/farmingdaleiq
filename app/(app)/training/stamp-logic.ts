@@ -49,3 +49,40 @@ export function pickVacantSlot(slots: OrgSlotLike[]): OrgSlotLike | null {
   const vacant = slots.filter((s) => s.user_id === null).sort((a, b) => a.sort - b.sort);
   return vacant[0] ?? null;
 }
+
+/** A slider item counts complete once practice progress reaches full (100). */
+export const SLIDER_COMPLETE_THRESHOLD = 100;
+
+export interface ItemProgressInput {
+  checked?: boolean;
+  sliderValue?: number;
+  photoUrl?: string;
+}
+
+/**
+ * Whether a self-reported (or trainer-corrected) progress write represents
+ * real completion of the item, keyed by the passport item's type. Used by
+ * upsertItemProgress (actions.ts) to decide whether completed_at should be
+ * set (real completion) or cleared (unchecked / partial progress) instead of
+ * always stamping "now" regardless of the value written.
+ *
+ * - check: complete only when checked === true.
+ * - slider: complete once sliderValue reaches SLIDER_COMPLETE_THRESHOLD.
+ * - photo: complete once a non-blank photoUrl is present.
+ * - signature/course (and anything else): this action doesn't own their
+ *   completion signal (signature completes via signItem's countersign;
+ *   course has no dedicated UI yet), so fall back to the checked flag if one
+ *   was sent rather than always completing.
+ */
+export function isItemProgressComplete(itemType: string | null, input: ItemProgressInput): boolean {
+  switch (itemType) {
+    case "check":
+      return input.checked === true;
+    case "slider":
+      return typeof input.sliderValue === "number" && input.sliderValue >= SLIDER_COMPLETE_THRESHOLD;
+    case "photo":
+      return typeof input.photoUrl === "string" && input.photoUrl.trim().length > 0;
+    default:
+      return input.checked === true;
+  }
+}
