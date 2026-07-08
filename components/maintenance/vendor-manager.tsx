@@ -24,7 +24,7 @@ import {
   StatusBadge,
 } from "@/components/mobile";
 import { createVendor, setVendorActive, updateVendor } from "@/app/(app)/vendors/actions";
-import { DAYS_OF_WEEK } from "@/app/(app)/vendors/validation";
+import { DAYS_OF_WEEK } from "@/app/(app)/vendors/constants";
 
 export interface VendorRow {
   id: string;

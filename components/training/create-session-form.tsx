@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createSession } from "@/app/(app)/training/schedule/actions";
-import { SESSION_TAG_OPTIONS } from "@/app/(app)/training/schedule/validation";
+import { SESSION_TAG_OPTIONS } from "@/app/(app)/training/schedule/constants";
 
 const UNSET = "unset";
 

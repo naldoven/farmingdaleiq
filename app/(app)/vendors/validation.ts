@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DAYS_OF_WEEK } from "./constants";
+
 /**
  * Input validation for the Vendors server actions
  * (app/(app)/vendors/actions.ts). ARCHITECTURE.md "Vendors": "Directory:
@@ -9,7 +11,8 @@ import { z } from "zod";
 
 const optionalText = z.string().trim().optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 
-const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+// Re-exported so server/action code can keep importing it from here; client
+// components import it directly from ./constants to stay zod-free.
 export { DAYS_OF_WEEK };
 
 export const vendorSchema = z.object({

@@ -17,6 +17,9 @@ const PUBLIC_PATHS = [
   "/manifest.webmanifest",
   "/sw.js",
   "/offline.html",
+  // Crawler-facing metadata (app/robots.ts). Must be reachable without auth or
+  // a crawler just gets a 307 to /login and never sees the Disallow rules.
+  "/robots.txt",
 ];
 
 function isPublicPath(pathname: string) {

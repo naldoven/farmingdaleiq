@@ -1,18 +1,29 @@
 /**
- * FarmingdaleIQ service worker (P0 PWA shell).
+ * FarmingdaleIQ service worker.
  *
  * - Precaches a minimal app shell so the install banner / offline fallback
  *   have something to serve immediately after install.
  * - Network-first for navigations (page requests), falling back to the
  *   cached offline page when the network is unavailable.
- * - Push + notificationclick skeleton so `lib/notify` has a real target to
- *   send Web Push payloads to once VAPID keys exist (see lib/notify/push.ts).
+ * - Stale-while-revalidate for content-hashed build output + static media so
+ *   repeat visits paint from cache instantly while refreshing in the
+ *   background. Hashed URLs are immutable, so a cached hit is always correct.
+ * - Push + notificationclick so lib/notify has a real Web Push target.
  */
 
-// Bumped v1 -> v2 (FIQ-13) so the activate handler evicts any already-poisoned
-// v1 cache (which may hold the login page under "/" or the offline key).
-const CACHE_VERSION = "fiq-shell-v2";
+// Bumped v2 -> v3 (perf pass) so the activate handler evicts the older shell
+// cache and the new runtime cache name takes effect.
+const CACHE_VERSION = "fiq-shell-v3";
+// Runtime cache for content-hashed static assets (see staleWhileRevalidate).
+const RUNTIME_CACHE = "fiq-runtime-v1";
+// Both caches survive activation cleanup; anything else is an old version.
+const KEEP_CACHES = [CACHE_VERSION, RUNTIME_CACHE];
 const OFFLINE_URL = "/offline.html";
+
+// Same-origin static assets safe to serve stale: content-hashed build chunks,
+// fonts, icons, and images. HTML is never matched here (navigations are
+// handled above, network-first) so an auth-gated page is never cached.
+const STATIC_ASSET_RE = /\.(?:js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|ico|webp|avif)$/;
 
 // "/" is intentionally NOT precached: it is auth-gated and user-specific, so
 // caching it would serve a stale/foreign home or (pre-auth) the login page.
@@ -53,13 +64,30 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== CACHE_VERSION)
+            .filter((key) => !KEEP_CACHES.includes(key))
             .map((key) => caches.delete(key)),
         ),
       )
       .then(() => self.clients.claim()),
   );
 });
+
+// Stale-while-revalidate: serve the cached copy immediately (if any) and
+// refresh it from the network in the background for next time. Only a real
+// 200 is written back, so a network error never poisons the cache.
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  const cached = await cache.match(request);
+  const network = fetch(request)
+    .then((response) => {
+      if (response.ok && response.status === 200) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => cached);
+  return cached ?? network;
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -68,6 +96,8 @@ self.addEventListener("fetch", (event) => {
   // straight through to the network untouched.
   if (request.method !== "GET") return;
 
+  const url = new URL(request.url);
+
   // Navigations: network-first, offline fallback. Falls back only to the
   // dedicated offline page (never "/", which is auth-gated and not cached).
   if (request.mode === "navigate") {
@@ -75,12 +105,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static app-shell assets: cache-first, falling back to network.
-  const url = new URL(request.url);
+  // Precached minimal shell assets: cache-first.
   if (APP_SHELL.includes(url.pathname)) {
     event.respondWith(
       caches.match(request).then((cached) => cached ?? fetch(request)),
     );
+    return;
+  }
+
+  // Content-hashed build output + static media (same-origin): SWR. This is
+  // what makes repeat loads instant. Cross-origin (e.g. Supabase API) is left
+  // untouched so it always hits the network.
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith("/_next/static/") || STATIC_ASSET_RE.test(url.pathname))
+  ) {
+    event.respondWith(staleWhileRevalidate(request));
   }
 });
 

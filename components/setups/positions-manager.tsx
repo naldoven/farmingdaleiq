@@ -20,7 +20,7 @@ import {
   deletePositionGroup,
   seedDefaultPositions,
 } from "@/app/(app)/setups/templates/actions";
-import { hasSeedPositionGroups } from "@/app/(app)/setups/templates/validation";
+import { hasSeedPositionGroups } from "@/app/(app)/setups/templates/constants";
 
 export interface PositionGroupRow {
   id: string;

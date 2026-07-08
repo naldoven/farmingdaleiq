@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createItem, deleteItem, updateItem } from "@/app/(app)/waste/actions";
-import { WASTE_UNITS, type WasteUnit } from "@/app/(app)/waste/validation";
+import { WASTE_UNITS, type WasteUnit } from "@/app/(app)/waste/constants";
 
 export interface ItemCategoryOption {
   id: string;
