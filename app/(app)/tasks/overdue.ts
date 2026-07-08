@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { emitEvent } from "@/lib/events/bus";
+import { buildTaskOverdueEvent } from "@/app/(app)/tasks/events";
 import type { Database } from "@/lib/db/types";
 
 /**
@@ -31,12 +32,15 @@ export async function markOverdueTasks(
 
   for (const task of overdue ?? []) {
     try {
-      await emitEvent("task_overdue", {
-        task_id: task.id,
-        title: task.title,
-        assigned_user_id: task.assigned_user_id,
-        assigned_position_id: task.assigned_position_id,
-      });
+      await emitEvent(
+        "task_overdue",
+        buildTaskOverdueEvent({
+          taskId: task.id,
+          title: task.title,
+          assignedUserId: task.assigned_user_id,
+          assignedPositionId: task.assigned_position_id,
+        }),
+      );
     } catch {
       // Best-effort notification hook; see system-tasks.ts's header comment
       // for why emitEvent can fail in an unauthenticated scheduled context.

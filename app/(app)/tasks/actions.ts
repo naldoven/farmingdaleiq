@@ -5,10 +5,9 @@
  * documented in app/(app)/people/actions.ts:
  *   1. requirePermission(<key>) first — throws before any DB call if the
  *      signed-in user's role lacks the key.
- *   2. Writes go through the per-request Supabase client (RLS is the
- *      independent backstop for the same rule; see the stream report re:
- *      tasks/task_templates RLS not yet added, blocked on the migrations
- *      hard boundary).
+ *   2. Writes go through the per-request Supabase client (RLS on
+ *      tasks/task_templates is the independent backstop for the same rule and
+ *      is now in place — see the app_events + RLS backfill migration).
  *   3. Actions return a discriminated ActionResult instead of throwing.
  *   4. Mutations call revalidatePath("/tasks").
  *
@@ -28,6 +27,10 @@ import { revalidatePath } from "next/cache";
 import { PermissionError, hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { emitEvent } from "@/lib/events/bus";
+import {
+  buildTaskAssignedEvent,
+  buildTaskCompleteEvent,
+} from "@/app/(app)/tasks/events";
 import type { ActionResult } from "@/app/(app)/tasks/action-types";
 import {
   claimTaskSchema,
@@ -37,6 +40,7 @@ import {
   createTaskTemplateSchema,
   delegateTaskSchema,
   setTaskTemplateActiveSchema,
+  updateTaskTemplateSchema,
   type CancelTaskInput,
   type ClaimTaskInput,
   type CompleteTaskInput,
@@ -44,6 +48,7 @@ import {
   type CreateTaskTemplateInput,
   type DelegateTaskInput,
   type SetTaskTemplateActiveInput,
+  type UpdateTaskTemplateInput,
 } from "@/app/(app)/tasks/validation";
 
 function toActionError(error: unknown): string {
@@ -57,9 +62,9 @@ function toActionError(error: unknown): string {
 }
 
 /** Best-effort event emission: never let a notification hook fail a write
- * the user is waiting on. See system-tasks.ts's header comment for why
- * emitEvent can fail today (frozen bus writes via the cookie-bound client;
- * app_events has no RLS grant yet). */
+ * the user is waiting on. emitEvent writes app_events through the frozen bus
+ * (lib/events/bus.ts) on the cookie-bound client, so a transient write failure
+ * must not roll back the user's action. */
 async function emitBestEffort(key: Parameters<typeof emitEvent>[0], payload: Record<string, unknown>) {
   try {
     await emitEvent(key, payload);
@@ -91,6 +96,8 @@ export async function createTask(
         assigned_user_id: parsed.assignedUserId,
         assigned_position_id: parsed.assignedUserId ? null : parsed.assignedPositionId,
         token_value: parsed.tokenValue,
+        notify_discord: parsed.notifyDiscord,
+        discord_channel_id: parsed.discordChannelId,
         created_by: userData.user?.id ?? null,
       })
       .select("id")
@@ -103,11 +110,17 @@ export async function createTask(
     revalidatePath("/tasks");
 
     if (parsed.assignedUserId || parsed.assignedPositionId) {
-      await emitBestEffort("task_assigned", {
-        task_id: data.id,
-        assigned_user_id: parsed.assignedUserId,
-        assigned_position_id: parsed.assignedPositionId,
-      });
+      await emitBestEffort(
+        "task_assigned",
+        buildTaskAssignedEvent({
+          taskId: data.id,
+          assignedUserId: parsed.assignedUserId,
+          assignedPositionId: parsed.assignedPositionId,
+          actorId: userData.user?.id ?? null,
+          notifyDiscord: parsed.notifyDiscord,
+          discordChannelId: parsed.discordChannelId,
+        }),
+      );
     }
 
     return { ok: true, data: { id: data.id } };
@@ -148,6 +161,44 @@ export async function createTaskTemplate(
 
     revalidatePath("/tasks");
     return { ok: true, data: { id: data.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/** Edits an existing recurring template in place. Only changes the definition;
+ * already-materialized task rows are untouched (future materializations pick up
+ * the new values). tasks.manage-gated. */
+export async function updateTaskTemplate(
+  input: UpdateTaskTemplateInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("tasks.manage");
+    const parsed = updateTaskTemplateSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("task_templates")
+      .update({
+        title: parsed.title,
+        description: parsed.description,
+        frequency: parsed.frequency,
+        days_of_week: parsed.daysOfWeek,
+        day_part_id: parsed.dayPartId,
+        start_time: parsed.startTime,
+        due_time: parsed.dueTime,
+        assign_position_id: parsed.assignPositionId,
+        assign_user_id: parsed.assignUserId,
+        token_value: parsed.tokenValue,
+      })
+      .eq("id", parsed.id);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/tasks");
+    return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }
@@ -227,7 +278,14 @@ export async function claimTask(input: ClaimTaskInput): Promise<ActionResult> {
     }
 
     revalidatePath("/tasks");
-    await emitBestEffort("task_assigned", { task_id: parsed.id, assigned_user_id: userId });
+    await emitBestEffort(
+      "task_assigned",
+      buildTaskAssignedEvent({
+        taskId: parsed.id,
+        assignedUserId: userId,
+        actorId: userId,
+      }),
+    );
 
     return { ok: true, data: undefined };
   } catch (error) {
@@ -243,6 +301,8 @@ export async function delegateTask(input: DelegateTaskInput): Promise<ActionResu
     const parsed = delegateTaskSchema.parse(input);
     const supabase = await createClient();
 
+    const { data: userData } = await supabase.auth.getUser();
+
     const { error } = await supabase
       .from("tasks")
       .update({
@@ -256,11 +316,19 @@ export async function delegateTask(input: DelegateTaskInput): Promise<ActionResu
     }
 
     revalidatePath("/tasks");
-    await emitBestEffort("task_assigned", {
-      task_id: parsed.id,
-      assigned_user_id: parsed.assignedUserId,
-      assigned_position_id: parsed.assignedPositionId,
-    });
+    // A delegation with no assignee is a "return to the pool" — nobody to
+    // notify, so skip the assignment event in that case.
+    if (parsed.assignedUserId || parsed.assignedPositionId) {
+      await emitBestEffort(
+        "task_assigned",
+        buildTaskAssignedEvent({
+          taskId: parsed.id,
+          assignedUserId: parsed.assignedUserId,
+          assignedPositionId: parsed.assignedPositionId,
+          actorId: userData.user?.id ?? null,
+        }),
+      );
+    }
 
     return { ok: true, data: undefined };
   } catch (error) {
@@ -335,12 +403,15 @@ export async function completeTask(
     }
 
     revalidatePath("/tasks");
-    await emitBestEffort("task_complete", {
-      task_id: updated.id,
-      kind: updated.kind,
-      token_value: updated.token_value,
-      completed_by: userId,
-    });
+    await emitBestEffort(
+      "task_complete",
+      buildTaskCompleteEvent({
+        taskId: updated.id,
+        kind: updated.kind,
+        tokenValue: updated.token_value,
+        userId,
+      }),
+    );
 
     return { ok: true, data: { alreadyCompleted: false } };
   } catch (error) {
