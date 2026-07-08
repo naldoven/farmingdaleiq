@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,14 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SearchBar, SectionCard, StatusBadge } from "@/components/mobile";
 import { createEquipment } from "@/app/(app)/maintenance/equipment/actions";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
 
@@ -88,58 +80,67 @@ export function EquipmentList({
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return equipment;
+    return equipment.filter(
+      (eq) =>
+        eq.name.toLowerCase().includes(q) ||
+        (eq.category ?? "").toLowerCase().includes(q) ||
+        (eq.area ?? "").toLowerCase().includes(q),
+    );
+  }, [equipment, query]);
 
   return (
-    <div className="flex flex-col gap-3">
-      {canManage && (
-        <div className="flex justify-end">
-          <Button
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <SearchBar
+          label="Search equipment"
+          placeholder="Search equipment"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          containerClassName="flex-1"
+        />
+        {canManage && (
+          <button
             type="button"
+            aria-label="Add equipment"
             onClick={() => {
               setForm(emptyForm());
               setCreateOpen(true);
             }}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
           >
-            Add equipment
-          </Button>
-        </div>
-      )}
+            <Plus className="h-5 w-5" aria-hidden="true" />
+          </button>
+        )}
+      </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Area</TableHead>
-            <TableHead>Service vendor</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {equipment.map((eq) => (
-            <TableRow key={eq.id}>
-              <TableCell className="font-medium">
-                <Link href={`/maintenance/equipment/${eq.id}`} className="text-primary hover:underline">
-                  {eq.name}
-                </Link>
-              </TableCell>
-              <TableCell className="text-muted-foreground">{eq.category ?? "—"}</TableCell>
-              <TableCell className="text-muted-foreground">{eq.area ?? "—"}</TableCell>
-              <TableCell className="text-muted-foreground">{eq.service_vendor_name ?? "—"}</TableCell>
-              <TableCell>
-                <Badge variant={eq.status === "down" ? "destructive" : "success"}>{eq.status}</Badge>
-              </TableCell>
-            </TableRow>
-          ))}
-          {equipment.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground">
-                No equipment yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <p className="px-1 text-[13px] font-semibold text-muted-ink">All ({filtered.length})</p>
+
+      {filtered.length === 0 ? (
+        <p className="px-1 text-[13px] text-muted-ink">No equipment yet.</p>
+      ) : (
+        <SectionCard flush>
+          <div className="divide-y divide-line">
+            {filtered.map((eq) => (
+              <ListRow
+                key={eq.id}
+                href={`/maintenance/equipment/${eq.id}`}
+                title={eq.name}
+                description={[eq.category, eq.area, eq.service_vendor_name].filter(Boolean).join(" · ") || undefined}
+                trailing={
+                  <StatusBadge tone={eq.status === "down" ? "danger" : "success"} dot={eq.status !== "down"}>
+                    {eq.status}
+                  </StatusBadge>
+                }
+              />
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

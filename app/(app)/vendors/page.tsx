@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VendorManager } from "@/components/maintenance/vendor-manager";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -23,16 +22,8 @@ export default async function VendorsPage() {
     .order("name");
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Vendors</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Directory</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VendorManager vendors={vendors ?? []} canManage={canManage} />
-        </CardContent>
-      </Card>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <VendorManager vendors={vendors ?? []} canManage={canManage} />
     </div>
   );
 }

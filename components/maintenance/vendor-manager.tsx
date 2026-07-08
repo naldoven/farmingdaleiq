@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,13 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ChipRow,
+  FilterChip,
+  ListRow,
+  SearchBar,
+  SectionCard,
+  StatusBadge,
+} from "@/components/mobile";
 import { createVendor, setVendorActive, updateVendor } from "@/app/(app)/vendors/actions";
 import { DAYS_OF_WEEK } from "@/app/(app)/vendors/validation";
 
@@ -41,6 +41,7 @@ export interface VendorRow {
 }
 
 type DayOfWeek = (typeof DAYS_OF_WEEK)[number];
+type StatusFilter = "all" | "active" | "inactive";
 
 interface VendorFormState {
   name: string;
@@ -83,6 +84,18 @@ function formFromRow(vendor: VendorRow): VendorFormState {
     website: vendor.website ?? "",
     notes: vendor.notes ?? "",
   };
+}
+
+/** "A" for names starting with a letter, "#" for anything else (numbers etc). */
+function groupByLetter(vendors: VendorRow[]): [string, VendorRow[]][] {
+  const groups = new Map<string, VendorRow[]>();
+  for (const vendor of vendors) {
+    const first = vendor.name.trim().charAt(0).toUpperCase();
+    const key = first >= "A" && first <= "Z" ? first : "#";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(vendor);
+  }
+  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
 }
 
 function VendorFormFields({
@@ -158,9 +171,10 @@ function VendorFormFields({
           {DAYS_OF_WEEK.map((day) => {
             const active = form.deliveryDays.includes(day);
             return (
-              <button
-                type="button"
+              <FilterChip
                 key={day}
+                type="button"
+                active={active}
                 onClick={() =>
                   onChange({
                     ...form,
@@ -169,12 +183,9 @@ function VendorFormFields({
                       : [...form.deliveryDays, day],
                   })
                 }
-                className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                  active ? "border-primary bg-primary text-primary-foreground" : "border-input"
-                }`}
               >
                 {day}
-              </button>
+              </FilterChip>
             );
           })}
         </div>
@@ -191,7 +202,15 @@ function VendorFormFields({
   );
 }
 
-/** Directory + admin CRUD for vendors (ARCHITECTURE.md "Vendors"). */
+/**
+ * Directory + admin CRUD for vendors (ARCHITECTURE.md "Vendors"). Restyled to
+ * the KitchenIQ mobile list pattern: SearchBar + status FilterChips + an
+ * alphabetically-sectioned list of ListRows, with a round accent "+" for
+ * canManage holders to add a vendor. Tapping a row opens the same edit dialog
+ * the old table's "Edit" button opened; a "Deactivate/Reactivate" control
+ * moved into that dialog's footer since the row itself no longer has a
+ * per-item action column.
+ */
 export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; canManage: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -200,96 +219,105 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
   const [createForm, setCreateForm] = useState<VendorFormState>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<VendorFormState>(emptyForm());
+  const [editingActive, setEditingActive] = useState(true);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   function startEdit(vendor: VendorRow) {
     setEditingId(vendor.id);
     setEditForm(formFromRow(vendor));
+    setEditingActive(vendor.active);
     setError(null);
   }
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return vendors.filter((vendor) => {
+      if (statusFilter === "active" && !vendor.active) return false;
+      if (statusFilter === "inactive" && vendor.active) return false;
+      if (!q) return true;
+      return (
+        vendor.name.toLowerCase().includes(q) ||
+        (vendor.category ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [vendors, query, statusFilter]);
+
+  const groups = groupByLetter(filtered);
+  const filterLabel =
+    statusFilter === "active" ? "Active" : statusFilter === "inactive" ? "Inactive" : "All";
+
   return (
-    <div className="flex flex-col gap-3">
-      {canManage && (
-        <div className="flex justify-end">
-          <Button
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <SearchBar
+          label="Search vendors"
+          placeholder="Search vendors"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          containerClassName="flex-1"
+        />
+        {canManage && (
+          <button
             type="button"
+            aria-label="Add vendor"
             onClick={() => {
               setCreateForm(emptyForm());
               setCreateOpen(true);
             }}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
           >
-            Add vendor
-          </Button>
-        </div>
-      )}
+            <Plus className="h-5 w-5" aria-hidden="true" />
+          </button>
+        )}
+      </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Rep contact</TableHead>
-            <TableHead>Delivery days</TableHead>
-            <TableHead>Status</TableHead>
-            {canManage && <TableHead />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {vendors.map((vendor) => (
-            <TableRow key={vendor.id}>
-              <TableCell className="font-medium">{vendor.name}</TableCell>
-              <TableCell className="text-muted-foreground">{vendor.category ?? "—"}</TableCell>
-              <TableCell className="text-muted-foreground">
-                {[vendor.rep_name, vendor.phone, vendor.email].filter(Boolean).join(" · ") || "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {(vendor.delivery_days ?? []).join(", ") || "—"}
-              </TableCell>
-              <TableCell>
-                <Badge variant={vendor.active ? "success" : "outline"}>
-                  {vendor.active ? "Active" : "Inactive"}
-                </Badge>
-              </TableCell>
-              {canManage && (
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="secondary" onClick={() => startEdit(vendor)}>
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={isPending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          const result = await setVendorActive({ id: vendor.id, active: !vendor.active });
-                          if (!result.ok) {
-                            setError(result.error);
-                            return;
-                          }
-                          router.refresh();
-                        });
-                      }}
-                    >
-                      {vendor.active ? "Deactivate" : "Reactivate"}
-                    </Button>
-                  </div>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-          {vendors.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">
-                No vendors yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <ChipRow>
+        <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
+          All
+        </FilterChip>
+        <FilterChip active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+          Active
+        </FilterChip>
+        <FilterChip active={statusFilter === "inactive"} onClick={() => setStatusFilter("inactive")}>
+          Inactive
+        </FilterChip>
+      </ChipRow>
+
+      <p className="px-1 text-[13px] font-semibold text-muted-ink">
+        {filterLabel} ({filtered.length})
+      </p>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {groups.length === 0 ? (
+        <p className="px-1 text-[13px] text-muted-ink">No vendors match.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map(([letter, group]) => (
+            <div key={letter} className="flex flex-col gap-1.5">
+              <p className="px-1 text-[13px] font-bold text-muted-ink">{letter}</p>
+              <SectionCard flush>
+                <div className="divide-y divide-line">
+                  {group.map((vendor) => (
+                    <ListRow
+                      key={vendor.id}
+                      title={vendor.name}
+                      description={vendor.category ?? "No category"}
+                      trailing={
+                        <StatusBadge tone={vendor.active ? "success" : "neutral"} dot={vendor.active}>
+                          {vendor.active ? "Active" : "Inactive"}
+                        </StatusBadge>
+                      }
+                      onClick={canManage ? () => startEdit(vendor) : undefined}
+                    />
+                  ))}
+                </div>
+              </SectionCard>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
@@ -364,7 +392,26 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
             }}
           >
             <VendorFormFields form={editForm} onChange={setEditForm} />
-            <DialogFooter>
+            <DialogFooter className="sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => {
+                  if (!editingId) return;
+                  startTransition(async () => {
+                    const result = await setVendorActive({ id: editingId, active: !editingActive });
+                    if (!result.ok) {
+                      setError(result.error);
+                      return;
+                    }
+                    setEditingActive((prev) => !prev);
+                    router.refresh();
+                  });
+                }}
+              >
+                {editingActive ? "Deactivate" : "Reactivate"}
+              </Button>
               <Button type="submit" disabled={isPending}>
                 {isPending ? "Saving..." : "Save changes"}
               </Button>

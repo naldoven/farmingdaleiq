@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EquipmentList } from "@/components/maintenance/equipment-list";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -30,16 +29,8 @@ export default async function EquipmentPage() {
   }));
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Equipment</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Registry</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EquipmentList equipment={rows} vendorOptions={vendors ?? []} canManage={canManage} />
-        </CardContent>
-      </Card>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <EquipmentList equipment={rows} vendorOptions={vendors ?? []} canManage={canManage} />
     </div>
   );
 }

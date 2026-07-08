@@ -2,20 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
 import { addEquipmentFile, setEquipmentStatus } from "@/app/(app)/maintenance/equipment/actions";
 import { PmScheduleManager, type PmScheduleRow } from "@/components/maintenance/pm-schedule-manager";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
@@ -60,7 +50,9 @@ function StatusToggle({ equipment }: { equipment: EquipmentDetailData }) {
 
   return (
     <div className="flex items-center gap-2">
-      <Badge variant={equipment.status === "down" ? "destructive" : "success"}>{equipment.status}</Badge>
+      <StatusBadge tone={equipment.status === "down" ? "danger" : "success"} dot={equipment.status !== "down"}>
+        {equipment.status}
+      </StatusBadge>
       <Button
         type="button"
         size="sm"
@@ -175,11 +167,13 @@ export function EquipmentDetail({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{equipment.name}</h1>
+        <h1 className="text-[22px] font-bold text-ink">{equipment.name}</h1>
         {canManage ? (
           <StatusToggle equipment={equipment} />
         ) : (
-          <Badge variant={equipment.status === "down" ? "destructive" : "success"}>{equipment.status}</Badge>
+          <StatusBadge tone={equipment.status === "down" ? "danger" : "success"} dot={equipment.status !== "down"}>
+            {equipment.status}
+          </StatusBadge>
         )}
       </div>
 
@@ -229,97 +223,53 @@ export function EquipmentDetail({
       </dl>
       {equipment.notes && <p className="text-sm text-muted-foreground">{equipment.notes}</p>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Manuals &amp; files</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FilesManager equipmentId={equipment.id} files={files} />
-        </CardContent>
-      </Card>
+      <SectionCard title="Manuals & files">
+        <FilesManager equipmentId={equipment.id} files={files} />
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Preventive maintenance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PmScheduleManager
-            equipmentId={equipment.id}
-            schedules={pmSchedules}
-            assigneeOptions={assigneeOptions}
-            vendorOptions={vendorOptions}
-            canManage={canManage}
-          />
-        </CardContent>
-      </Card>
+      <SectionCard title="Preventive maintenance">
+        <PmScheduleManager
+          equipmentId={equipment.id}
+          schedules={pmSchedules}
+          assigneeOptions={assigneeOptions}
+          vendorOptions={vendorOptions}
+          canManage={canManage}
+        />
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Downtime history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Started</TableHead>
-                <TableHead>Ended</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {downtime.map((span) => (
-                <TableRow key={span.id}>
-                  <TableCell>{new Date(span.started_at).toLocaleString()}</TableCell>
-                  <TableCell>{span.ended_at ? new Date(span.ended_at).toLocaleString() : "Ongoing"}</TableCell>
-                </TableRow>
-              ))}
-              {downtime.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground">
-                    No downtime recorded.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <SectionCard title="Downtime history" flush={downtime.length > 0}>
+        {downtime.length === 0 ? (
+          <p className="text-[13px] text-muted-ink">No downtime recorded.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {downtime.map((span) => (
+              <ListRow
+                key={span.id}
+                title={new Date(span.started_at).toLocaleString()}
+                description={span.ended_at ? `Ended ${new Date(span.ended_at).toLocaleString()}` : "Ongoing"}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Work order history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {workOrders.map((wo) => (
-                <TableRow key={wo.id}>
-                  <TableCell>
-                    <Link href={`/maintenance/${wo.id}`} className="text-primary hover:underline">
-                      {wo.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{wo.status.replace("_", " ")}</TableCell>
-                  <TableCell className="text-muted-foreground">{new Date(wo.created_at).toLocaleDateString()}</TableCell>
-                </TableRow>
-              ))}
-              {workOrders.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
-                    No work orders yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <SectionCard title="Work order history" flush={workOrders.length > 0}>
+        {workOrders.length === 0 ? (
+          <p className="text-[13px] text-muted-ink">No work orders yet.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {workOrders.map((wo) => (
+              <ListRow
+                key={wo.id}
+                href={`/maintenance/${wo.id}`}
+                title={wo.title}
+                description={new Date(wo.created_at).toLocaleDateString()}
+                trailing={<StatusBadge tone="neutral">{wo.status.replace("_", " ")}</StatusBadge>}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }

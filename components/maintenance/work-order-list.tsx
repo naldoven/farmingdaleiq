@@ -1,14 +1,4 @@
-import Link from "next/link";
-
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SectionCard, StatusBadge, type StatusTone } from "@/components/mobile";
 
 export interface WorkOrderRow {
   id: string;
@@ -21,66 +11,57 @@ export interface WorkOrderRow {
   due_at: string | null;
 }
 
-const STATUS_VARIANT: Record<string, "default" | "outline" | "secondary" | "success" | "destructive"> = {
-  open: "outline",
-  in_progress: "secondary",
-  on_hold: "destructive",
+const STATUS_TONE: Record<string, StatusTone> = {
+  open: "info",
+  in_progress: "warning",
+  on_hold: "danger",
   complete: "success",
-  cancelled: "outline",
+  cancelled: "neutral",
 };
 
-const PRIORITY_VARIANT: Record<string, "default" | "outline" | "secondary" | "success" | "destructive"> = {
-  low: "outline",
-  medium: "secondary",
-  high: "destructive",
-  urgent: "destructive",
-};
+function formatDue(dueAt: string | null): string | null {
+  if (!dueAt) return null;
+  const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 /** Work order board/list (ARCHITECTURE.md "Work orders"). */
 export function WorkOrderList({ workOrders }: { workOrders: WorkOrderRow[] }) {
+  if (workOrders.length === 0) {
+    return <p className="px-1 text-[13px] text-muted-ink">No work orders.</p>;
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Title</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Priority</TableHead>
-          <TableHead>Equipment</TableHead>
-          <TableHead>Assigned</TableHead>
-          <TableHead>Due</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {workOrders.map((wo) => (
-          <TableRow key={wo.id}>
-            <TableCell className="font-medium">
-              <Link href={`/maintenance/${wo.id}`} className="text-primary hover:underline">
-                {wo.title}
-              </Link>
-            </TableCell>
-            <TableCell>
-              <Badge variant={STATUS_VARIANT[wo.status] ?? "outline"}>{wo.status.replace("_", " ")}</Badge>
-            </TableCell>
-            <TableCell>
-              <Badge variant={PRIORITY_VARIANT[wo.priority] ?? "outline"}>{wo.priority}</Badge>
-            </TableCell>
-            <TableCell className="text-muted-foreground">{wo.equipment_name ?? "—"}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {wo.assigned_user_name ?? wo.vendor_name ?? "Unassigned"}
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {wo.due_at ? new Date(wo.due_at).toLocaleString() : "—"}
-            </TableCell>
-          </TableRow>
-        ))}
-        {workOrders.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground">
-              No work orders.
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <SectionCard flush>
+      <div className="divide-y divide-line">
+        {workOrders.map((wo) => {
+          const due = formatDue(wo.due_at);
+          const assignee = wo.assigned_user_name ?? wo.vendor_name;
+          const description = [
+            wo.equipment_name,
+            (wo.priority === "high" || wo.priority === "urgent") ? `${wo.priority} priority` : null,
+            assignee ? `Assigned to ${assignee}` : "Unassigned",
+            due ? `Due ${due}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
+          return (
+            <ListRow
+              key={wo.id}
+              href={`/maintenance/${wo.id}`}
+              title={wo.title}
+              description={description}
+              trailing={
+                <StatusBadge tone={STATUS_TONE[wo.status] ?? "neutral"} dot={wo.status === "complete"}>
+                  {wo.status.replace("_", " ")}
+                </StatusBadge>
+              }
+            />
+          );
+        })}
+      </div>
+    </SectionCard>
   );
 }
