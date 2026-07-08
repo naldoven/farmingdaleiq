@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PersonRow } from "@/components/people/person-row";
 import { addTeamMember, removeTeamMember } from "@/app/(app)/people/teams/actions";
 
 export interface MemberOption {
@@ -35,38 +36,39 @@ export function TeamMemberManager({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="flex flex-col gap-2">
-        {members.length === 0 && (
-          <li className="text-sm text-muted-foreground">No members yet.</li>
-        )}
-        {members.map((member) => (
-          <li
-            key={member.id}
-            className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-          >
-            <span>{member.name}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={isPending}
-              onClick={() => {
-                setError(null);
-                startTransition(async () => {
-                  const result = await removeTeamMember({ teamId, userId: member.id });
-                  if (!result.ok) {
-                    setError(result.error);
-                    return;
-                  }
-                  router.refresh();
-                });
-              }}
-            >
-              Remove
-            </Button>
-          </li>
-        ))}
-      </ul>
+      {members.length === 0 ? (
+        <p className="text-[13px] text-muted-ink">No members yet.</p>
+      ) : (
+        <div className="-mx-4 flex flex-col divide-y divide-line">
+          {members.map((member) => (
+            <PersonRow
+              key={member.id}
+              name={member.name}
+              trailing={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => {
+                    setError(null);
+                    startTransition(async () => {
+                      const result = await removeTeamMember({ teamId, userId: member.id });
+                      if (!result.ok) {
+                        setError(result.error);
+                        return;
+                      }
+                      router.refresh();
+                    });
+                  }}
+                >
+                  Remove
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      )}
 
       {addableProfiles.length > 0 && (
         <form
