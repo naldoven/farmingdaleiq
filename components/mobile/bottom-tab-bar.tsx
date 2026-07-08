@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Home, Users, Menu as MenuIcon } from "lucide-react";
+import { ClipboardList, Home, Users, Menu as MenuIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PRIMARY_TABS, type PrimaryTabId } from "@/lib/nav/page-map";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<string, LucideIcon> = {
   home: Home,
   users: Users,
+  tasks: ClipboardList,
   menu: MenuIcon,
 };
 
@@ -27,15 +28,15 @@ export function TabItem({ icon: Icon, label, active, href, onClick }: TabItemPro
   const body = (
     <>
       <Icon
-        className="h-6 w-6"
+        className="h-7 w-7"
         strokeWidth={active ? 2.4 : 2}
         aria-hidden="true"
       />
-      <span className="text-[11px] font-semibold">{label}</span>
+      <span className="text-xs font-semibold">{label}</span>
     </>
   );
   const cls = cn(
-    "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-colors",
+    "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[64px] transition-colors",
     active ? "text-accent" : "text-[#94A3B8]",
   );
 
@@ -56,31 +57,25 @@ export function TabItem({ icon: Icon, label, active, href, onClick }: TabItemPro
 export interface BottomTabBarProps {
   /** Current pathname, used to mark the active tab. */
   pathname: string;
-  /** Called when the Menu tab is pressed (opens the full nav drawer). */
-  onMenuClick: () => void;
-  /** Whether the Menu drawer is currently open (marks Menu active). */
-  menuOpen?: boolean;
   className?: string;
 }
 
+/** Which primary tab owns a given pathname, or null if none does. */
+function activeTabFor(pathname: string): PrimaryTabId | null {
+  if (pathname === "/") return "home";
+  if (pathname === "/team" || pathname.startsWith("/team/")) return "team";
+  if (pathname === "/tasks" || pathname.startsWith("/tasks/")) return "tasks";
+  if (pathname === "/menu" || pathname.startsWith("/menu/")) return "menu";
+  return null;
+}
+
 /**
- * Fixed bottom tab bar for phones: Home / Team / Menu. White bar with a top
- * hairline and safe-area padding. The active destination is accent red, others
- * are gray. Menu is a button that opens the full navigation drawer.
+ * Fixed bottom tab bar for phones: Home / Team / Tasks / Menu. White bar with a
+ * top hairline and safe-area padding, tall tap targets. The active destination
+ * is accent red, others are gray. Every tab navigates to its route.
  */
-export function BottomTabBar({
-  pathname,
-  onMenuClick,
-  menuOpen = false,
-  className,
-}: BottomTabBarProps) {
-  const activeTab: PrimaryTabId | null = menuOpen
-    ? "menu"
-    : pathname === "/"
-      ? "home"
-      : pathname === "/team" || pathname.startsWith("/team/")
-        ? "team"
-        : null;
+export function BottomTabBar({ pathname, className }: BottomTabBarProps) {
+  const activeTab = activeTabFor(pathname);
 
   return (
     <nav
@@ -91,30 +86,15 @@ export function BottomTabBar({
       )}
     >
       <div className="flex items-stretch">
-        {PRIMARY_TABS.map((tab) => {
-          const Icon = ICONS[tab.icon];
-          const active = activeTab === tab.id;
-          if (tab.href) {
-            return (
-              <TabItem
-                key={tab.id}
-                icon={Icon}
-                label={tab.label}
-                active={active}
-                href={tab.href}
-              />
-            );
-          }
-          return (
-            <TabItem
-              key={tab.id}
-              icon={Icon}
-              label={tab.label}
-              active={active}
-              onClick={onMenuClick}
-            />
-          );
-        })}
+        {PRIMARY_TABS.map((tab) => (
+          <TabItem
+            key={tab.id}
+            icon={ICONS[tab.icon]}
+            label={tab.label}
+            active={activeTab === tab.id}
+            href={tab.href}
+          />
+        ))}
       </div>
     </nav>
   );

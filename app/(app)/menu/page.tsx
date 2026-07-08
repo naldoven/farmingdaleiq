@@ -1,4 +1,4 @@
-import { ActionPill, ListRow, SectionCard, SectionLabel } from "@/components/mobile";
+import { ActionPill, ListRow, SectionLabel } from "@/components/mobile";
 import { hasPermission } from "@/lib/auth/permissions";
 
 import { ASSIGN_ACTIONS, SEND_ACTIONS, VIEW_ITEMS, visibleActions } from "./menu-items";
@@ -32,7 +32,7 @@ export default async function MenuPage() {
       {sendActions.length > 0 && (
         <section className="flex flex-col gap-3">
           <SectionLabel>Send</SectionLabel>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             {sendActions.map((action) => (
               <ActionPill
                 key={action.key}
@@ -49,7 +49,7 @@ export default async function MenuPage() {
       {assignActions.length > 0 && (
         <section className="flex flex-col gap-3">
           <SectionLabel>Assign</SectionLabel>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             {assignActions.map((action) => (
               <ActionPill
                 key={action.key}
@@ -65,19 +65,18 @@ export default async function MenuPage() {
 
       <section className="flex flex-col gap-3">
         <SectionLabel>View</SectionLabel>
-        <SectionCard flush>
-          <div className="divide-y divide-line">
-            {VIEW_ITEMS.map((item) => (
-              <ListRow
-                key={item.key}
-                title={item.label}
-                icon={item.icon}
-                iconTone={item.iconTone}
-                href={item.href}
-              />
-            ))}
-          </div>
-        </SectionCard>
+        <div className="flex flex-col gap-2.5">
+          {VIEW_ITEMS.map((item) => (
+            <ListRow
+              key={item.key}
+              title={item.label}
+              icon={item.icon}
+              iconTone={item.iconTone}
+              href={item.href}
+              className="rounded-2xl border border-line bg-card"
+            />
+          ))}
+        </div>
       </section>
     </div>
   );

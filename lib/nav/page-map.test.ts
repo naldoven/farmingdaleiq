@@ -7,9 +7,30 @@ import {
 } from "./page-map";
 
 describe("resolveHeader", () => {
-  it("uses the home variant for the primary tab routes", () => {
-    expect(resolveHeader("/")).toMatchObject({ variant: "home", title: "Home" });
-    expect(resolveHeader("/team")).toMatchObject({ variant: "home", title: "Team" });
+  it("uses the home variant only for the root route", () => {
+    expect(resolveHeader("/")).toMatchObject({
+      variant: "home",
+      title: "Home",
+      showBack: false,
+    });
+  });
+
+  it("gives the other primary tabs a title header with no back chevron", () => {
+    expect(resolveHeader("/team")).toMatchObject({
+      variant: "subpage",
+      title: "Team",
+      showBack: false,
+    });
+    expect(resolveHeader("/tasks")).toMatchObject({
+      variant: "subpage",
+      title: "Tasks",
+      showBack: false,
+    });
+    expect(resolveHeader("/menu")).toMatchObject({
+      variant: "subpage",
+      title: "Menu",
+      showBack: false,
+    });
   });
 
   it("titles a top-level sub-page from the page map", () => {

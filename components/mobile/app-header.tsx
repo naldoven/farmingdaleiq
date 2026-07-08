@@ -22,6 +22,8 @@ export interface AppHeaderProps {
   title?: string;
   /** Back destination for the sub-page chevron. */
   backHref?: string;
+  /** Whether to show the back chevron. Primary-tab screens set this false. */
+  showBack?: boolean;
   /** Right-side actions on a sub-page (gear, +, overflow). */
   actions?: React.ReactNode;
   /** Home-variant user identity for the avatar. */
@@ -43,6 +45,7 @@ export function AppHeader({
   variant,
   title,
   backHref = "/",
+  showBack = true,
   actions,
   userName = "",
   storeName,
@@ -80,14 +83,21 @@ export function AppHeader({
         </>
       ) : (
         <>
-          <Link
-            href={backHref}
-            aria-label="Back"
-            className="-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink hover:bg-secondary"
+          {showBack && (
+            <Link
+              href={backHref}
+              aria-label="Back"
+              className="-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink hover:bg-secondary"
+            >
+              <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+            </Link>
+          )}
+          <h1
+            className={cn(
+              "min-w-0 flex-1 truncate text-[26px] font-bold text-ink",
+              !showBack && "pl-1",
+            )}
           >
-            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
-          </Link>
-          <h1 className="min-w-0 flex-1 truncate text-[22px] font-bold text-ink">
             {title}
           </h1>
           {actions && (
