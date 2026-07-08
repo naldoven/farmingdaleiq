@@ -4,6 +4,7 @@ import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   addDays,
+  pmChecklistRunInsert,
   planPmGeneration,
   resolvePmPriority,
   type PmScheduleLike,
@@ -15,19 +16,10 @@ import {
  * work order N days before due"; PLAN.md S8 "PM schedules generating work
  * orders lead_days early (scheduled function)").
  *
- * Same "no existing cron wiring in this repo yet" situation documented in
- * app/api/cron/checklists/route.ts (S1): no `vercel.json`, so this stream
- * adds its own route handler under a scoped path rather than editing shared
- * config. Wire it up the same way:
- *   - Vercel Cron: a `crons` entry in `vercel.json` (outside this stream's
- *     owned files — a P2/deploy-checklist item) pointing at
- *     `/api/cron/maintenance` with a daily schedule, `CRON_SECRET` set in
- *     the project env vars so Vercel's `Authorization: Bearer $CRON_SECRET`
- *     header authenticates the request.
- *   - Or a Supabase pg_cron job hitting this URL with the same header via
- *     pg_net.
- * Safe to call manually/via curl with the right bearer token in the
- * meantime.
+ * Wired into Vercel Cron via the `crons` entry in vercel.json
+ * (`/api/cron/maintenance`, `0 5 * * *`), which authenticates with
+ * `Authorization: Bearer $CRON_SECRET`. Also safe to call manually/via curl
+ * with the same bearer token, or from a Supabase pg_cron job over pg_net.
  *
  * Idempotent (PLAN.md ground rules): a schedule already represented by an
  * open (non-terminal) work order is skipped (see planPmGeneration in
@@ -35,10 +27,25 @@ import {
  * day never double-generates a work order for the same due cycle.
  */
 
+/**
+ * Fails closed (401) whenever CRON_SECRET isn't set or doesn't match — this
+ * route must never run unauthenticated in production. The two cases are
+ * logged distinctly server-side (never in the response body, which stays a
+ * generic 401) so a misconfigured deploy shows up as "CRON_SECRET is unset"
+ * in the logs instead of looking identical to a stray/incorrect caller.
+ */
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.get("authorization") === `Bearer ${secret}`;
+  if (!secret) {
+    console.error("maintenance cron: CRON_SECRET is not set; refusing all requests");
+    return false;
+  }
+  const provided = request.headers.get("authorization");
+  if (provided !== `Bearer ${secret}`) {
+    console.error("maintenance cron: rejected a request with a missing/incorrect bearer token");
+    return false;
+  }
+  return true;
 }
 
 async function emitEventSafely(key: Parameters<typeof emitEvent>[0], payload: Record<string, unknown>) {
@@ -93,6 +100,30 @@ async function run(request: NextRequest) {
 
   let generated = 0;
   for (const schedule of due) {
+    // "Optional checklist procedure" (ARCHITECTURE.md "Preventive
+    // maintenance"): materialize a real checklist_run from the schedule's
+    // template before creating the work order, so the work order can link to
+    // it. Best-effort: a failure here still lets the work order itself
+    // generate rather than blocking PM generation on the checklist module.
+    let checklistRunId: string | null = null;
+    const checklistRunInsert = pmChecklistRunInsert(schedule, today);
+    if (checklistRunInsert) {
+      const { data: checklistRun, error: checklistRunError } = await supabase
+        .from("checklist_runs")
+        .insert({ ...checklistRunInsert, status: "pending" })
+        .select("id")
+        .single();
+
+      if (checklistRunError || !checklistRun) {
+        console.error(
+          `maintenance cron: failed to create checklist run for schedule ${schedule.id}`,
+          checklistRunError,
+        );
+      } else {
+        checklistRunId = checklistRun.id;
+      }
+    }
+
     const { data: workOrder, error: insertError } = await supabase
       .from("work_orders")
       .insert({
@@ -105,6 +136,7 @@ async function run(request: NextRequest) {
         assigned_user_id: schedule.assign_user_id,
         vendor_id: schedule.vendor_id,
         due_at: schedule.next_due_on,
+        checklist_run_id: checklistRunId,
       })
       .select("id")
       .single();
