@@ -8,32 +8,45 @@ vi.mock("@/lib/events/bus", () => ({
 import { emitEvent } from "@/lib/events/bus";
 import type { Database } from "@/lib/db/types";
 import {
+  followUpSourceAnswerId,
   mapEventToTaskInsert,
   processTaskEvents,
   type AppEventRow,
+  type ResolvedFollowUp,
 } from "./system-tasks";
 
 const CREATED_AT = "2026-07-10T12:00:00.000Z";
 
 describe("mapEventToTaskInsert", () => {
-  it("maps a reward_claim event to a reward_fulfillment task", () => {
+  it("maps a reward_claim event (real rewards payload) to a reward_fulfillment task", () => {
+    // The exact shape emitted by rewards.claimReward (app/(app)/rewards/actions.ts).
     const event: AppEventRow = {
       id: "evt-1",
       event_key: "reward_claim",
-      payload: { reward_claim_id: "claim-1", reward_name: "Free sandwich", user_name: "Alex" },
+      payload: {
+        claim_id: "claim-1",
+        user_id: "user-9",
+        reward_id: "reward-1",
+        reward_name: "Free sandwich",
+        cost: 50,
+      },
       created_at: CREATED_AT,
     };
     const insert = mapEventToTaskInsert(event);
     expect(insert).toMatchObject({
       kind: "reward_fulfillment",
       title: "Fulfill reward: Free sandwich",
-      description: "Claimed by Alex.",
       date: "2026-07-10",
-      ref: { event_id: "evt-1", source: "reward_claim", reward_claim_id: "claim-1" },
+      ref: {
+        event_id: "evt-1",
+        source: "reward_claim",
+        reward_claim_id: "claim-1",
+        claimed_by: "user-9",
+      },
     });
   });
 
-  it("skips a reward_claim event missing reward_claim_id", () => {
+  it("skips a reward_claim event missing claim_id", () => {
     const event: AppEventRow = {
       id: "evt-2",
       event_key: "reward_claim",
@@ -43,31 +56,42 @@ describe("mapEventToTaskInsert", () => {
     expect(mapEventToTaskInsert(event)).toBeNull();
   });
 
-  it("maps a follow_up_assigned event to a follow_up task assigned to a user", () => {
+  it("maps a follow_up_assigned event (real checklist payload) using resolved content", () => {
+    // The exact shape emitted by checklists.completeRun: camelCase, keys only.
     const event: AppEventRow = {
       id: "evt-3",
       event_key: "follow_up_assigned",
-      payload: {
-        title: "Recheck cold holding",
-        assigned_user_id: "user-1",
-        assigned_position_id: "position-1",
-      },
+      payload: { sourceAnswerId: "ans-1", runId: "run-1" },
       created_at: CREATED_AT,
     };
-    const insert = mapEventToTaskInsert(event);
+    const followUp: ResolvedFollowUp = {
+      followUpId: "fu-1",
+      questionPrompt: "Recheck cold holding",
+      description: "Follow up on a flagged checklist answer.",
+      assignedUserId: "user-1",
+      dueAt: "2026-07-11T15:00:00.000Z",
+    };
+    const insert = mapEventToTaskInsert(event, { followUp });
     expect(insert).toMatchObject({
       kind: "follow_up",
-      title: "Recheck cold holding",
+      title: "Follow-up: Recheck cold holding",
+      description: "Follow up on a flagged checklist answer.",
       assigned_user_id: "user-1",
       assigned_position_id: null,
+      due_at: "2026-07-11T15:00:00.000Z",
+      ref: {
+        follow_up_id: "fu-1",
+        source_answer_id: "ans-1",
+        run_id: "run-1",
+      },
     });
   });
 
-  it("falls back to a default title for follow_up_assigned with no title", () => {
+  it("falls back to a default title for follow_up_assigned with no resolved content", () => {
     const event: AppEventRow = {
       id: "evt-4",
       event_key: "follow_up_assigned",
-      payload: {},
+      payload: { sourceAnswerId: "ans-2", runId: "run-2" },
       created_at: CREATED_AT,
     };
     expect(mapEventToTaskInsert(event)?.title).toBe("Follow-up needed");
@@ -110,13 +134,26 @@ describe("mapEventToTaskInsert", () => {
   });
 });
 
+describe("followUpSourceAnswerId", () => {
+  it("reads the canonical snake_case key", () => {
+    expect(followUpSourceAnswerId({ source_answer_id: "a" })).toBe("a");
+  });
+  it("reads the checklist producer's camelCase key", () => {
+    expect(followUpSourceAnswerId({ sourceAnswerId: "b" })).toBe("b");
+  });
+  it("returns undefined when neither is present", () => {
+    expect(followUpSourceAnswerId({})).toBeUndefined();
+  });
+});
+
 // Minimal fake Supabase covering exactly the chains processTaskEvents uses.
 function fakeSupabase(opts: {
   events: AppEventRow[];
   existingRefs: Array<Record<string, unknown> | null>;
   captured: Array<Record<string, unknown>>;
+  followUps?: FollowUpRow[];
 }) {
-  const { events, existingRefs, captured } = opts;
+  const { events, existingRefs, captured, followUps = [] } = opts;
   let nextId = 100;
   return {
     from(table: string) {
@@ -134,6 +171,20 @@ function fakeSupabase(opts: {
                     };
                   },
                 };
+              },
+            };
+          },
+        };
+      }
+      if (table === "follow_ups") {
+        return {
+          select() {
+            return {
+              in(_col: string, ids: string[]) {
+                return Promise.resolve({
+                  data: followUps.filter((f) => ids.includes(f.source_answer_id ?? "")),
+                  error: null,
+                });
               },
             };
           },
@@ -172,6 +223,15 @@ function fakeSupabase(opts: {
   } as unknown as SupabaseClient<Database>;
 }
 
+interface FollowUpRow {
+  id: string;
+  source_answer_id: string | null;
+  description: string | null;
+  assigned_to: string | null;
+  due_at: string | null;
+  checklist_answers: { checklist_questions: { prompt: string | null } | null } | null;
+}
+
 describe("processTaskEvents", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -182,7 +242,7 @@ describe("processTaskEvents", () => {
       {
         id: "evt-1",
         event_key: "reward_claim",
-        payload: { reward_claim_id: "claim-1", reward_name: "Free sandwich" },
+        payload: { claim_id: "claim-1", user_id: "user-9", reward_name: "Free sandwich" },
         created_at: CREATED_AT,
       },
     ];
@@ -199,12 +259,49 @@ describe("processTaskEvents", () => {
     );
   });
 
+  it("resolves follow-up content from the DB and creates a traceable task", async () => {
+    const events: AppEventRow[] = [
+      {
+        id: "evt-fu",
+        event_key: "follow_up_assigned",
+        payload: { sourceAnswerId: "ans-1", runId: "run-1" },
+        created_at: CREATED_AT,
+      },
+    ];
+    const captured: Array<Record<string, unknown>> = [];
+    const supabase = fakeSupabase({
+      events,
+      existingRefs: [],
+      captured,
+      followUps: [
+        {
+          id: "fu-1",
+          source_answer_id: "ans-1",
+          description: "Follow up on a flagged checklist answer.",
+          assigned_to: "user-7",
+          due_at: "2026-07-11T15:00:00.000Z",
+          checklist_answers: { checklist_questions: { prompt: "Recheck cold holding" } },
+        },
+      ],
+    });
+
+    const result = await processTaskEvents(supabase);
+
+    expect(result).toEqual({ created: 1, skipped: 0 });
+    expect(captured[0]).toMatchObject({
+      kind: "follow_up",
+      title: "Follow-up: Recheck cold holding",
+      assigned_user_id: "user-7",
+      due_at: "2026-07-11T15:00:00.000Z",
+    });
+  });
+
   it("is idempotent: skips an event that already produced a task", async () => {
     const events: AppEventRow[] = [
       {
         id: "evt-1",
         event_key: "reward_claim",
-        payload: { reward_claim_id: "claim-1" },
+        payload: { claim_id: "claim-1" },
         created_at: CREATED_AT,
       },
     ];

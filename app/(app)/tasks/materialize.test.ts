@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+vi.mock("@/lib/events/bus", () => ({
+  emitEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { emitEvent } from "@/lib/events/bus";
 import type { Database } from "@/lib/db/types";
 import {
   buildTaskInsert,
@@ -131,7 +136,21 @@ function fakeSupabase(opts: {
           },
           upsert(rows: Array<Record<string, unknown>>) {
             captured.push(...rows);
-            return Promise.resolve({ error: null });
+            return {
+              select() {
+                // ignoreDuplicates returns only the rows actually inserted; the
+                // fake treats every passed row as newly inserted (the caller
+                // already filtered out already-materialized template+date pairs).
+                return Promise.resolve({
+                  data: rows.map((r, i) => ({
+                    id: `task-${i}`,
+                    assigned_user_id: r.assigned_user_id ?? null,
+                    assigned_position_id: r.assigned_position_id ?? null,
+                  })),
+                  error: null,
+                });
+              },
+            };
           },
         };
       }
@@ -141,6 +160,10 @@ function fakeSupabase(opts: {
 }
 
 describe("materializeTasksForDate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("creates a task for a due template with no existing task", async () => {
     const t = template({ frequency: "daily" });
     const captured: Array<Record<string, unknown>> = [];
@@ -178,5 +201,31 @@ describe("materializeTasksForDate", () => {
 
     expect(result).toEqual({ created: 0, skipped: 0 });
     expect(captured).toHaveLength(0);
+  });
+
+  it("emits task_assigned for a newly-materialized pre-assigned recurring task", async () => {
+    const t = template({
+      frequency: "daily",
+      assign_user_id: "99999999-9999-4999-8999-999999999999",
+    });
+    const captured: Array<Record<string, unknown>> = [];
+    const supabase = fakeSupabase({ templates: [t], existingTasks: [], captured });
+
+    await materializeTasksForDate(supabase, MONDAY);
+
+    expect(emitEvent).toHaveBeenCalledWith(
+      "task_assigned",
+      expect.objectContaining({ user_id: t.assign_user_id }),
+    );
+  });
+
+  it("does not emit task_assigned for an unassigned recurring task", async () => {
+    const t = template({ frequency: "daily", assign_user_id: null, assign_position_id: null });
+    const captured: Array<Record<string, unknown>> = [];
+    const supabase = fakeSupabase({ templates: [t], existingTasks: [], captured });
+
+    await materializeTasksForDate(supabase, MONDAY);
+
+    expect(emitEvent).not.toHaveBeenCalled();
   });
 });

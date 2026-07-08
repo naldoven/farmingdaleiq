@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { emitEvent } from "@/lib/events/bus";
+import { buildTaskAssignedEvent } from "@/app/(app)/tasks/events";
 import type { Database } from "@/lib/db/types";
 
 /**
@@ -115,13 +117,41 @@ export async function materializeTasksForDate(
   // FIQ-14: upsert on (template_id, date) so a concurrent setup-post fan-out
   // materializing the same recurring task can't create a duplicate (which
   // would double-emit task_complete). ignoreDuplicates drops the loser
-  // silently instead of raising 23505.
-  const { error: insertError } = await supabase
+  // silently instead of raising 23505. `.select()` returns only the rows this
+  // call actually inserted (conflicting rows return nothing), so we notify for
+  // each genuinely-new pre-assigned task exactly once — a retry that hits the
+  // conflict path emits nothing.
+  const { data: inserted, error: insertError } = await supabase
     .from("tasks")
-    .upsert(toInsert, { onConflict: "template_id,date", ignoreDuplicates: true });
+    .upsert(toInsert, { onConflict: "template_id,date", ignoreDuplicates: true })
+    .select("id, assigned_user_id, assigned_position_id");
   if (insertError) {
     throw new Error(`materializeTasksForDate: insert failed: ${insertError.message}`);
   }
 
-  return { created: toInsert.length, skipped: due.length - toInsert.length };
+  // A recurring template can carry a pre-set assignee (assign_user_id /
+  // assign_position_id). The ad hoc / claim / delegate paths emit
+  // `task_assigned`, but materialization did not, so a pre-assigned recurring
+  // task triggered no notification. Emit one per newly-materialized assigned
+  // row. Best-effort: this runs from the unauthenticated sync route where the
+  // frozen event bus may not be able to write; the task row is the durable
+  // side effect and is never lost.
+  for (const row of inserted ?? []) {
+    if (!row.assigned_user_id && !row.assigned_position_id) continue;
+    try {
+      await emitEvent(
+        "task_assigned",
+        buildTaskAssignedEvent({
+          taskId: row.id,
+          assignedUserId: row.assigned_user_id,
+          assignedPositionId: row.assigned_position_id,
+        }),
+      );
+    } catch {
+      // See system-tasks.ts's header comment re: emitEvent in a scheduled context.
+    }
+  }
+
+  const createdCount = (inserted ?? []).length;
+  return { created: createdCount, skipped: due.length - createdCount };
 }

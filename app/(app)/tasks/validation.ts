@@ -22,6 +22,16 @@ const timeString = z
   .optional()
   .or(z.literal(""));
 
+// A due timestamp coming off a UI field: either empty (no due time) or a value
+// `new Date()` can parse. Guards against a malformed string reaching the
+// `tasks.due_at` insert and silently landing as null / a bad timestamp.
+const dueAtString = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || !Number.isNaN(new Date(v).getTime()), "Use a valid date/time")
+  .optional()
+  .or(z.literal(""));
+
 function normalizeUuid(value: string | undefined): string | null {
   return value ? value : null;
 }
@@ -39,10 +49,12 @@ export const createTaskSchema = z
     date: z.string().trim().min(1, "Date is required"),
     dayPartId: uuidOrEmpty,
     startTime: timeString,
-    dueAt: z.string().trim().optional().or(z.literal("")),
+    dueAt: dueAtString,
     assignedUserId: uuidOrEmpty,
     assignedPositionId: uuidOrEmpty,
     tokenValue: z.number().int().min(0).max(10_000).default(0),
+    notifyDiscord: z.boolean().default(false),
+    discordChannelId: uuidOrEmpty,
   })
   .transform((v) => ({
     title: v.title,
@@ -54,35 +66,53 @@ export const createTaskSchema = z
     assignedUserId: normalizeUuid(v.assignedUserId),
     assignedPositionId: normalizeUuid(v.assignedPositionId),
     tokenValue: v.tokenValue,
+    notifyDiscord: v.notifyDiscord,
+    discordChannelId: normalizeUuid(v.discordChannelId),
   }));
 
 export type CreateTaskInput = z.input<typeof createTaskSchema>;
 
 export const taskFrequencySchema = z.enum(["daily", "weekly"]);
 
-export const createTaskTemplateSchema = z
-  .object({
-    title: z.string().trim().min(1, "Title is required").max(200),
-    description: z.string().trim().max(2000).optional().or(z.literal("")),
-    frequency: taskFrequencySchema,
-    daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).optional(),
-    dayPartId: uuidOrEmpty,
-    startTime: timeString,
-    dueTime: timeString,
-    assignPositionId: uuidOrEmpty,
-    assignUserId: uuidOrEmpty,
-    tokenValue: z.number().int().min(0).max(10_000).default(0),
-  })
-  .superRefine((v, ctx) => {
-    if (v.frequency === "weekly" && (!v.daysOfWeek || v.daysOfWeek.length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Pick at least one day of the week for a weekly task",
-        path: ["daysOfWeek"],
-      });
-    }
-  })
-  .transform((v) => ({
+const taskTemplateFields = {
+  title: z.string().trim().min(1, "Title is required").max(200),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
+  frequency: taskFrequencySchema,
+  daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  dayPartId: uuidOrEmpty,
+  startTime: timeString,
+  dueTime: timeString,
+  assignPositionId: uuidOrEmpty,
+  assignUserId: uuidOrEmpty,
+  tokenValue: z.number().int().min(0).max(10_000).default(0),
+};
+
+function requireWeeklyDays(
+  v: { frequency: "daily" | "weekly"; daysOfWeek?: number[] },
+  ctx: z.RefinementCtx,
+) {
+  if (v.frequency === "weekly" && (!v.daysOfWeek || v.daysOfWeek.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Pick at least one day of the week for a weekly task",
+      path: ["daysOfWeek"],
+    });
+  }
+}
+
+function normalizeTemplateFields(v: {
+  title: string;
+  description?: string;
+  frequency: "daily" | "weekly";
+  daysOfWeek?: number[];
+  dayPartId?: string;
+  startTime?: string;
+  dueTime?: string;
+  assignPositionId?: string;
+  assignUserId?: string;
+  tokenValue: number;
+}) {
+  return {
     title: v.title,
     description: v.description ? v.description : null,
     frequency: v.frequency,
@@ -93,9 +123,23 @@ export const createTaskTemplateSchema = z
     assignPositionId: normalizeUuid(v.assignPositionId),
     assignUserId: normalizeUuid(v.assignUserId),
     tokenValue: v.tokenValue,
-  }));
+  };
+}
+
+export const createTaskTemplateSchema = z
+  .object(taskTemplateFields)
+  .superRefine(requireWeeklyDays)
+  .transform(normalizeTemplateFields);
 
 export type CreateTaskTemplateInput = z.input<typeof createTaskTemplateSchema>;
+
+// Editing an existing recurring template: same fields plus the target id.
+export const updateTaskTemplateSchema = z
+  .object({ id: z.string().uuid(), ...taskTemplateFields })
+  .superRefine(requireWeeklyDays)
+  .transform((v) => ({ id: v.id, ...normalizeTemplateFields(v) }));
+
+export type UpdateTaskTemplateInput = z.input<typeof updateTaskTemplateSchema>;
 
 export const setTaskTemplateActiveSchema = z.object({
   id: z.string().uuid(),
@@ -116,15 +160,27 @@ export const claimTaskSchema = z.object({
 
 export type ClaimTaskInput = z.infer<typeof claimTaskSchema>;
 
-// Leader delegation: assign an unassigned (or reassign an existing) task to a
-// person or a position. Exactly one of userId/positionId must be set.
+// Leader delegation: assign a task to a person or a position, or (with
+// `toPool: true`) hand it back to the shift pool by clearing both assignees.
+// Outside a pool return, exactly one of userId/positionId must be set.
 export const delegateTaskSchema = z
   .object({
     id: z.string().uuid(),
     assignedUserId: uuidOrEmpty,
     assignedPositionId: uuidOrEmpty,
+    toPool: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.toPool) {
+      if (v.assignedUserId || v.assignedPositionId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Returning to the pool can't also set an assignee",
+          path: ["assignedUserId"],
+        });
+      }
+      return;
+    }
     const hasUser = Boolean(v.assignedUserId);
     const hasPosition = Boolean(v.assignedPositionId);
     if (hasUser === hasPosition) {
