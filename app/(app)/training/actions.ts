@@ -25,18 +25,28 @@ import { PermissionError, hasPermission, requirePermission } from "@/lib/auth/pe
 import { createClient } from "@/lib/supabase/server";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/training/action-types";
-import { allItemsComplete, canStampLeadership, canStampPosition, pickVacantSlot } from "@/app/(app)/training/stamp-logic";
 import {
+  allItemsComplete,
+  canStampLeadership,
+  canStampPosition,
+  isItemProgressComplete,
+  pickVacantSlot,
+} from "@/app/(app)/training/stamp-logic";
+import {
+  createCourseAttachmentSchema,
   createCourseSchema,
   createPassportItemSchema,
+  deleteCourseAttachmentSchema,
   deletePassportItemSchema,
   enrollPassportSchema,
   signItemSchema,
   stampPassportSchema,
   submitCourseFeedbackSchema,
   upsertItemProgressSchema,
+  type CreateCourseAttachmentInput,
   type CreateCourseInput,
   type CreatePassportItemInput,
+  type DeleteCourseAttachmentInput,
   type DeletePassportItemInput,
   type EnrollPassportInput,
   type SignItemInput,
@@ -154,7 +164,13 @@ export async function enrollPassport(input: EnrollPassportInput): Promise<Action
 
 /** Self-reported progress (check/slider/photo) OR a trainer/manager
  * correcting it. Ownership check (current user === enrollment.user_id)
- * stands in for a permission key on the self-service path, mirroring RLS. */
+ * stands in for a permission key on the self-service path, mirroring RLS.
+ *
+ * completed_at only gets set when the written value is real completion for
+ * the item's type (see isItemProgressComplete): unchecking a checkbox, or
+ * writing a partial slider value, clears completed_at instead of leaving --
+ * or instantly stamping -- a false "done" so stamp-readiness can't be
+ * reached prematurely. */
 export async function upsertItemProgress(input: UpsertItemProgressInput): Promise<ActionResult> {
   try {
     const parsed = upsertItemProgressSchema.parse(input);
@@ -181,6 +197,12 @@ export async function upsertItemProgress(input: UpsertItemProgressInput): Promis
       }
     }
 
+    const { data: item } = await supabase
+      .from("passport_items")
+      .select("type")
+      .eq("id", parsed.itemId)
+      .maybeSingle();
+
     const value: Record<string, unknown> = {};
     if (parsed.checked !== undefined) value.checked = parsed.checked;
     if (parsed.sliderValue !== undefined) value.sliderValue = parsed.sliderValue;
@@ -192,12 +214,18 @@ export async function upsertItemProgress(input: UpsertItemProgressInput): Promis
       .eq("item_id", parsed.itemId)
       .maybeSingle();
 
+    const complete = isItemProgressComplete(item?.type ?? null, {
+      checked: parsed.checked,
+      sliderValue: parsed.sliderValue,
+      photoUrl: parsed.photoUrl,
+    });
+
     const row = {
       enrollment_id: parsed.enrollmentId,
       item_id: parsed.itemId,
       value: value as never,
       photo_url: parsed.photoUrl ? parsed.photoUrl : null,
-      completed_at: new Date().toISOString(),
+      completed_at: complete ? new Date().toISOString() : null,
     };
 
     const { error } = existing
@@ -394,6 +422,56 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
 
     revalidatePath("/training");
     return { ok: true, data: { id: data.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/** Attaches a manual/reference file to a course (ARCHITECTURE.md training
+ * courses: vendor-tied training material). Manager-only, matching the
+ * course_attachments RLS write policy. */
+export async function createCourseAttachment(
+  input: CreateCourseAttachmentInput,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requirePermission("training.manage");
+    const parsed = createCourseAttachmentSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("course_attachments")
+      .insert({
+        course_id: parsed.courseId,
+        file_url: parsed.fileUrl,
+        label: parsed.label ? parsed.label : null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      return { ok: false, error: error?.message ?? "Could not add the attachment." };
+    }
+
+    revalidatePath("/training");
+    return { ok: true, data: { id: data.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+export async function deleteCourseAttachment(input: DeleteCourseAttachmentInput): Promise<ActionResult> {
+  try {
+    await requirePermission("training.manage");
+    const parsed = deleteCourseAttachmentSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase.from("course_attachments").delete().eq("id", parsed.id);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/training");
+    return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }
