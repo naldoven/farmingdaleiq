@@ -85,9 +85,9 @@ action, `--danger` for alert and overdue.
 
 ## Layout
 
-- **Mobile (< 768px):** fixed bottom tab bar (Home / Team / Menu) and a sticky
-  top header. Page content scrolls between them with `pb-24` so nothing hides
-  behind the bar. The notification bell is in the header, not a tab.
+- **Mobile (< 768px):** fixed bottom tab bar (Home / Team / Tasks / Menu) and a
+  sticky top header. Page content scrolls between them with `pb-24` so nothing
+  hides behind the bar. The notification bell is in the header, not a tab.
 - **Desktop (>= 768px):** the left sidebar returns; the bottom bar and mobile
   header are hidden. Dashboard screens (Home / Team / Menu) should render as a
   single centered column, roughly `max-w-[480px]`. Data-heavy screens may go
@@ -142,7 +142,7 @@ directly.
 
 ### BottomTabBar + TabItem
 
-Fixed bottom bar (Home / Team / Menu). `TabItem` is one destination: icon over
+Fixed bottom bar (Home / Team / Tasks / Menu). `TabItem` is one destination: icon over
 label, active in accent red, inactive in `#94A3B8`. Menu is a button that opens
 the full navigation drawer. Props: `pathname`, `onMenuClick`, `menuOpen`.
 
@@ -318,6 +318,7 @@ White rounded card that groups content, with an optional title row and an
 ## Navigation source of truth
 
 `lib/nav/page-map.ts` holds `NAV_GROUPS` (every route, grouped), `PRIMARY_TABS`
-(Home / Team / Menu), `resolveHeader(pathname)` (header variant + title + back
-target), and the avatar helpers `avatarColor` and `initialsFromName`. Add new
-routes there so the sidebar, drawer, and headers pick them up automatically.
+(Home / Team / Tasks / Menu), `resolveHeader(pathname)` (header variant + title
++ back target), and the avatar helpers `avatarColor` and `initialsFromName`.
+Add new routes there so the sidebar, drawer, and headers pick them up
+automatically.

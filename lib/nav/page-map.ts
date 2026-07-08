@@ -339,11 +339,11 @@ export function findNavItem(href: string): NavItem | undefined {
 }
 
 /**
- * The three primary destinations on the mobile bottom tab bar. "Menu" is not a
+ * The four primary destinations on the mobile bottom tab bar. "Menu" is not a
  * route — it opens the full navigation drawer (every module in NAV_GROUPS).
  * Kept here so the shell and any nav tests share one source of truth.
  */
-export type PrimaryTabId = "home" | "team" | "menu";
+export type PrimaryTabId = "home" | "team" | "tasks" | "menu";
 
 export interface PrimaryTab {
   id: PrimaryTabId;
@@ -351,12 +351,13 @@ export interface PrimaryTab {
   /** Route to navigate to, or null for the Menu drawer trigger. */
   href: string | null;
   /** lucide-react icon name, resolved by the tab bar. */
-  icon: "home" | "users" | "menu";
+  icon: "home" | "users" | "clipboard-list" | "menu";
 }
 
 export const PRIMARY_TABS: PrimaryTab[] = [
   { id: "home", label: "Home", href: "/", icon: "home" },
   { id: "team", label: "Team", href: "/team", icon: "users" },
+  { id: "tasks", label: "Tasks", href: "/tasks", icon: "clipboard-list" },
   { id: "menu", label: "Menu", href: null, icon: "menu" },
 ];
 

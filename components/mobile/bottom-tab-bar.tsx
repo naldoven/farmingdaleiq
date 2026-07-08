@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Home, Users, Menu as MenuIcon } from "lucide-react";
+import { Home, Users, ClipboardList, Menu as MenuIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PRIMARY_TABS, type PrimaryTabId } from "@/lib/nav/page-map";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<string, LucideIcon> = {
   home: Home,
   users: Users,
+  "clipboard-list": ClipboardList,
   menu: MenuIcon,
 };
 
@@ -64,9 +65,9 @@ export interface BottomTabBarProps {
 }
 
 /**
- * Fixed bottom tab bar for phones: Home / Team / Menu. White bar with a top
- * hairline and safe-area padding. The active destination is accent red, others
- * are gray. Menu is a button that opens the full navigation drawer.
+ * Fixed bottom tab bar for phones: Home / Team / Tasks / Menu. White bar with
+ * a top hairline and safe-area padding. The active destination is accent red,
+ * others are gray. Menu is a button that opens the full navigation drawer.
  */
 export function BottomTabBar({
   pathname,
@@ -80,7 +81,9 @@ export function BottomTabBar({
       ? "home"
       : pathname === "/team" || pathname.startsWith("/team/")
         ? "team"
-        : null;
+        : pathname === "/tasks" || pathname.startsWith("/tasks/")
+          ? "tasks"
+          : null;
 
   return (
     <nav
