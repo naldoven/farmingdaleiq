@@ -102,6 +102,33 @@ export async function fetchBaseReportData(supabase: DB): Promise<BaseReportData>
 }
 
 // ---------------------------------------------------------------------
+// Waste report data (reports.view -- waste_entries/items/categories have a
+// select_authenticated RLS policy, same as the dashboard base reads). Split
+// out of fetchBaseReportData so /reports/waste (which only needs the waste
+// rollup inputs) doesn't also pull tasks/work orders/equipment it never uses.
+// ---------------------------------------------------------------------
+
+export interface WasteReportData {
+  wasteEntries: { id: string; item_id: string; quantity: number; logged_at: string }[];
+  wasteItems: { id: string; name: string; unit: string; unit_cost: number | null; category_id: string | null }[];
+  wasteCategories: { id: string; name: string }[];
+}
+
+export async function fetchWasteReportData(supabase: DB): Promise<WasteReportData> {
+  const [{ data: wasteEntries }, { data: wasteItems }, { data: wasteCategories }] = await Promise.all([
+    supabase.from("waste_entries").select("id, item_id, quantity, logged_at"),
+    supabase.from("waste_items").select("id, name, unit, unit_cost, category_id"),
+    supabase.from("waste_categories").select("id, name"),
+  ]);
+
+  return {
+    wasteEntries: wasteEntries ?? [],
+    wasteItems: wasteItems ?? [],
+    wasteCategories: wasteCategories ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------
 // Checklists (gated on checklists.view_reports)
 // ---------------------------------------------------------------------
 

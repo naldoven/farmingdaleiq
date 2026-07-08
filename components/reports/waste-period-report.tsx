@@ -11,18 +11,18 @@ import {
   type WasteEntryForRollup,
   type WasteItemForRollup,
 } from "@/app/(app)/waste/logic";
+import { ChipRow, FilterChip } from "@/components/mobile";
 import type { ReportCell, ReportColumn, ReportRow } from "@/components/reports/cells";
 import { ReportTable } from "@/components/reports/report-table";
-import { Button } from "@/components/ui/button";
 
 /**
- * Waste report tab for /reports. Owns a client-side period control so the
+ * Waste report for /reports/waste. Owns a client-side period control (a
+ * ChipRow of FilterChips, matching the KitchenIQ filter-chip pattern) so the
  * reader can switch week/month/quarter/all without a server round trip or
- * losing their place on the tab (FIQ reporting med: the tab previously
- * hardcoded "month"). The rollups are the SAME pure functions the Waste
- * module itself uses (app/(app)/waste/logic.ts), re-sliced here per the
- * selected period; this component only reads the plain rows the server
- * fetched and never writes.
+ * losing their place (FIQ reporting med: this used to hardcode "month"). The
+ * rollups are the SAME pure functions the Waste module itself uses
+ * (app/(app)/waste/logic.ts), re-sliced here per the selected period; this
+ * component only reads the plain rows the server fetched and never writes.
  */
 
 const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
@@ -96,20 +96,17 @@ export function WastePeriodReport({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Period</span>
+      <ChipRow>
         {PERIOD_OPTIONS.map((option) => (
-          <Button
+          <FilterChip
             key={option.key}
-            type="button"
-            size="sm"
-            variant={period === option.key ? "default" : "outline"}
+            active={period === option.key}
             onClick={() => setPeriod(option.key)}
           >
             {option.label}
-          </Button>
+          </FilterChip>
         ))}
-      </div>
+      </ChipRow>
 
       <ReportTable
         title={`Waste by item (${windowLabel})`}
