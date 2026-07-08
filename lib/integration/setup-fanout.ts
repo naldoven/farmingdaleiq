@@ -54,12 +54,14 @@ export interface ScheduleRow extends ScheduleLike {
   template_id: string;
   day_part_id: string | null;
   assign_position_id: string | null;
+  assign_team_id: string | null;
 }
 
 export interface ExistingRunRow {
   id: string;
   schedule_id: string | null;
   assigned_user_id: string | null;
+  assigned_team_id: string | null;
 }
 
 export interface ExistingTaskRow {
@@ -71,6 +73,7 @@ export interface ExistingTaskRow {
 export interface Backfill {
   id: string;
   assigned_user_id: string;
+  assigned_team_id?: string;
 }
 
 export interface ChecklistRunPlan {
@@ -139,10 +142,15 @@ export function planChecklistRunsForSetup(args: {
         day_part_id: schedule.day_part_id ?? args.setupDayPartId,
         assigned_position_id: schedule.assign_position_id,
         assigned_user_id: userId,
+        assigned_team_id: schedule.assign_team_id ?? null,
         status: "pending",
       });
     } else if (!existing.assigned_user_id) {
-      backfills.push({ id: existing.id, assigned_user_id: userId });
+      const backfill: Backfill = { id: existing.id, assigned_user_id: userId };
+      if (schedule.assign_team_id && !existing.assigned_team_id) {
+        backfill.assigned_team_id = schedule.assign_team_id;
+      }
+      backfills.push(backfill);
     }
   }
 
@@ -254,7 +262,9 @@ export async function materializeSetupFanout(
   // --- Checklists (S1) ---------------------------------------------------
   const { data: schedules } = await client
     .from("checklist_schedules")
-    .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id")
+    .select(
+      "id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, assign_team_id",
+    )
     .in("assign_position_id", positionIds);
 
   const scheduleRows = (schedules ?? []) as ScheduleRow[];
@@ -269,7 +279,7 @@ export async function materializeSetupFanout(
     const scheduleIds = scheduleRows.map((s) => s.id);
     const { data: existingRuns } = await client
       .from("checklist_runs")
-      .select("id, schedule_id, assigned_user_id")
+      .select("id, schedule_id, assigned_user_id, assigned_team_id")
       .eq("run_date", setup.date)
       .in("schedule_id", scheduleIds);
 
@@ -295,7 +305,10 @@ export async function materializeSetupFanout(
     for (const backfill of plan.backfills) {
       const { error } = await client
         .from("checklist_runs")
-        .update({ assigned_user_id: backfill.assigned_user_id })
+        .update({
+          assigned_user_id: backfill.assigned_user_id,
+          ...(backfill.assigned_team_id ? { assigned_team_id: backfill.assigned_team_id } : {}),
+        })
         .eq("id", backfill.id)
         .is("assigned_user_id", null);
       if (!error) result.checklistRunsBackfilled += 1;
