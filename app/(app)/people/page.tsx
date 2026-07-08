@@ -34,6 +34,7 @@ export default async function PeoplePage({
 }) {
   await requirePermission("people.view");
   const canManage = await hasPermission("people.manage");
+  const canManageRoles = await hasPermission("roles.manage");
   const { q, active } = await searchParams;
 
   const supabase = await createClient();
@@ -82,6 +83,11 @@ export default async function PeoplePage({
           <Button asChild variant="outline">
             <Link href="/people/teams">Teams</Link>
           </Button>
+          {canManageRoles && (
+            <Button asChild variant="outline">
+              <Link href="/people/roles">Roles &amp; permissions</Link>
+            </Button>
+          )}
           {canManage && (
             <Button asChild>
               <Link href="/people/invite">Invite person</Link>
