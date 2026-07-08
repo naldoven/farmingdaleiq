@@ -10,7 +10,7 @@ import {
 import { SetPasswordForm } from "@/app/set-password/set-password-form";
 
 export const metadata: Metadata = {
-  title: "Set your password - FarmingdaleIQ",
+  title: "Set your password",
 };
 
 /**
