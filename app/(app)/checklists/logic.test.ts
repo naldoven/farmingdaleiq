@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildChecklistCompletePayload,
+  buildFollowUpDescription,
+  buildFollowUpEventPayload,
+  buildFollowUpTitle,
   evaluateAnswer,
+  followUpDueAt,
   getHoldingMode,
   getMultiChoiceOptions,
   getTemperatureRange,
+  isBeforeStartTime,
   isScheduleDueOn,
   isTemperatureOutOfRange,
   planFollowUpInserts,
   storeLocalNow,
+  sumAnsweredTokenValue,
   validateSubmission,
   type FoodItemRangeLike,
   type QuestionLike,
@@ -265,6 +272,118 @@ describe("planFollowUpInserts", () => {
   it("is idempotent: skips an answer that already has a follow-up", () => {
     const plan = planFollowUpInserts([{ id: "a1", flagged: true }], new Set(["a1"]));
     expect(plan).toEqual([]);
+  });
+});
+
+describe("isBeforeStartTime (FIQ R14: start_time blocks early completion)", () => {
+  it("returns false when there is no start_time (always open)", () => {
+    expect(isBeforeStartTime(null, "08:00:00")).toBe(false);
+    expect(isBeforeStartTime(undefined, "08:00:00")).toBe(false);
+  });
+
+  it("blocks a run whose start_time is later than now", () => {
+    expect(isBeforeStartTime("23:00:00", "08:00:00")).toBe(true);
+  });
+
+  it("allows a run once now has reached the start_time", () => {
+    expect(isBeforeStartTime("23:00:00", "23:00:00")).toBe(false);
+    expect(isBeforeStartTime("08:00:00", "09:30:00")).toBe(false);
+  });
+
+  it("normalizes HH:MM and HH:MM:SS so they compare correctly", () => {
+    expect(isBeforeStartTime("23:00", "08:00")).toBe(true);
+    expect(isBeforeStartTime("07:00", "07:00:01")).toBe(false);
+  });
+});
+
+describe("sumAnsweredTokenValue (FIQ R2: per-question token_value reaches the event)", () => {
+  const questions = [
+    { id: "q1", token_value: 10 },
+    { id: "q2", token_value: 25 },
+    { id: "q3", token_value: 5 },
+    { id: "q4", token_value: 0 },
+  ];
+
+  it("sums token_value only for answered, non-N/A questions", () => {
+    const answers = [
+      { question_id: "q1", is_na: false },
+      { question_id: "q2", is_na: false },
+    ];
+    expect(sumAnsweredTokenValue(questions, answers)).toBe(35);
+  });
+
+  it("excludes N/A'd questions", () => {
+    const answers = [
+      { question_id: "q1", is_na: false },
+      { question_id: "q2", is_na: true },
+    ];
+    expect(sumAnsweredTokenValue(questions, answers)).toBe(10);
+  });
+
+  it("ignores unanswered questions and zero-value ones", () => {
+    const answers = [{ question_id: "q4", is_na: false }];
+    expect(sumAnsweredTokenValue(questions, answers)).toBe(0);
+  });
+
+  it("returns 0 when nothing was answered", () => {
+    expect(sumAnsweredTokenValue(questions, [])).toBe(0);
+  });
+});
+
+describe("buildChecklistCompletePayload (canonical event contract)", () => {
+  it("emits user_id (recipient) and token_value with actor_id", () => {
+    const payload = buildChecklistCompletePayload({
+      runId: "run-1",
+      templateId: "tmpl-1",
+      completedBy: "user-1",
+      tokenValue: 30,
+      flaggedCount: 1,
+      followUpsCreated: 1,
+    });
+    expect(payload.user_id).toBe("user-1");
+    expect(payload.actor_id).toBe("user-1");
+    expect(payload.token_value).toBe(30);
+    // The bug this fixes: the old payload used `completedBy`, which the tokens
+    // consumer never reads. It must not leak back in.
+    expect("completedBy" in payload).toBe(false);
+  });
+});
+
+describe("follow-up detail helpers (FIQ R6)", () => {
+  it("builds a title from the question prompt", () => {
+    expect(buildFollowUpTitle("Walk-in temp")).toBe("Follow-up: Walk-in temp");
+    expect(buildFollowUpTitle(null)).toBe("Checklist follow-up");
+  });
+
+  it("builds a description tying the question to the template", () => {
+    expect(buildFollowUpDescription("Walk-in temp", "Opening")).toBe(
+      'Follow up on "Walk-in temp" flagged in Opening.',
+    );
+    expect(buildFollowUpDescription(null, null)).toBe("Follow up on a flagged checklist answer.");
+  });
+
+  it("computes a due date a fixed window after completion", () => {
+    const due = followUpDueAt(new Date("2026-07-07T12:00:00Z"), 24);
+    expect(due).toBe("2026-07-08T12:00:00.000Z");
+  });
+
+  it("emits the follow_up event with the canonical assignee key", () => {
+    const payload = buildFollowUpEventPayload({
+      followUpId: "fu-1",
+      sourceAnswerId: "ans-1",
+      runId: "run-1",
+      title: "Follow-up: X",
+      description: "detail",
+      assigneeId: "user-9",
+    });
+    expect(payload).toEqual({
+      follow_up_id: "fu-1",
+      source_answer_id: "ans-1",
+      run_id: "run-1",
+      title: "Follow-up: X",
+      description: "detail",
+      user_id: "user-9",
+    });
   });
 });
 

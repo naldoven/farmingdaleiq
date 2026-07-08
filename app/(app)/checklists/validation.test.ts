@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerInputSchema, followUpIdSchema, runIdSchema, saveAnswersSchema } from "./validation";
+import { answerInputSchema, assignRunSchema, followUpIdSchema, runIdSchema, saveAnswersSchema } from "./validation";
 
 describe("answerInputSchema", () => {
   const base = {
@@ -63,5 +63,22 @@ describe("runIdSchema / followUpIdSchema", () => {
 
   it("rejects a non-uuid followUpId", () => {
     expect(followUpIdSchema.safeParse({ followUpId: "not-a-uuid" }).success).toBe(false);
+  });
+});
+
+describe("assignRunSchema", () => {
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const userId = "22222222-2222-4222-8222-222222222222";
+
+  it("accepts a run + user delegation", () => {
+    expect(assignRunSchema.safeParse({ runId, userId }).success).toBe(true);
+  });
+
+  it("accepts a null userId (return to pool)", () => {
+    expect(assignRunSchema.safeParse({ runId, userId: null }).success).toBe(true);
+  });
+
+  it("rejects a non-uuid userId", () => {
+    expect(assignRunSchema.safeParse({ runId, userId: "nope" }).success).toBe(false);
   });
 });

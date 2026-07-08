@@ -30,6 +30,17 @@ export const runIdSchema = z.object({
   runId: z.string().uuid(),
 });
 
+/**
+ * Delegating a run to a person (or clearing the assignment with a null userId,
+ * returning it to the unassigned pool).
+ */
+export const assignRunSchema = z.object({
+  runId: z.string().uuid(),
+  userId: z.string().uuid().nullable(),
+});
+
+export type AssignRunInput = z.infer<typeof assignRunSchema>;
+
 export const followUpIdSchema = z.object({
   followUpId: z.string().uuid(),
 });
