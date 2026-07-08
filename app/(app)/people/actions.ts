@@ -8,8 +8,11 @@
  * server-side. UI hiding is not security; RLS and permission checks are.").
  *
  * 1. Every action starts with `await requirePermission(<key>)` (or, when an
- *    action is legitimately self-service, a narrower check first — see none
- *    here; People edits are admin-only end to end). requirePermission()
+ *    action is legitimately self-service, a narrower check first — see
+ *    `updateOwnProfile` below, which skips requirePermission entirely and
+ *    relies on `profiles_update_self` RLS plus the privilege-guard trigger
+ *    instead, because it only ever writes the caller's own row and only the
+ *    columns that guard leaves genuinely self-editable). requirePermission()
  *    (lib/auth/permissions.ts) throws PermissionError before any DB call if
  *    the signed-in user's role lacks the key.
  * 2. After the guard, mutations go through the per-request Supabase client
@@ -42,9 +45,11 @@ import type { ActionResult } from "@/app/(app)/people/action-types";
 import {
   assignRoleSchema,
   inviteUserSchema,
+  selfUpdateProfileSchema,
   updateProfileSchema,
   type AssignRoleInput,
   type InviteUserInput,
+  type SelfUpdateProfileInput,
   type UpdateProfileInput,
 } from "@/app/(app)/people/validation";
 
@@ -82,6 +87,7 @@ export async function updateProfile(
         discord_user_id: parsed.discordUserId ? parsed.discordUserId : null,
         birthdate: parsed.birthdate ? parsed.birthdate : null,
         hired_on: parsed.hiredOn ? parsed.hiredOn : null,
+        avatar_url: parsed.avatarUrl ? parsed.avatarUrl : null,
         active: parsed.active,
       })
       .eq("id", parsed.id);
@@ -92,6 +98,54 @@ export async function updateProfile(
 
     revalidatePath("/people");
     revalidatePath(`/people/${parsed.id}`);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Self-service edit of the caller's own contact fields
+ * (KITCHENIQ-PARITY-AUDIT.md "People & Teams" [MED]: "No self-service edit
+ * path despite the DB layer allowing one"). Intentionally has no
+ * requirePermission() call — see the pattern comment at the top of this
+ * file — and only ever targets `.eq("id", user.id)`, so it cannot be used
+ * to edit anyone else regardless of the caller's role. Only phone,
+ * birthdate, and avatar_url are accepted; role_id/active/store_id/
+ * discord_user_id/name/email require updateProfile (people.manage) and
+ * would be rejected by `profile_privilege_guard` even if someone tried to
+ * smuggle them in here.
+ */
+export async function updateOwnProfile(
+  input: SelfUpdateProfileInput,
+): Promise<ActionResult> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { ok: false, error: "You must be signed in." };
+    }
+
+    const parsed = selfUpdateProfileSchema.parse(input);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        phone: parsed.phone ? parsed.phone : null,
+        birthdate: parsed.birthdate ? parsed.birthdate : null,
+        avatar_url: parsed.avatarUrl ? parsed.avatarUrl : null,
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/people");
+    revalidatePath(`/people/${user.id}`);
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };

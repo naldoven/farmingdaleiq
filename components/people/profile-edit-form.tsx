@@ -16,6 +16,7 @@ export interface ProfileEditFormProps {
   initialDiscordUserId: string | null;
   initialBirthdate: string | null;
   initialHiredOn: string | null;
+  initialAvatarUrl: string | null;
   initialActive: boolean;
   /** false when the viewer lacks people.manage — renders read-only. */
   canEdit: boolean;
@@ -34,6 +35,7 @@ export function ProfileEditForm({
   initialDiscordUserId,
   initialBirthdate,
   initialHiredOn,
+  initialAvatarUrl,
   initialActive,
   canEdit,
 }: ProfileEditFormProps) {
@@ -45,6 +47,7 @@ export function ProfileEditForm({
   const [discordUserId, setDiscordUserId] = useState(initialDiscordUserId ?? "");
   const [birthdate, setBirthdate] = useState(initialBirthdate ?? "");
   const [hiredOn, setHiredOn] = useState(initialHiredOn ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl ?? "");
   const [active, setActive] = useState(initialActive);
 
   if (!canEdit) {
@@ -55,6 +58,7 @@ export function ProfileEditForm({
         <Field label="Discord user ID" value={discordUserId || "—"} />
         <Field label="Birthdate" value={birthdate || "—"} />
         <Field label="Hired on" value={hiredOn || "—"} />
+        <Field label="Avatar URL" value={avatarUrl || "—"} />
         <Field label="Status" value={active ? "Active" : "Inactive"} />
       </dl>
     );
@@ -74,6 +78,7 @@ export function ProfileEditForm({
             discordUserId,
             birthdate,
             hiredOn,
+            avatarUrl,
             active,
           });
           if (!result.ok) {
@@ -118,6 +123,15 @@ export function ProfileEditForm({
             type="date"
             value={hiredOn}
             onChange={(e) => setHiredOn(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="avatarUrl">Avatar URL</Label>
+          <Input
+            id="avatarUrl"
+            value={avatarUrl}
+            onChange={(e) => setAvatarUrl(e.target.value)}
+            placeholder="https://..."
           />
         </div>
         <div className="flex items-center gap-2 pt-6">
