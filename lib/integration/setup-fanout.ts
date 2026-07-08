@@ -70,6 +70,12 @@ export interface ExistingTaskRow {
   assigned_user_id: string | null;
 }
 
+export interface ExistingAdhocTaskRow {
+  id: string;
+  assigned_position_id: string;
+  day_part_id: string | null;
+}
+
 export interface Backfill {
   id: string;
   assigned_user_id: string;
@@ -200,6 +206,30 @@ export function planTasksForSetup(args: {
   }
 
   return { inserts, backfills };
+}
+
+/**
+ * Pure planner for backfilling ad hoc (non-template, one-off/pool) tasks that
+ * were created position-linked (assigned_position_id set, assigned_user_id
+ * null) before the position was staffed on a posted setup. The recurring-task
+ * planner above only ever looks at task_templates, so a position-linked ad
+ * hoc task created directly (e.g. a leader delegating "sweep the lobby" to a
+ * position) never resolved to a person; this backfills it the same way a
+ * cron-created recurring task is backfilled.
+ */
+export function planAdhocTaskBackfillsForSetup(args: {
+  setupDayPartId: string | null;
+  positionUser: Map<string, string>;
+  tasks: ExistingAdhocTaskRow[];
+}): Backfill[] {
+  const backfills: Backfill[] = [];
+  for (const task of args.tasks) {
+    const userId = args.positionUser.get(task.assigned_position_id);
+    if (!userId) continue;
+    if (!dayPartMatches(task.day_part_id, args.setupDayPartId)) continue;
+    backfills.push({ id: task.id, assigned_user_id: userId });
+  }
+  return backfills;
 }
 
 export interface FanoutResult {
@@ -357,6 +387,32 @@ export async function materializeSetupFanout(
         .is("assigned_user_id", null);
       if (!error) result.tasksBackfilled += 1;
     }
+  }
+
+  // --- Ad hoc position-linked tasks (S2) ----------------------------------
+  // Position-assigned one-off/pool tasks (template_id null) never resolve to
+  // a person on their own; backfill them the same way a cron-created
+  // recurring task is backfilled above, once their position is staffed.
+  const { data: adhocTasks } = await client
+    .from("tasks")
+    .select("id, assigned_position_id, day_part_id")
+    .eq("date", setup.date)
+    .is("template_id", null)
+    .is("assigned_user_id", null)
+    .in("assigned_position_id", positionIds);
+
+  const adhocBackfills = planAdhocTaskBackfillsForSetup({
+    setupDayPartId: setup.day_part_id,
+    positionUser,
+    tasks: (adhocTasks ?? []) as ExistingAdhocTaskRow[],
+  });
+  for (const backfill of adhocBackfills) {
+    const { error } = await client
+      .from("tasks")
+      .update({ assigned_user_id: backfill.assigned_user_id })
+      .eq("id", backfill.id)
+      .is("assigned_user_id", null);
+    if (!error) result.tasksBackfilled += 1;
   }
 
   return result;

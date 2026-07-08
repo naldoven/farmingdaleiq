@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseSetupDate,
+  planAdhocTaskBackfillsForSetup,
   planChecklistRunsForSetup,
   planTasksForSetup,
+  type ExistingAdhocTaskRow,
   type ExistingRunRow,
   type ExistingTaskRow,
   type ScheduleRow,
@@ -243,6 +245,45 @@ describe("planTasksForSetup", () => {
       existingTasks: [],
     });
     expect(plan.inserts).toHaveLength(0);
+  });
+});
+
+describe("planAdhocTaskBackfillsForSetup", () => {
+  const base = {
+    setupDayPartId: "dp-1",
+    positionUser: new Map([["pos-1", "user-1"]]),
+  };
+
+  it("backfills an ad hoc, position-linked task with no assignee once its position is staffed", () => {
+    const tasks: ExistingAdhocTaskRow[] = [
+      { id: "task-1", assigned_position_id: "pos-1", day_part_id: null },
+    ];
+    const backfills = planAdhocTaskBackfillsForSetup({ ...base, tasks });
+    expect(backfills).toEqual([{ id: "task-1", assigned_user_id: "user-1" }]);
+  });
+
+  it("ignores an ad hoc task whose position is not staffed on this setup", () => {
+    const tasks: ExistingAdhocTaskRow[] = [
+      { id: "task-1", assigned_position_id: "pos-9", day_part_id: null },
+    ];
+    const backfills = planAdhocTaskBackfillsForSetup({ ...base, tasks });
+    expect(backfills).toHaveLength(0);
+  });
+
+  it("respects day-part matching: a day-part-specific ad hoc task is not backfilled for a different setup day-part", () => {
+    const tasks: ExistingAdhocTaskRow[] = [
+      { id: "task-1", assigned_position_id: "pos-1", day_part_id: "dp-other" },
+    ];
+    const backfills = planAdhocTaskBackfillsForSetup({ ...base, tasks });
+    expect(backfills).toHaveLength(0);
+  });
+
+  it("backfills a day-part-agnostic ad hoc task against any setup day-part", () => {
+    const tasks: ExistingAdhocTaskRow[] = [
+      { id: "task-1", assigned_position_id: "pos-1", day_part_id: null },
+    ];
+    const backfills = planAdhocTaskBackfillsForSetup({ ...base, setupDayPartId: null, tasks });
+    expect(backfills).toEqual([{ id: "task-1", assigned_user_id: "user-1" }]);
   });
 });
 
