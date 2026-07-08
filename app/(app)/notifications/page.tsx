@@ -9,6 +9,12 @@ import { PushOptIn } from "@/components/notifications/push-opt-in";
  * center (bell + unread badge)"). Every seeded role holds
  * `notifications.view` (it's a personal-data view, not an admin one), so
  * this mirrors the RLS reality rather than actually restricting anyone.
+ *
+ * Restyled to the KitchenIQ mobile design system (docs/DESIGN-SYSTEM.md):
+ * the page title comes from the shared sub-page header (shell resolves it
+ * from lib/nav/page-map.ts), so this only supplies the list. Same query,
+ * same server actions (markRead / markAllRead) as before — visual/layout
+ * only.
  */
 export default async function NotificationsPage() {
   await requirePermission("notifications.view");
@@ -28,8 +34,7 @@ export default async function NotificationsPage() {
     : { data: [] };
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Notifications</h1>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
       <PushOptIn />
       <NotificationList notifications={notifications ?? []} />
     </div>

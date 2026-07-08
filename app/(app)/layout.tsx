@@ -40,5 +40,19 @@ export default async function AuthenticatedLayout({
     roleName,
   };
 
-  return <AppShell user={currentUser}>{children}</AppShell>;
+  // Header bell unread dot (components/mobile/notification-bell.tsx). Same
+  // `notifications` table + RLS (user_id = auth.uid()) the notification
+  // center itself reads (app/(app)/notifications/page.tsx); a `head: true`
+  // count avoids fetching rows just to know whether any are unread.
+  const { count: unreadCount } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .is("read_at", null);
+
+  return (
+    <AppShell user={currentUser} hasUnread={Boolean(unreadCount)}>
+      {children}
+    </AppShell>
+  );
 }
