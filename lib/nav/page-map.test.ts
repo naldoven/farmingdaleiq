@@ -41,6 +41,14 @@ describe("resolveHeader", () => {
   it("does not treat the home route as a prefix of every page", () => {
     expect(resolveHeader("/vendors").title).toBe("Vendors");
   });
+
+  it("titles the Menu hub as a sub-page (not the home header variant)", () => {
+    expect(resolveHeader("/menu")).toMatchObject({
+      variant: "subpage",
+      title: "Menu",
+      backHref: "/",
+    });
+  });
 });
 
 describe("initialsFromName", () => {

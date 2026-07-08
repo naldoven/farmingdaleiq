@@ -32,6 +32,18 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Menu",
+    items: [
+      {
+        href: "/menu",
+        label: "Menu",
+        description:
+          "Mobile nav hub behind the bottom Menu tab: send recognitions/infractions/broadcasts, assign checklists/tasks, and browse every module.",
+        owner: "P2 wiring",
+      },
+    ],
+  },
+  {
     label: "Checklists",
     items: [
       {
