@@ -11,6 +11,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -74,9 +75,14 @@ export function CreateWorkOrderForm({
 
   return (
     <>
-      <Button type="button" size="sm" onClick={() => setOpen(true)}>
-        New work order
-      </Button>
+      <button
+        type="button"
+        aria-label="New work order"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      </button>
 
       {open && (
         <Dialog open onOpenChange={(next) => !next && setOpen(false)}>

@@ -59,7 +59,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
   const authorNameById = new Map((authors ?? []).map((a) => [a.id, a.name]));
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-[480px]">
       <WorkOrderDetail
         workOrder={{
           id: workOrder.id,

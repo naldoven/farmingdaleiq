@@ -1,14 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SectionCard, StatusBadge, type StatusTone } from "@/components/mobile";
+import { MaintenanceTabs } from "@/components/maintenance/maintenance-tabs";
 import { RequestForm } from "@/components/maintenance/request-form";
 import { TriageQueue } from "@/components/maintenance/triage-queue";
 import { WorkOrderList, type WorkOrderRow } from "@/components/maintenance/work-order-list";
@@ -16,10 +7,10 @@ import { CreateWorkOrderForm } from "@/app/(app)/maintenance/create-work-order-f
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
-const REQUEST_STATUS_VARIANT: Record<string, "default" | "outline" | "secondary" | "success" | "destructive"> = {
-  pending: "secondary",
+const REQUEST_STATUS_TONE: Record<string, StatusTone> = {
+  pending: "warning",
   approved: "success",
-  declined: "destructive",
+  declined: "danger",
 };
 
 /**
@@ -27,6 +18,11 @@ const REQUEST_STATUS_VARIANT: Record<string, "default" | "outline" | "secondary"
  * board (ARCHITECTURE.md "Maintenance (modeled on UpKeep)"). Every signed-in
  * team member holds maintenance.request (base permission); the Triage tab
  * only renders for maintenance.triage+.
+ *
+ * Restyled to the KitchenIQ mobile pattern (docs/DESIGN-SYSTEM.md): the
+ * shadcn underline Tabs became a ChipRow of FilterChips (MaintenanceTabs),
+ * each tab's list content lives inside a white SectionCard of ListRows with
+ * StatusBadge status, and work order creation is a round accent "+".
  */
 export default async function MaintenancePage() {
   await requirePermission("maintenance.request");
@@ -92,114 +88,90 @@ export default async function MaintenancePage() {
   }));
 
   const openCount = workOrderRows.filter((wo) => wo.status !== "complete" && wo.status !== "cancelled").length;
+  const requestRows = myRequests ?? [];
+
+  const tabs = [
+    {
+      id: "board",
+      label: `Work orders (${openCount})`,
+      content: (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <p className="text-[13px] font-semibold text-muted-ink">{openCount} open</p>
+            {canTriage && (
+              <CreateWorkOrderForm
+                equipmentOptions={equipment ?? []}
+                assigneeOptions={profiles ?? []}
+                vendorOptions={vendors ?? []}
+              />
+            )}
+          </div>
+          <WorkOrderList workOrders={workOrderRows} />
+        </div>
+      ),
+    },
+    ...(canTriage
+      ? [
+          {
+            id: "triage",
+            label: `Triage (${pendingRequests?.length ?? 0})`,
+            content: (
+              <TriageQueue
+                requests={pendingRequests ?? []}
+                assigneeOptions={profiles ?? []}
+                vendorOptions={vendors ?? []}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "submit",
+      label: "Submit request",
+      content: (
+        <SectionCard title="Submit a maintenance request">
+          <RequestForm equipmentOptions={equipment ?? []} />
+        </SectionCard>
+      ),
+    },
+    {
+      id: "my-requests",
+      label: `My requests (${requestRows.length})`,
+      content:
+        requestRows.length === 0 ? (
+          <p className="px-1 text-[13px] text-muted-ink">You haven&apos;t submitted any requests yet.</p>
+        ) : (
+          <SectionCard flush>
+            <div className="divide-y divide-line">
+              {requestRows.map((request) => {
+                const detail =
+                  request.status === "declined" && request.declined_reason
+                    ? request.declined_reason
+                    : request.status === "approved" && request.work_order_id
+                      ? "Converted to a work order — see Work orders."
+                      : new Date(request.submitted_at).toLocaleDateString();
+                return (
+                  <ListRow
+                    key={request.id}
+                    title={request.title}
+                    description={detail}
+                    trailing={
+                      <StatusBadge tone={REQUEST_STATUS_TONE[request.status] ?? "neutral"}>
+                        {request.status}
+                      </StatusBadge>
+                    }
+                  />
+                );
+              })}
+            </div>
+          </SectionCard>
+        ),
+    },
+  ];
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Maintenance</h1>
-
-      <Tabs defaultValue="board">
-        <TabsList>
-          <TabsTrigger value="board">Work orders ({openCount})</TabsTrigger>
-          {canTriage && <TabsTrigger value="triage">Triage queue ({pendingRequests?.length ?? 0})</TabsTrigger>}
-          <TabsTrigger value="submit">Submit request</TabsTrigger>
-          <TabsTrigger value="my-requests">My requests ({myRequests?.length ?? 0})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="board">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Work orders</CardTitle>
-              {canTriage && (
-                <CreateWorkOrderForm
-                  equipmentOptions={equipment ?? []}
-                  assigneeOptions={profiles ?? []}
-                  vendorOptions={vendors ?? []}
-                />
-              )}
-            </CardHeader>
-            <CardContent className="p-0">
-              <WorkOrderList workOrders={workOrderRows} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {canTriage && (
-          <TabsContent value="triage">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pending requests</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <TriageQueue
-                  requests={pendingRequests ?? []}
-                  assigneeOptions={profiles ?? []}
-                  vendorOptions={vendors ?? []}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
-        <TabsContent value="submit">
-          <Card>
-            <CardHeader>
-              <CardTitle>Submit a maintenance request</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RequestForm equipmentOptions={equipment ?? []} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="my-requests">
-          <Card>
-            <CardHeader>
-              <CardTitle>My requests</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Detail</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(myRequests ?? []).map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell className="font-medium">{request.title}</TableCell>
-                      <TableCell>
-                        <Badge variant={REQUEST_STATUS_VARIANT[request.status] ?? "outline"}>
-                          {request.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(request.submitted_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {request.status === "declined" && request.declined_reason
-                          ? request.declined_reason
-                          : request.status === "approved" && request.work_order_id
-                            ? "Converted to a work order — see Work orders."
-                            : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {(myRequests ?? []).length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        You haven&apos;t submitted any requests yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <MaintenanceTabs tabs={tabs} defaultTab="board" />
     </div>
   );
 }

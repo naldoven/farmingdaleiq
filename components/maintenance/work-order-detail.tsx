@@ -4,9 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SectionCard, StatusBadge, type StatusTone } from "@/components/mobile";
 import {
   addWorkOrderComment,
   assignWorkOrder,
@@ -62,6 +61,13 @@ const STATUS_LABEL: Record<string, string> = {
   on_hold: "On hold",
   complete: "Complete",
   cancelled: "Cancelled",
+};
+const STATUS_TONE: Record<string, StatusTone> = {
+  open: "info",
+  in_progress: "warning",
+  on_hold: "danger",
+  complete: "success",
+  cancelled: "neutral",
 };
 
 function StatusControls({ workOrder }: { workOrder: WorkOrderDetailData }) {
@@ -361,12 +367,14 @@ export function WorkOrderDetail({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{workOrder.title}</h1>
-        <Badge variant="outline">{STATUS_LABEL[workOrder.status] ?? workOrder.status}</Badge>
-        <Badge variant="secondary">{workOrder.priority}</Badge>
+        <h1 className="text-[22px] font-bold text-ink">{workOrder.title}</h1>
+        <StatusBadge tone={STATUS_TONE[workOrder.status] ?? "neutral"} dot={workOrder.status === "complete"}>
+          {STATUS_LABEL[workOrder.status] ?? workOrder.status}
+        </StatusBadge>
+        <StatusBadge tone="accent">{workOrder.priority}</StatusBadge>
       </div>
 
-      {workOrder.description && <p className="text-muted-foreground">{workOrder.description}</p>}
+      {workOrder.description && <p className="text-[15px] text-muted-ink">{workOrder.description}</p>}
 
       <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
         {workOrder.equipment_name && (
@@ -423,35 +431,22 @@ export function WorkOrderDetail({
         )}
       </dl>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Status</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+      <SectionCard title="Status">
+        <div className="flex flex-col gap-4">
           <StatusControls workOrder={workOrder} />
           <CompleteForm workOrder={workOrder} canManageEquipment={canManageEquipment} />
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
       {canAssign && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Assignment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AssignForm workOrder={workOrder} assigneeOptions={assigneeOptions} vendorOptions={vendorOptions} />
-          </CardContent>
-        </Card>
+        <SectionCard title="Assignment">
+          <AssignForm workOrder={workOrder} assigneeOptions={assigneeOptions} vendorOptions={vendorOptions} />
+        </SectionCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Comments &amp; photos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CommentThread workOrderId={workOrder.id} comments={comments} />
-        </CardContent>
-      </Card>
+      <SectionCard title="Comments & photos">
+        <CommentThread workOrderId={workOrder.id} comments={comments} />
+      </SectionCard>
     </div>
   );
 }

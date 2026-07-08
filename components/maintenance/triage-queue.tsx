@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,14 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SectionCard } from "@/components/mobile";
 import { approveRequest, declineRequest } from "@/app/(app)/maintenance/actions";
 
 export interface RequestRow {
@@ -223,47 +215,32 @@ export function TriageQueue({
 
   return (
     <div className="flex flex-col gap-3">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>Area</TableHead>
-            <TableHead>Suggested priority</TableHead>
-            <TableHead>Submitted</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {requests.map((request) => (
-            <TableRow key={request.id}>
-              <TableCell className="font-medium">{request.title}</TableCell>
-              <TableCell className="text-muted-foreground">{request.area ?? "—"}</TableCell>
-              <TableCell>
-                {request.suggested_priority ? (
-                  <Badge variant="outline">{request.suggested_priority}</Badge>
-                ) : (
-                  "—"
-                )}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {new Date(request.submitted_at).toLocaleString()}
-              </TableCell>
-              <TableCell>
-                <Button type="button" size="sm" onClick={() => setReviewingId(request.id)}>
-                  Review
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-          {requests.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground">
-                No pending requests.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      {requests.length === 0 ? (
+        <p className="px-1 text-[13px] text-muted-ink">No pending requests.</p>
+      ) : (
+        <SectionCard flush>
+          <div className="divide-y divide-line">
+            {requests.map((request) => (
+              <ListRow
+                key={request.id}
+                title={request.title}
+                description={[
+                  request.area,
+                  request.suggested_priority ? `${request.suggested_priority} priority` : null,
+                  new Date(request.submitted_at).toLocaleDateString(),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                trailing={
+                  <Button type="button" size="sm" onClick={() => setReviewingId(request.id)}>
+                    Review
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {reviewing && (
         <ReviewDialog

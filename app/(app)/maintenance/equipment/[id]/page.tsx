@@ -64,7 +64,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
   ]);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-[480px]">
       <EquipmentDetail
         equipment={{
           id: equipment.id,

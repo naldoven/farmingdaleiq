@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,14 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
 import {
   createPmSchedule,
   setPmScheduleActive,
@@ -247,86 +240,75 @@ export function PmScheduleManager({
     <div className="flex flex-col gap-3">
       {canManage && (
         <div className="flex justify-end">
-          <Button
+          <button
             type="button"
-            size="sm"
+            aria-label="Add PM schedule"
             onClick={() => {
               setCreateForm(emptyForm());
               setCreateOpen(true);
             }}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
           >
-            Add PM schedule
-          </Button>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>Every</TableHead>
-            <TableHead>Next due</TableHead>
-            <TableHead>Status</TableHead>
-            {canManage && <TableHead />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {schedules.map((schedule) => (
-            <TableRow key={schedule.id}>
-              <TableCell className="font-medium">{schedule.title}</TableCell>
-              <TableCell className="text-muted-foreground">{schedule.interval_days}d</TableCell>
-              <TableCell className="text-muted-foreground">{schedule.next_due_on ?? "—"}</TableCell>
-              <TableCell>
-                <Badge variant={schedule.active ? "success" : "outline"}>
-                  {schedule.active ? "Active" : "Paused"}
-                </Badge>
-              </TableCell>
-              {canManage && (
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setEditingId(schedule.id);
-                        setEditForm(formFromRow(schedule));
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={isPending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          const result = await setPmScheduleActive({ id: schedule.id, active: !schedule.active });
-                          if (!result.ok) {
-                            setError(result.error);
-                            return;
-                          }
-                          router.refresh();
-                        });
-                      }}
-                    >
-                      {schedule.active ? "Pause" : "Resume"}
-                    </Button>
+      {schedules.length === 0 ? (
+        <p className="text-[13px] text-muted-ink">No PM schedules yet.</p>
+      ) : (
+        <SectionCard flush>
+          <div className="divide-y divide-line">
+            {schedules.map((schedule) => (
+              <ListRow
+                key={schedule.id}
+                title={schedule.title}
+                description={`Every ${schedule.interval_days}d · Next due ${schedule.next_due_on ?? "—"}`}
+                trailing={
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={schedule.active ? "success" : "neutral"} dot={schedule.active}>
+                      {schedule.active ? "Active" : "Paused"}
+                    </StatusBadge>
+                    {canManage && (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setEditingId(schedule.id);
+                            setEditForm(formFromRow(schedule));
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={isPending}
+                          onClick={() => {
+                            startTransition(async () => {
+                              const result = await setPmScheduleActive({ id: schedule.id, active: !schedule.active });
+                              if (!result.ok) {
+                                setError(result.error);
+                                return;
+                              }
+                              router.refresh();
+                            });
+                          }}
+                        >
+                          {schedule.active ? "Pause" : "Resume"}
+                        </Button>
+                      </>
+                    )}
                   </div>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-          {schedules.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
-                No PM schedules yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+                }
+              />
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
