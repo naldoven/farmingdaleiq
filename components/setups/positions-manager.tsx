@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +63,7 @@ export function PositionsManager({
   // HIGH parity-audit fix: the self-heal seed button used to show only when
   // *no* positions existed at all, so it never appeared once the unrelated
   // training-roadmap group (S4's onboarding stations) was seeded. Gate
-  // instead on whether any of this seed's own group names are present —
+  // instead on whether any of this seed's own group names are present --
   // that's the real "have setup positions been seeded" question.
   const hasSeedGroups = hasSeedPositionGroups(groups.map((g) => g.name));
 
@@ -79,13 +80,13 @@ export function PositionsManager({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {!hasSeedGroups && (
-        <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-line bg-accent-soft/40 p-3 text-[13px] text-muted-ink">
           No setup positions yet.{" "}
           <button
             type="button"
-            className="font-medium text-primary hover:underline disabled:opacity-50"
+            className="font-semibold text-accent hover:underline disabled:opacity-50"
             disabled={isPending}
             onClick={() => run(() => seedDefaultPositions())}
           >
@@ -97,7 +98,7 @@ export function PositionsManager({
       )}
 
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-line p-3"
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -112,6 +113,7 @@ export function PositionsManager({
           placeholder="New position group (e.g. Kitchen)"
           value={groupName}
           onChange={(e) => setGroupName(e.target.value)}
+          className="rounded-full"
           required
         />
         <Button type="submit" disabled={isPending} variant="outline">
@@ -120,7 +122,7 @@ export function PositionsManager({
       </form>
 
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-line p-3"
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -134,7 +136,7 @@ export function PositionsManager({
         }}
       >
         <Select value={positionGroupId} onValueChange={setPositionGroupId}>
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-56 rounded-full">
             <SelectValue placeholder="Group" />
           </SelectTrigger>
           <SelectContent>
@@ -151,6 +153,7 @@ export function PositionsManager({
           placeholder="New position (e.g. Register 1)"
           value={positionName}
           onChange={(e) => setPositionName(e.target.value)}
+          className="rounded-full"
           required
         />
         <Button type="submit" disabled={isPending}>
@@ -158,61 +161,64 @@ export function PositionsManager({
         </Button>
       </form>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         {groups.map((group) => (
-          <div key={group.id} className="rounded-md border border-border p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="font-medium">{group.name}</h3>
-              <Button
-                variant="ghost"
-                size="sm"
+          <div key={group.id} className="rounded-2xl border border-line bg-card p-3 shadow-card">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="truncate text-[15px] font-semibold text-ink">{group.name}</h3>
+              <button
+                type="button"
+                aria-label={`Delete ${group.name}`}
                 disabled={isPending}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-danger hover:bg-danger-soft disabled:opacity-50"
                 onClick={() => run(() => deletePositionGroup({ id: group.id }))}
               >
-                Delete group
-              </Button>
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
-            <ul className="flex flex-col gap-1">
+            <div className="flex flex-col divide-y divide-line rounded-xl border border-line">
               {(positionsByGroup.get(group.id) ?? []).map((position) => (
-                <li key={position.id} className="flex items-center justify-between text-sm">
-                  <span>{position.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                <div key={position.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="truncate text-[13px] text-ink">{position.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${position.name}`}
                     disabled={isPending}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-ink hover:bg-danger-soft hover:text-danger disabled:opacity-30"
                     onClick={() => run(() => deletePosition({ id: position.id }))}
                   >
-                    Remove
-                  </Button>
-                </li>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
               ))}
               {(positionsByGroup.get(group.id) ?? []).length === 0 && (
-                <li className="text-sm text-muted-foreground">No positions in this group yet.</li>
+                <p className="px-3 py-2 text-[13px] text-muted-ink">No positions in this group yet.</p>
               )}
-            </ul>
+            </div>
           </div>
         ))}
 
         {(positionsByGroup.get(null) ?? []).length > 0 && (
-          <div className="rounded-md border border-dashed border-border p-3">
-            <h3 className="mb-2 font-medium text-muted-foreground">Ungrouped</h3>
-            <ul className="flex flex-col gap-1">
+          <div className="rounded-2xl border border-dashed border-line p-3">
+            <h3 className="mb-2 text-[15px] font-semibold text-muted-ink">Ungrouped</h3>
+            <div className="flex flex-col divide-y divide-line rounded-xl border border-line">
               {(positionsByGroup.get(null) ?? []).map((position) => (
-                <li key={position.id} className="flex items-center justify-between text-sm">
-                  <span>{position.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                <div key={position.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="truncate text-[13px] text-ink">{position.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${position.name}`}
                     disabled={isPending}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-ink hover:bg-danger-soft hover:text-danger disabled:opacity-30"
                     onClick={() => run(() => deletePosition({ id: position.id }))}
                   >
-                    Remove
-                  </Button>
-                </li>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </div>

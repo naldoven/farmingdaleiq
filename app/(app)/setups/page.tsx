@@ -1,9 +1,9 @@
 import Link from "next/link";
+import { Settings } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/mobile";
 import { SetupBoard } from "@/components/setups/setup-board";
+import { SetupFilters } from "@/components/setups/setup-filters";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt } from "@/lib/breaks/entitlement";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
@@ -21,6 +21,11 @@ function todayIso(): string {
  * available here (MED parity-audit fix: the canvas used to exist only under
  * /setups/templates, showing bare position tiles, never a real posted
  * board's assignments/badges/break state).
+ *
+ * KitchenIQ mobile redesign (docs/DESIGN-SYSTEM.md): date/day-part chips up
+ * top, the board itself as white rounded cards. Visual/layout only — every
+ * query, permission check, and server action below is unchanged from the
+ * pre-redesign page.
  */
 export default async function SetupsPage({
   searchParams,
@@ -182,126 +187,74 @@ export default async function SetupsPage({
     : { data: [] };
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Setup board</h1>
-        {canManage && (
-          <Button asChild variant="outline" size="sm">
-            <Link href="/setups/templates">Manage templates &amp; layout</Link>
-          </Button>
-        )}
-      </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      {canManage && (
+        <div className="flex justify-end">
+          <Link
+            href="/setups/templates"
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent"
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
+            Templates &amp; layout
+          </Link>
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Date / day-part</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <form className="flex flex-wrap items-center gap-2" method="get">
-            <input
-              type="date"
-              name="date"
-              defaultValue={selectedDate}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            />
-            <select
-              name="dayPartId"
-              defaultValue={selectedDayPartId}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            >
-              {(dayParts ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
+      <SetupFilters
+        dayParts={(dayParts ?? []).map((d) => ({
+          id: d.id,
+          name: d.name,
+          posted: Boolean(rosterByDayPart.get(d.id)),
+          exists: rosterByDayPart.has(d.id),
+        }))}
+        selectedDate={selectedDate}
+        selectedDayPartId={selectedDayPartId}
+        rosterView={rosterView}
+      />
+
+      {rosterView === "hourly" && (
+        <SectionCard title={`Hourly roster — ${selectedDayPart?.name ?? "shift"}`}>
+          {hourlyBuckets.length === 0 ? (
+            <p className="text-[13px] text-muted-ink">No day-part selected.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {hourlyBuckets.map((bucket) => (
+                <li key={bucket.hour} className="flex gap-3 text-[13px]">
+                  <span className="w-14 shrink-0 font-semibold text-ink">{bucket.hour}</span>
+                  <span className="text-muted-ink">
+                    {bucket.names.length > 0 ? bucket.names.join(", ") : "Nobody yet"}
+                  </span>
+                </li>
               ))}
-            </select>
-            <Button type="submit" variant="secondary">
-              View
-            </Button>
-          </form>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2">
-              {(dayParts ?? []).map((d) => {
-                const posted = rosterByDayPart.get(d.id);
-                const exists = rosterByDayPart.has(d.id);
-                return (
-                  <Link
-                    key={d.id}
-                    href={`/setups?date=${selectedDate}&dayPartId=${d.id}&view=${rosterView === "hourly" ? "hourly" : "full-day"}`}
-                    className="no-underline"
-                  >
-                    <Badge variant={posted ? "success" : exists ? "outline" : "secondary"}>
-                      {d.name}
-                    </Badge>
-                  </Link>
-                );
-              })}
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link
-                href={`/setups?date=${selectedDate}&dayPartId=${selectedDayPartId}&view=${rosterView === "hourly" ? "full-day" : "hourly"}`}
-              >
-                {rosterView === "hourly" ? "Full-day roster" : "Hourly roster"}
-              </Link>
-            </Button>
-          </div>
-
-          {rosterView === "hourly" && (
-            <div className="rounded-md border border-border p-3 text-sm">
-              <p className="mb-2 font-medium">
-                Hourly roster — {selectedDayPart?.name ?? "shift"}
-              </p>
-              {hourlyBuckets.length === 0 && (
-                <p className="text-muted-foreground">No day-part selected.</p>
-              )}
-              <ul className="flex flex-col gap-1">
-                {hourlyBuckets.map((bucket) => (
-                  <li key={bucket.hour} className="flex gap-2">
-                    <span className="w-16 font-medium">{bucket.hour}</span>
-                    <span className="text-muted-foreground">
-                      {bucket.names.length > 0 ? bucket.names.join(", ") : "Nobody yet"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            </ul>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {dayParts?.find((d) => d.id === selectedDayPartId)?.name ?? "Shift"} — {selectedDate}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SetupBoard
-            date={selectedDate}
-            dayPartId={selectedDayPartId}
-            setup={setup ?? null}
-            assignments={assignments ?? []}
-            positions={positions ?? []}
-            profiles={activeProfiles ?? []}
-            roles={roles ?? []}
-            templates={templatesForDayPart}
-            breakStatuses={breaks ?? []}
-            breakDueAtByUser={[...breakDueAtByUser.entries()].map(([userId, dueAt]) => [
-              userId,
-              dueAt?.toISOString() ?? null,
-            ])}
-            traineeUserIds={[...traineeUserIds]}
-            shiftNotes={shiftNotes ?? []}
-            canManage={canManage}
-            canPost={canPost}
-            topPerformerSelected={topPerformerSelected}
-            suitabilityByAssignment={[...suitabilityByAssignment.entries()]}
-            layout={activeLayout}
-            layoutTiles={layoutTiles ?? []}
-          />
-        </CardContent>
-      </Card>
+      <SetupBoard
+        date={selectedDate}
+        dayPartId={selectedDayPartId}
+        dayPartName={selectedDayPart?.name ?? "Shift"}
+        setup={setup ?? null}
+        assignments={assignments ?? []}
+        positions={positions ?? []}
+        profiles={activeProfiles ?? []}
+        roles={roles ?? []}
+        templates={templatesForDayPart}
+        breakStatuses={breaks ?? []}
+        breakDueAtByUser={[...breakDueAtByUser.entries()].map(([userId, dueAt]) => [
+          userId,
+          dueAt?.toISOString() ?? null,
+        ])}
+        traineeUserIds={[...traineeUserIds]}
+        shiftNotes={shiftNotes ?? []}
+        canManage={canManage}
+        canPost={canPost}
+        topPerformerSelected={topPerformerSelected}
+        suitabilityByAssignment={[...suitabilityByAssignment.entries()]}
+        layout={activeLayout}
+        layoutTiles={layoutTiles ?? []}
+      />
     </div>
   );
 }

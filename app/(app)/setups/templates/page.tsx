@@ -1,5 +1,5 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionCard } from "@/components/mobile";
 import { LayoutEditor } from "@/components/setups/layout-editor";
 import { PositionsManager } from "@/components/setups/positions-manager";
 import { TemplateEditor } from "@/components/setups/template-editor";
@@ -10,6 +10,10 @@ import { createClient } from "@/lib/supabase/server";
  * /setups/templates — ARCHITECTURE.md page map: "Manage setup templates,
  * groups, positions, and the store layout editor." Management-only route
  * (setups.manage), unlike the read-mostly /setups board.
+ *
+ * KitchenIQ mobile redesign (docs/DESIGN-SYSTEM.md): each tab's content sits
+ * in a white rounded SectionCard instead of the old shadcn Card. Visual/
+ * layout only — queries and permission gate are unchanged.
  */
 export default async function SetupTemplatesPage() {
   await requirePermission("setups.manage");
@@ -27,71 +31,64 @@ export default async function SetupTemplatesPage() {
     ]);
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex max-w-[560px] flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-semibold">Setup templates</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[13px] text-muted-ink">
           Manage position groups, setup templates, and the store layout editor.
         </p>
       </div>
 
       <Tabs defaultValue="templates">
-        <TabsList>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="positions">Positions</TabsTrigger>
-          <TabsTrigger value="layout">Store layout</TabsTrigger>
+        <TabsList className="w-full">
+          <TabsTrigger value="templates" className="flex-1">
+            Templates
+          </TabsTrigger>
+          <TabsTrigger value="positions" className="flex-1">
+            Positions
+          </TabsTrigger>
+          <TabsTrigger value="layout" className="flex-1">
+            Store layout
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="templates">
-          <Card>
-            <CardHeader>
-              <CardTitle>Setup templates</CardTitle>
-              <CardDescription>
-                Define which positions a day-part needs, in order.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TemplateEditor
-                dayParts={dayParts ?? []}
-                positions={positions ?? []}
-                templates={templates ?? []}
-                templatePositions={templatePositions ?? []}
-              />
-            </CardContent>
-          </Card>
+        <TabsContent value="templates" className="mt-4">
+          <SectionCard
+            title="Setup templates"
+            className="flex flex-col gap-1"
+          >
+            <p className="-mt-2 mb-2 text-[13px] text-muted-ink">
+              Define which positions a day-part needs, in order.
+            </p>
+            <TemplateEditor
+              dayParts={dayParts ?? []}
+              positions={positions ?? []}
+              templates={templates ?? []}
+              templatePositions={templatePositions ?? []}
+            />
+          </SectionCard>
         </TabsContent>
 
-        <TabsContent value="positions">
-          <Card>
-            <CardHeader>
-              <CardTitle>Position groups &amp; positions</CardTitle>
-              <CardDescription>
-                The stations setups and the layout board are built from.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PositionsManager groups={groups ?? []} positions={positions ?? []} />
-            </CardContent>
-          </Card>
+        <TabsContent value="positions" className="mt-4">
+          <SectionCard title="Position groups & positions">
+            <p className="-mt-2 mb-2 text-[13px] text-muted-ink">
+              The stations setups and the layout board are built from.
+            </p>
+            <PositionsManager groups={groups ?? []} positions={positions ?? []} />
+          </SectionCard>
         </TabsContent>
 
-        <TabsContent value="layout">
-          <Card>
-            <CardHeader>
-              <CardTitle>Store layout editor</CardTitle>
-              <CardDescription>
-                Drag position tiles onto a canvas mirroring the store floor plan. List view is the fallback.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LayoutEditor
-                dayParts={dayParts ?? []}
-                positions={positions ?? []}
-                layouts={layouts ?? []}
-                tiles={tiles ?? []}
-              />
-            </CardContent>
-          </Card>
+        <TabsContent value="layout" className="mt-4">
+          <SectionCard title="Store layout editor">
+            <p className="-mt-2 mb-2 text-[13px] text-muted-ink">
+              Drag position tiles onto a canvas mirroring the store floor plan. List view is the fallback.
+            </p>
+            <LayoutEditor
+              dayParts={dayParts ?? []}
+              positions={positions ?? []}
+              layouts={layouts ?? []}
+              tiles={tiles ?? []}
+            />
+          </SectionCard>
         </TabsContent>
       </Tabs>
     </div>

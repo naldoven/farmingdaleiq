@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ChipRow, FilterChip } from "@/components/mobile";
 import {
   createLayout,
   deleteLayout,
@@ -101,7 +103,7 @@ export function LayoutEditor({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-2">
         <Select value={selectedLayoutId} onValueChange={setSelectedLayoutId}>
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-56 rounded-full">
             <SelectValue placeholder="Choose a layout" />
           </SelectTrigger>
           <SelectContent>
@@ -127,28 +129,30 @@ export function LayoutEditor({
             >
               {layouts.find((l) => l.id === selectedLayoutId)?.active ? "Deactivate" : "Activate"}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
+              type="button"
+              aria-label="Delete layout"
               disabled={isPending}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-danger hover:bg-danger-soft disabled:opacity-50"
               onClick={() => run(() => deleteLayout({ id: selectedLayoutId }))}
             >
-              Delete layout
-            </Button>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </button>
           </>
         )}
-
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setView(view === "canvas" ? "list" : "canvas")}
-        >
-          {view === "canvas" ? "Switch to list view" : "Switch to canvas view"}
-        </Button>
       </div>
 
+      <ChipRow aria-label="Layout editor view">
+        <FilterChip type="button" active={view === "canvas"} onClick={() => setView("canvas")}>
+          Canvas
+        </FilterChip>
+        <FilterChip type="button" active={view === "list"} onClick={() => setView("list")}>
+          List
+        </FilterChip>
+      </ChipRow>
+
       <form
-        className="flex flex-wrap items-end gap-2 border-t border-border pt-3"
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-line p-3"
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -170,10 +174,11 @@ export function LayoutEditor({
           placeholder="New layout name (e.g. Main floor)"
           value={newLayoutName}
           onChange={(e) => setNewLayoutName(e.target.value)}
+          className="rounded-full"
           required
         />
         <Select value={newLayoutDayPart} onValueChange={setNewLayoutDayPart}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-48 rounded-full">
             <SelectValue placeholder="Day part" />
           </SelectTrigger>
           <SelectContent>
@@ -190,7 +195,7 @@ export function LayoutEditor({
         </Button>
       </form>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
       {selectedLayoutId && (
         <>
@@ -218,7 +223,7 @@ export function LayoutEditor({
             }}
           >
             <Select value={addPositionId} onValueChange={setAddPositionId}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-56 rounded-full">
                 <SelectValue placeholder="Add a position tile" />
               </SelectTrigger>
               <SelectContent>
@@ -234,7 +239,7 @@ export function LayoutEditor({
               placeholder="Area label (e.g. Kitchen line)"
               value={addAreaLabel}
               onChange={(e) => setAddAreaLabel(e.target.value)}
-              className="max-w-xs"
+              className="max-w-xs rounded-full"
             />
             <Button type="submit" size="sm" disabled={isPending}>
               Place on canvas
@@ -243,7 +248,7 @@ export function LayoutEditor({
 
           {view === "canvas" ? (
             <div
-              className="grid gap-1 rounded-md border border-border bg-muted/30 p-2"
+              className="grid gap-1 rounded-2xl border border-line bg-canvas p-2"
               style={{
                 gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${GRID_ROWS}, 2.5rem)`,
@@ -255,7 +260,7 @@ export function LayoutEditor({
                 return (
                   <div
                     key={i}
-                    className="rounded-sm border border-dashed border-border/50"
+                    className="rounded-sm border border-dashed border-line/70"
                     style={{ gridColumn: cellX + 1, gridRow: cellY + 1 }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => handleDrop(cellX, cellY)}
@@ -267,68 +272,70 @@ export function LayoutEditor({
                   key={tile.id}
                   draggable
                   onDragStart={() => setDraggingTileId(tile.id)}
-                  className="z-10 flex cursor-move items-center justify-center rounded-md border border-primary/40 bg-primary/15 p-1 text-center text-xs font-medium leading-tight text-foreground shadow-sm"
+                  className="z-10 flex cursor-move items-center justify-center overflow-hidden rounded-lg border border-accent/40 bg-accent-soft p-1 text-center text-[13px] font-semibold leading-tight text-ink shadow-card"
                   style={{
                     gridColumn: `${tile.x + 1} / span ${tile.w}`,
                     gridRow: `${tile.y + 1} / span ${tile.h}`,
                   }}
                   title="Drag to move"
                 >
-                  <span>
+                  <span className="truncate">
                     {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <ul className="flex flex-col gap-1">
+            <div className="flex flex-col divide-y divide-line rounded-2xl border border-line bg-card">
               {currentTiles.map((tile) => (
-                <li
-                  key={tile.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2 text-sm"
-                >
-                  <span>
-                    {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")} —
-                    x:{tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
+                <div key={tile.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <span className="text-[13px] text-ink">
+                    {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")} — x:
+                    {tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
                   </span>
-                  <span className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="Move left"
                       disabled={isPending}
-                      onClick={() => run(() => moveLayoutTile({ tileId: tile.id, x: Math.max(0, tile.x - 1), y: tile.y }))}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
+                      onClick={() =>
+                        run(() => moveLayoutTile({ tileId: tile.id, x: Math.max(0, tile.x - 1), y: tile.y }))
+                      }
                     >
-                      Left
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Move right"
                       disabled={isPending}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
                       onClick={() => run(() => moveLayoutTile({ tileId: tile.id, x: tile.x + 1, y: tile.y }))}
                     >
-                      Right
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Remove tile"
                       disabled={isPending}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-danger-soft hover:text-danger disabled:opacity-30"
                       onClick={() => run(() => deleteTile({ id: tile.id }))}
                     >
-                      Remove
-                    </Button>
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
                   </span>
-                </li>
+                </div>
               ))}
               {currentTiles.length === 0 && (
-                <li className="text-sm text-muted-foreground">No tiles placed yet.</li>
+                <p className="px-3 py-3 text-[13px] text-muted-ink">No tiles placed yet.</p>
               )}
-            </ul>
+            </div>
           )}
         </>
       )}
 
       {layouts.length === 0 && (
-        <p className="text-sm text-muted-foreground">Create a layout above to start placing tiles.</p>
+        <p className="text-[13px] text-muted-ink">Create a layout above to start placing tiles.</p>
       )}
     </div>
   );
