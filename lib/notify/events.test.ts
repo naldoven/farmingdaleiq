@@ -181,4 +181,108 @@ describe("processAppEvents", () => {
 
     expect(db.rowsOf("discord_outbox")).toHaveLength(1);
   });
+
+  it("advances a durable cursor so the window moves past `limit` (parity #7)", async () => {
+    // Three notifiable events, oldest-first. With limit=2 the old code would
+    // re-fetch the same oldest 2 every run and never reach evt-3.
+    const { db, client } = makeClient({
+      app_events: [
+        { id: "evt-1", event_key: "task_assigned", created_at: "2026-07-07T10:00:00.000Z", payload: { user_id: "u1", title: "A" } },
+        { id: "evt-2", event_key: "task_assigned", created_at: "2026-07-07T10:01:00.000Z", payload: { user_id: "u2", title: "B" } },
+        { id: "evt-3", event_key: "task_assigned", created_at: "2026-07-07T10:02:00.000Z", payload: { user_id: "u3", title: "C" } },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+
+    const first = await processAppEvents(2, client);
+    expect(first.scanned).toBe(2);
+    expect(first.notificationsCreated).toBe(2);
+
+    // Cursor parked on the batch high-water mark (evt-2).
+    const cursor = db.rowsOf("job_cursors")[0];
+    expect(cursor).toMatchObject({ job_name: "process-events", last_event_id: "evt-2" });
+
+    const second = await processAppEvents(2, client);
+    // Window advanced: only evt-3 remains, not a re-scan of evt-1/evt-2.
+    expect(second.scanned).toBe(1);
+    expect(second.notificationsCreated).toBe(1);
+
+    const recipients = db.rowsOf("notifications").map((n) => n.user_id).sort();
+    expect(recipients).toEqual(["u1", "u2", "u3"]);
+  });
+
+  it("fans a broadcast (no explicit recipient) out to every active profile", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        { id: "evt-1", event_key: "broadcast", created_at: "2026-07-07T10:00:00.000Z", payload: { title: "Store closes early Friday" } },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [
+        { id: "u1", active: true },
+        { id: "u2", active: true },
+        { id: "u3", active: false },
+      ],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.notificationsCreated).toBe(2);
+    const recipients = db.rowsOf("notifications").map((n) => n.user_id).sort();
+    expect(recipients).toEqual(["u1", "u2"]);
+  });
+
+  it("honors a per-instance discord_channel_id override over the global route (parity #8)", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "maint_request",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { title: "Ice machine leaking", discord_channel_id: "chan-override" },
+        },
+      ],
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_event_routes: [{ event_key: "maint_request", channel_id: "chan-1", enabled: true }],
+      discord_outbox: [],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.discordQueued).toBe(1);
+    expect(db.rowsOf("discord_outbox")[0]).toMatchObject({ channel_id: "chan-override" });
+  });
+
+  it("honors the canonical notify_discord: false opt-out", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "task_overdue",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { title: "Sweep the lobby", notify_discord: false },
+        },
+      ],
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_event_routes: [{ event_key: "task_overdue", channel_id: "chan-1", enabled: true }],
+      discord_outbox: [],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.discordQueued).toBe(0);
+    expect(db.rowsOf("discord_outbox")).toHaveLength(0);
+  });
 });
