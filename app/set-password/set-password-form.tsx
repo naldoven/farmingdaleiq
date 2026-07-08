@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { AuthAlert } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +54,9 @@ export function SetPasswordForm() {
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">New password</Label>
+        <Label htmlFor="password" className="text-[13px] font-semibold text-ink">
+          New password
+        </Label>
         <Input
           id="password"
           name="password"
@@ -64,11 +67,14 @@ export function SetPasswordForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={isPending}
+          className="h-11 rounded-lg px-3.5 text-[15px]"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="confirm">Confirm password</Label>
+        <Label htmlFor="confirm" className="text-[13px] font-semibold text-ink">
+          Confirm password
+        </Label>
         <Input
           id="confirm"
           name="confirm"
@@ -78,16 +84,13 @@ export function SetPasswordForm() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           disabled={isPending}
+          className="h-11 rounded-lg px-3.5 text-[15px]"
         />
       </div>
 
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <AuthAlert>{error}</AuthAlert> : null}
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="h-11 w-full rounded-lg text-[15px]" disabled={isPending}>
         {isPending ? "Saving..." : "Set password"}
       </Button>
     </form>

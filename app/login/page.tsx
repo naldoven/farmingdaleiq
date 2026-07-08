@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthAlert, AuthShell } from "@/components/auth/auth-shell";
 import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { LoginForm } from "@/app/login/login-form";
 
@@ -52,38 +46,12 @@ export default async function LoginPage({
   const errorMessage = resolveAuthErrorMessage(params.error);
 
   return (
-    <main className="flex min-h-full flex-1 items-center justify-center bg-background px-4 py-12">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <span className="rounded-lg bg-primary px-3 py-1 text-lg font-bold tracking-tight text-primary-foreground">
-            FarmingdaleIQ
-          </span>
-          <p className="text-sm text-muted-foreground">
-            Sign in to your account
-          </p>
-        </div>
-
-        {errorMessage ? (
-          <p
-            role="alert"
-            className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
-          >
-            {errorMessage}
-          </p>
-        ) : null}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Welcome back</CardTitle>
-            <CardDescription>
-              Use the email and password for your store account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LoginForm next={next} />
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Use the email and password for your store account."
+      banner={errorMessage ? <AuthAlert>{errorMessage}</AuthAlert> : null}
+    >
+      <LoginForm next={next} />
+    </AuthShell>
   );
 }

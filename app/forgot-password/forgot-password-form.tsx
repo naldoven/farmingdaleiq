@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 
+import { AuthAlert } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +22,7 @@ export function ForgotPasswordForm() {
 
   if (sent) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="rounded-xl bg-success-soft px-4 py-3 text-[15px] font-medium text-success">
         If an account exists for that email, a reset link is on its way. Check
         your inbox and follow the link to choose a new password.
       </p>
@@ -52,7 +53,9 @@ export function ForgotPasswordForm() {
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-[13px] font-semibold text-ink">
+          Email
+        </Label>
         <Input
           id="email"
           name="email"
@@ -64,16 +67,13 @@ export function ForgotPasswordForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={isPending}
+          className="h-11 rounded-lg px-3.5 text-[15px]"
         />
       </div>
 
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <AuthAlert>{error}</AuthAlert> : null}
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="h-11 w-full rounded-lg text-[15px]" disabled={isPending}>
         {isPending ? "Sending..." : "Send reset link"}
       </Button>
     </form>
