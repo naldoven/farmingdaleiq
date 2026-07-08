@@ -1,14 +1,20 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+import { ClipboardCheck, Coins } from "lucide-react";
+
+import {
+  HScroll,
+  ListRow,
+  MetricCard,
+  SectionCard,
+  StatTile,
+  StatusBadge,
+} from "@/components/mobile";
+import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { createClient } from "@/lib/supabase/server";
+import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-export interface HomePositionRow {
-  positionName: string;
-  dayPartName: string | null;
 }
 
 export interface HomeTaskSummary {
@@ -17,43 +23,48 @@ export interface HomeTaskSummary {
   titles: string[];
 }
 
-export interface HomeFeedItem {
-  id: string;
-  kind: string;
-  headline: string;
-  body: string | null;
-  createdAt: string;
+export interface CompletionSummary {
+  completed: number;
+  total: number;
+  pct: number;
 }
 
-const FEED_KIND_LABELS: Record<string, string> = {
-  recognition: "Recognition",
-  top_performer: "Top Performer",
-  broadcast: "Broadcast",
-};
+export interface TaskScopeSummary {
+  assigned: number;
+  overdue: number;
+}
+
+export interface ActivitySummary {
+  unreadCount: number;
+  priorityCount: number;
+}
+
+export interface HomeTokenActivityRow {
+  id: string;
+  label: string;
+  delta: number;
+}
+
+const OPEN_TASK_STATUSES = new Set(["pending", "overdue"]);
 
 /**
- * Turns raw setup_assignments rows into the positions a person is posted to
- * today. Pure so the "my day" wiring (FIQ parity R27) can be unit tested
- * without a live Supabase client.
+ * Notification kinds surfaced as "priority" on the home Activity card: the
+ * ones a person is personally affected by and should not miss (a subset of
+ * NOTIFIABLE_EVENT_KEYS, lib/notify/templates.ts). Purely a display grouping
+ * for this card, not a delivery or permission rule.
  */
-export function summarizePositions(
-  assignments: { position_id: string | null; setup_id: string }[],
-  positionNameById: Map<string, string>,
-  dayPartNameBySetupId: Map<string, string | null>,
-): HomePositionRow[] {
-  return assignments
-    .filter((a): a is { position_id: string; setup_id: string } => Boolean(a.position_id))
-    .map((a) => ({
-      positionName: positionNameById.get(a.position_id) ?? "Unknown position",
-      dayPartName: dayPartNameBySetupId.get(a.setup_id) ?? null,
-    }));
-}
+export const PRIORITY_NOTIFICATION_KINDS = new Set([
+  "infraction_issued",
+  "disciplinary_triggered",
+  "follow_up_assigned",
+  "reward_claim",
+]);
 
-/** Pure task-summary builder for the "my to-dos" card (FIQ parity R27). */
+/** Pure task-summary builder for the "To-Dos Today" card (FIQ parity R27). */
 export function summarizeTasks(
   tasks: { title: string; status: string }[],
 ): HomeTaskSummary {
-  const open = tasks.filter((t) => t.status === "pending" || t.status === "overdue");
+  const open = tasks.filter((t) => OPEN_TASK_STATUSES.has(t.status));
   return {
     openCount: open.length,
     overdueCount: tasks.filter((t) => t.status === "overdue").length,
@@ -61,39 +72,63 @@ export function summarizeTasks(
   };
 }
 
-/** Pure feed-highlight formatter, mirrors components/feed/post-card.tsx's headline logic. */
-export function summarizeFeed(
-  posts: {
-    id: string;
-    kind: string;
-    body: string | null;
-    author_id: string | null;
-    subject_user_id: string | null;
-    created_at: string;
-  }[],
-  nameById: Map<string, string>,
-): HomeFeedItem[] {
-  return posts.map((p) => {
-    const authorName = p.author_id ? (nameById.get(p.author_id) ?? null) : null;
-    const subjectName = p.subject_user_id ? (nameById.get(p.subject_user_id) ?? null) : null;
-    const headline =
-      p.kind === "broadcast"
-        ? (authorName ?? "A leader")
-        : `${authorName ?? "Someone"} → ${subjectName ?? "a coworker"}`;
-    return {
-      id: p.id,
-      kind: p.kind,
-      headline,
-      body: p.body,
-      createdAt: p.created_at,
-    };
-  });
+/**
+ * Pure x/y + "% Completed" summarizer shared by the Checklists and Tasks
+ * scoreboard tiles: how many of today's items are in `completedStatus`.
+ */
+export function summarizeCompletion(
+  statuses: string[],
+  completedStatus = "completed",
+): CompletionSummary {
+  const total = statuses.length;
+  const completed = statuses.filter((s) => s === completedStatus).length;
+  const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+  return { completed, total, pct };
+}
+
+/** Pure "assigned / overdue" counter for the Assigned Tasks card's tiles. */
+export function summarizeTaskScope(tasks: { status: string }[]): TaskScopeSummary {
+  const open = tasks.filter((t) => OPEN_TASK_STATUSES.has(t.status));
+  return {
+    assigned: open.length,
+    overdue: open.filter((t) => t.status === "overdue").length,
+  };
+}
+
+/** Counts the signed-in user's own not-yet-acknowledged disciplinary actions. */
+export function countActiveDisciplinaryActions(actions: { status: string }[]): number {
+  return actions.filter((a) => a.status === "pending").length;
+}
+
+/** Unread / priority-unread counts for the home Activity card. */
+export function summarizeActivity(
+  notifications: { kind: string; read_at: string | null }[],
+): ActivitySummary {
+  const unread = notifications.filter((n) => n.read_at === null);
+  return {
+    unreadCount: unread.length,
+    priorityCount: unread.filter((n) => PRIORITY_NOTIFICATION_KINDS.has(n.kind)).length,
+  };
+}
+
+/** Formats recent token_transactions for the home Tokens card's short list. */
+export function summarizeTokenActivity(
+  transactions: { id: string; delta: number; kind: string; note: string | null }[],
+): HomeTokenActivityRow[] {
+  return transactions.map((t) => ({
+    id: t.id,
+    label: t.note && t.note.trim().length > 0 ? t.note : transactionKindLabel(t.kind),
+    delta: t.delta,
+  }));
 }
 
 /**
- * / (owned by the app-group now that the starter app/page.tsx is gone --
- * FIQ parity R2). "My day" home: token balance, today's posted positions,
- * today's to-dos, and recent Team Feed highlights (FIQ parity R27).
+ * / (owned by the app-group -- FIQ parity R2). KitchenIQ-style home
+ * dashboard: a scoreboard (checklists, active DAs, tasks), today's to-dos,
+ * an activity summary, assigned-tasks tiles (to you / by you), and the
+ * token balance with recent ledger activity. The AppShell (mounted by
+ * app/(app)/layout.tsx) renders the home header/nav; this page only supplies
+ * the content column.
  */
 export default async function HomePage() {
   const supabase = await createClient();
@@ -101,162 +136,180 @@ export default async function HomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  let checklists: CompletionSummary = { completed: 0, total: 0, pct: 0 };
+  let activeDAs = 0;
+  let tasksCompletion: CompletionSummary = { completed: 0, total: 0, pct: 0 };
+  let todos: HomeTaskSummary = { openCount: 0, overdueCount: 0, titles: [] };
+  let activity: ActivitySummary = { unreadCount: 0, priorityCount: 0 };
+  let toYou: TaskScopeSummary = { assigned: 0, overdue: 0 };
+  let byYou: TaskScopeSummary = { assigned: 0, overdue: 0 };
   let balance = 0;
-  let displayName = "there";
-  let positions: HomePositionRow[] = [];
-  let taskSummary: HomeTaskSummary = { openCount: 0, overdueCount: 0, titles: [] };
-  let feed: HomeFeedItem[] = [];
+  let tokenActivity: HomeTokenActivityRow[] = [];
 
   if (user) {
     const today = todayIso();
 
     const [
-      { data: profile },
-      { data: transactions },
-      { data: setupsToday },
-      { data: dayParts },
+      { data: checklistRuns },
+      { data: disciplinaryActions },
       { data: tasksToday },
-      { data: feedPosts },
+      { data: notifications },
+      balanceResult,
+      recentTransactions,
     ] = await Promise.all([
-      supabase.from("profiles").select("name").eq("id", user.id).maybeSingle(),
-      supabase.from("token_transactions").select("delta").eq("user_id", user.id),
-      supabase.from("setups").select("id, day_part_id").eq("date", today).not("posted_at", "is", null),
-      supabase.from("day_parts").select("id, name"),
+      supabase.from("checklist_runs").select("status").eq("run_date", today),
+      supabase.from("disciplinary_actions").select("status").eq("user_id", user.id),
       supabase
         .from("tasks")
-        .select("title, status")
-        .eq("date", today)
-        .eq("assigned_user_id", user.id)
-        .neq("status", "cancelled"),
-      supabase
-        .from("feed_posts")
-        .select("id, kind, body, author_id, subject_user_id, created_at")
-        .order("created_at", { ascending: false })
-        .limit(5),
+        .select("title, status, assigned_user_id, created_by")
+        .eq("date", today),
+      supabase.from("notifications").select("kind, read_at").eq("user_id", user.id),
+      getBalance(user.id, supabase),
+      getRecentTransactions(user.id, 5, supabase),
     ]);
 
-    displayName = profile?.name ?? "there";
-    balance = (transactions ?? []).reduce((sum, t) => sum + t.delta, 0);
+    checklists = summarizeCompletion((checklistRuns ?? []).map((r) => r.status));
+    activeDAs = countActiveDisciplinaryActions(disciplinaryActions ?? []);
 
-    const dayPartNameById = new Map((dayParts ?? []).map((d) => [d.id, d.name]));
-    const dayPartNameBySetupId = new Map(
-      (setupsToday ?? []).map((s) => [s.id, s.day_part_id ? (dayPartNameById.get(s.day_part_id) ?? null) : null]),
-    );
-    const setupIds = (setupsToday ?? []).map((s) => s.id);
+    const activeTasks = (tasksToday ?? []).filter((t) => t.status !== "cancelled");
+    tasksCompletion = summarizeCompletion(activeTasks.map((t) => t.status));
 
-    const { data: assignments } = setupIds.length
-      ? await supabase
-          .from("setup_assignments")
-          .select("position_id, setup_id")
-          .eq("user_id", user.id)
-          .in("setup_id", setupIds)
-      : { data: [] as { position_id: string | null; setup_id: string }[] };
+    const assignedToMe = activeTasks.filter((t) => t.assigned_user_id === user.id);
+    const createdByMe = activeTasks.filter((t) => t.created_by === user.id);
+    todos = summarizeTasks(assignedToMe);
+    toYou = summarizeTaskScope(assignedToMe);
+    byYou = summarizeTaskScope(createdByMe);
 
-    const positionIds = Array.from(
-      new Set((assignments ?? []).map((a) => a.position_id).filter((id): id is string => Boolean(id))),
-    );
-    const { data: positionRows } = positionIds.length
-      ? await supabase.from("positions").select("id, name").in("id", positionIds)
-      : { data: [] as { id: string; name: string }[] };
-    const positionNameById = new Map((positionRows ?? []).map((p) => [p.id, p.name]));
-
-    positions = summarizePositions(assignments ?? [], positionNameById, dayPartNameBySetupId);
-    taskSummary = summarizeTasks(tasksToday ?? []);
-
-    const feedProfileIds = Array.from(
-      new Set(
-        (feedPosts ?? []).flatMap((p) => [p.author_id, p.subject_user_id]).filter((id): id is string => Boolean(id)),
-      ),
-    );
-    const { data: feedProfiles } = feedProfileIds.length
-      ? await supabase.from("profiles").select("id, name").in("id", feedProfileIds)
-      : { data: [] as { id: string; name: string }[] };
-    const feedNameById = new Map((feedProfiles ?? []).map((p) => [p.id, p.name]));
-
-    feed = summarizeFeed(feedPosts ?? [], feedNameById);
+    activity = summarizeActivity(notifications ?? []);
+    balance = balanceResult;
+    tokenActivity = summarizeTokenActivity(recentTransactions ?? []);
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Welcome, {displayName}</h1>
-        <p className="text-sm text-muted-foreground">
-          Your day at FarmingdaleIQ.
-        </p>
-      </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <HScroll>
+        <MetricCard
+          className="w-36"
+          title="Checklists"
+          value={`${checklists.completed}/${checklists.total}`}
+          subline={`${checklists.pct}% Completed`}
+        />
+        <MetricCard
+          className="w-36"
+          title="Active DAs"
+          value={<span className="text-danger">{activeDAs}</span>}
+        />
+        <MetricCard
+          className="w-36"
+          title="Tasks"
+          value={`${tasksCompletion.completed}/${tasksCompletion.total}`}
+          subline={`${tasksCompletion.pct}% Completed`}
+        />
+      </HScroll>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Token balance</CardDescription>
-            <CardTitle className="text-3xl">{balance}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>My positions today</CardDescription>
-            <CardTitle className="text-3xl">{positions.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {positions.length === 0 ? (
-              <span>No position posted yet.</span>
-            ) : (
-              positions.map((p, i) => (
-                <span key={i}>
-                  {p.positionName}
-                  {p.dayPartName ? ` · ${p.dayPartName}` : ""}
-                </span>
-              ))
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>My to-dos</CardDescription>
-            <CardTitle className="text-3xl">{taskSummary.openCount}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {taskSummary.openCount === 0 ? (
-              <span>All caught up.</span>
-            ) : (
-              <>
-                {taskSummary.titles.map((title, i) => (
-                  <span key={i}>{title}</span>
-                ))}
-                {taskSummary.overdueCount > 0 && (
-                  <span className="font-medium text-destructive">
-                    {taskSummary.overdueCount} overdue
-                  </span>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Team feed highlights</CardTitle>
-          <CardDescription>Recent recognitions, shoutouts, and broadcasts.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {feed.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing posted yet.</p>
-          ) : (
-            feed.map((post) => (
-              <div key={post.id} className="flex flex-col gap-1 border-b border-border pb-3 last:border-b-0 last:pb-0">
-                <div className="flex items-center gap-2">
-                  <Badge variant={post.kind === "broadcast" ? "outline" : "success"}>
-                    {FEED_KIND_LABELS[post.kind] ?? post.kind}
-                  </Badge>
-                  <span className="text-sm font-medium">{post.headline}</span>
-                </div>
-                {post.body && <p className="text-sm text-muted-foreground">{post.body}</p>}
+      <SectionCard title="To-Dos Today" expandHref="/tasks" flush={todos.openCount > 0}>
+        {todos.openCount === 0 ? (
+          <p className="text-[15px] text-muted-ink">No To-Dos due Today.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {todos.titles.map((title, i) => (
+              <ListRow key={i} icon={ClipboardCheck} iconTone="accent" title={title} />
+            ))}
+            {todos.overdueCount > 0 && (
+              <div className="px-4 py-3">
+                <StatusBadge tone="danger" dot>
+                  {todos.overdueCount} overdue
+                </StatusBadge>
               </div>
-            ))
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Activity"
+        action={
+          <Link href="/notifications" className="text-[13px] font-semibold text-accent">
+            View all
+          </Link>
+        }
+      >
+        <div className="flex gap-3">
+          <StatTile
+            className="flex-1"
+            value={activity.priorityCount}
+            label="Priority"
+            tone={activity.priorityCount > 0 ? "danger" : "neutral"}
+          />
+          <StatTile
+            className="flex-1"
+            value={activity.unreadCount}
+            label="Unread"
+            tone={activity.unreadCount > 0 ? "warning" : "neutral"}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Assigned Tasks" expandHref="/tasks">
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="mb-2 text-[13px] font-semibold text-muted-ink">To you</p>
+            <div className="grid grid-cols-2 gap-3">
+              <StatTile value={toYou.assigned} label="Assigned" />
+              <StatTile
+                value={toYou.overdue}
+                label="Overdue"
+                tone={toYou.overdue > 0 ? "danger" : "neutral"}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[13px] font-semibold text-muted-ink">By you</p>
+            <div className="grid grid-cols-2 gap-3">
+              <StatTile value={byYou.assigned} label="Assigned" />
+              <StatTile
+                value={byYou.overdue}
+                label="Overdue"
+                tone={byYou.overdue > 0 ? "danger" : "neutral"}
+              />
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Tokens" expandHref="/tokens">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-warning-soft text-warning"
+            >
+              <Coins className="h-5 w-5" />
+            </span>
+            <span className="text-[30px] font-bold leading-none text-ink">{balance}</span>
+          </div>
+          {tokenActivity.length === 0 ? (
+            <p className="text-[15px] text-muted-ink">No token activity yet.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-line">
+              {tokenActivity.map((row) => (
+                <div key={row.id} className="flex items-center justify-between py-2 text-[15px]">
+                  <span className="text-ink">{row.label}</span>
+                  <span
+                    className={
+                      row.delta >= 0
+                        ? "font-semibold text-success"
+                        : "font-semibold text-danger"
+                    }
+                  >
+                    {row.delta >= 0 ? `+${row.delta}` : row.delta}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }
