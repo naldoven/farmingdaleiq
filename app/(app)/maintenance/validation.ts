@@ -69,6 +69,19 @@ export const assignWorkOrderSchema = z.object({
   scheduledFor: optionalText,
   dueAt: optionalText,
   priority: priorityEnum.optional(),
+  // Per-instance Discord opt-in (ARCHITECTURE.md "Discord integration" >
+  // "The flag"). Deliberately plain `.optional()` (not the `optionalUuid`
+  // helper above): that helper's transform makes the key REQUIRED-but-
+  // possibly-undefined in the inferred input type (existing callers already
+  // pass e.g. `scheduledFor: undefined` explicitly for that reason), which
+  // would force every existing assignWorkOrder call site to be touched just
+  // to add these two fields. A plain `.optional()` keeps the key itself
+  // optional, so call sites that don't know about Discord yet don't need to
+  // change. Omitting a key leaves the stored value untouched; see
+  // discordFlagPayload in logic.ts for why only "on" is ever forwarded into
+  // an emitted event.
+  notifyDiscord: z.boolean().optional(),
+  discordChannelId: z.string().uuid().optional(),
 });
 export type AssignWorkOrderInput = z.infer<typeof assignWorkOrderSchema>;
 
