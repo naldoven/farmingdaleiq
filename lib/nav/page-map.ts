@@ -339,25 +339,26 @@ export function findNavItem(href: string): NavItem | undefined {
 }
 
 /**
- * The three primary destinations on the mobile bottom tab bar. "Menu" is not a
- * route — it opens the full navigation drawer (every module in NAV_GROUPS).
+ * The four primary destinations on the mobile bottom tab bar. Each is a real
+ * route; "Menu" opens the /menu hub page (quick actions plus every module).
  * Kept here so the shell and any nav tests share one source of truth.
  */
-export type PrimaryTabId = "home" | "team" | "menu";
+export type PrimaryTabId = "home" | "team" | "tasks" | "menu";
 
 export interface PrimaryTab {
   id: PrimaryTabId;
   label: string;
-  /** Route to navigate to, or null for the Menu drawer trigger. */
-  href: string | null;
+  /** Route to navigate to. */
+  href: string;
   /** lucide-react icon name, resolved by the tab bar. */
-  icon: "home" | "users" | "menu";
+  icon: "home" | "users" | "tasks" | "menu";
 }
 
 export const PRIMARY_TABS: PrimaryTab[] = [
   { id: "home", label: "Home", href: "/", icon: "home" },
   { id: "team", label: "Team", href: "/team", icon: "users" },
-  { id: "menu", label: "Menu", href: null, icon: "menu" },
+  { id: "tasks", label: "Tasks", href: "/tasks", icon: "tasks" },
+  { id: "menu", label: "Menu", href: "/menu", icon: "menu" },
 ];
 
 /**
@@ -373,9 +374,18 @@ export interface ResolvedHeader {
   title: string;
   /** href to return to when the back chevron is pressed */
   backHref: string;
+  /** Whether the sub-page header shows a back chevron. Primary tabs don't. */
+  showBack: boolean;
 }
 
-const HOME_VARIANT_PATHS = new Set(["/", "/team"]);
+const HOME_VARIANT_PATHS = new Set(["/"]);
+
+/** Primary-tab routes: a bold title, no back chevron (you tab straight here). */
+const PRIMARY_TITLE_PATHS: Record<string, string> = {
+  "/team": "Team",
+  "/tasks": "Tasks",
+  "/menu": "Menu",
+};
 
 /** The parent path, used for the sub-page back chevron. "/a/b" -> "/a". */
 function parentPath(pathname: string): string {
@@ -386,10 +396,15 @@ function parentPath(pathname: string): string {
 
 export function resolveHeader(pathname: string): ResolvedHeader {
   if (HOME_VARIANT_PATHS.has(pathname)) {
+    return { variant: "home", title: "Home", backHref: "/", showBack: false };
+  }
+
+  if (PRIMARY_TITLE_PATHS[pathname]) {
     return {
-      variant: "home",
-      title: pathname === "/team" ? "Team" : "Home",
+      variant: "subpage",
+      title: PRIMARY_TITLE_PATHS[pathname],
       backHref: "/",
+      showBack: false,
     };
   }
 
@@ -397,7 +412,7 @@ export function resolveHeader(pathname: string): ResolvedHeader {
 
   const exact = findNavItem(pathname);
   if (exact) {
-    return { variant: "subpage", title: exact.label, backHref };
+    return { variant: "subpage", title: exact.label, backHref, showBack: true };
   }
 
   // Longest-prefix match for nested/detail routes so they inherit their
@@ -416,10 +431,10 @@ export function resolveHeader(pathname: string): ResolvedHeader {
   }
 
   if (best) {
-    return { variant: "subpage", title: best.item.label, backHref };
+    return { variant: "subpage", title: best.item.label, backHref, showBack: true };
   }
 
-  return { variant: "subpage", title: "FarmingdaleIQ", backHref };
+  return { variant: "subpage", title: "FarmingdaleIQ", backHref, showBack: true };
 }
 
 /** Deterministic soft avatar background + readable text color from a name. */

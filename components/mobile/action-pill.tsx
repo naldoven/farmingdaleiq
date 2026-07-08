@@ -14,7 +14,7 @@ const TONE_STYLES: Record<ActionPillTone, string> = {
   recognition: "bg-success-soft text-success",
   infraction: "bg-danger-soft text-danger",
   broadcast: "bg-warning-soft text-warning",
-  assign: "bg-accent-soft text-accent-ink",
+  assign: "bg-info-soft text-info",
 };
 
 interface ActionPillBaseProps {
@@ -37,10 +37,10 @@ type ActionPillProps = ActionPillBaseProps &
   );
 
 /**
- * Tappable pill with a tinted round icon chip over a bold label. The four tones
- * match the KitchenIQ action row: recognition (green), infraction (red),
- * broadcast (amber), assign (accent red). Renders as a link when `href` is set,
- * otherwise a button.
+ * Tappable soft-tinted pill: an icon beside a bold label inside a rounded
+ * rectangle. The four tones match the KitchenIQ action row: recognition
+ * (green), infraction (red), broadcast (amber), assign (blue). Renders as a
+ * link when `href` is set, otherwise a button.
  */
 export function ActionPill({
   icon: Icon,
@@ -51,20 +51,14 @@ export function ActionPill({
 }: ActionPillProps) {
   const inner = (
     <>
-      <span
-        className={cn(
-          "inline-flex h-11 w-11 items-center justify-center rounded-full",
-          TONE_STYLES[tone],
-        )}
-      >
-        <Icon className="h-5 w-5" aria-hidden="true" />
-      </span>
-      <span className="text-[13px] font-semibold text-ink">{label}</span>
+      <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+      <span className="text-[15px] font-semibold">{label}</span>
     </>
   );
 
   const shared = cn(
-    "flex flex-col items-center gap-2 rounded-2xl p-1 text-center transition-transform active:scale-95",
+    "inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-4 transition-transform active:scale-95",
+    TONE_STYLES[tone],
     className,
   );
 
