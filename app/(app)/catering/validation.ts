@@ -21,36 +21,59 @@ export const orderItemInputSchema = z.object({
 });
 export type OrderItemInput = z.infer<typeof orderItemInputSchema>;
 
-export const createOrderSchema = z.object({
-  guestName: z.string().trim().min(1, "Guest name is required"),
-  phone: optionalString,
-  email: z.string().trim().email().optional().or(z.literal("")),
-  eventDate: z.string().trim().min(1, "Event date is required"),
-  eventTime: optionalString,
-  headcount: z.number().int().min(0).max(10000).optional(),
-  amount: z.number().min(0).max(1_000_000).optional(),
-  fulfillment: z.enum(FULFILLMENT_METHODS).optional(),
-  deliveryAddress: optionalString,
-  paperGoods: z.boolean().default(false),
-  notes: z.string().trim().max(4000).optional().or(z.literal("")),
-  items: z.array(orderItemInputSchema).default([]),
-});
+/**
+ * Ties delivery_address to fulfillment=delivery (parity audit Catering
+ * finding: "Delivery orders don't require a delivery address"). Applied via
+ * .superRefine below to both create and update so a delivery order can never
+ * be saved without somewhere to deliver it.
+ */
+function requireDeliveryAddress(
+  data: { fulfillment?: "pickup" | "delivery"; deliveryAddress?: string },
+  ctx: z.RefinementCtx,
+) {
+  if (data.fulfillment === "delivery" && !data.deliveryAddress?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Delivery address is required for delivery orders",
+      path: ["deliveryAddress"],
+    });
+  }
+}
+
+export const createOrderSchema = z
+  .object({
+    guestName: z.string().trim().min(1, "Guest name is required"),
+    phone: optionalString,
+    email: z.string().trim().email().optional().or(z.literal("")),
+    eventDate: z.string().trim().min(1, "Event date is required"),
+    eventTime: optionalString,
+    headcount: z.number().int().min(0).max(10000).optional(),
+    amount: z.number().min(0).max(1_000_000).optional(),
+    fulfillment: z.enum(FULFILLMENT_METHODS).optional(),
+    deliveryAddress: optionalString,
+    paperGoods: z.boolean().default(false),
+    notes: z.string().trim().max(4000).optional().or(z.literal("")),
+    items: z.array(orderItemInputSchema).default([]),
+  })
+  .superRefine(requireDeliveryAddress);
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
-export const updateOrderDetailsSchema = z.object({
-  id: z.string().uuid(),
-  guestName: z.string().trim().min(1, "Guest name is required"),
-  phone: optionalString,
-  email: z.string().trim().email().optional().or(z.literal("")),
-  eventDate: z.string().trim().min(1, "Event date is required"),
-  eventTime: optionalString,
-  headcount: z.number().int().min(0).max(10000).optional(),
-  amount: z.number().min(0).max(1_000_000).optional(),
-  fulfillment: z.enum(FULFILLMENT_METHODS).optional(),
-  deliveryAddress: optionalString,
-  paperGoods: z.boolean().default(false),
-  notes: z.string().trim().max(4000).optional().or(z.literal("")),
-});
+export const updateOrderDetailsSchema = z
+  .object({
+    id: z.string().uuid(),
+    guestName: z.string().trim().min(1, "Guest name is required"),
+    phone: optionalString,
+    email: z.string().trim().email().optional().or(z.literal("")),
+    eventDate: z.string().trim().min(1, "Event date is required"),
+    eventTime: optionalString,
+    headcount: z.number().int().min(0).max(10000).optional(),
+    amount: z.number().min(0).max(1_000_000).optional(),
+    fulfillment: z.enum(FULFILLMENT_METHODS).optional(),
+    deliveryAddress: optionalString,
+    paperGoods: z.boolean().default(false),
+    notes: z.string().trim().max(4000).optional().or(z.literal("")),
+  })
+  .superRefine(requireDeliveryAddress);
 export type UpdateOrderDetailsInput = z.infer<typeof updateOrderDetailsSchema>;
 
 export const orderIdSchema = z.object({ orderId: z.string().uuid() });
@@ -131,3 +154,27 @@ export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
 export const menuItemIdSchema = z.object({ id: z.string().uuid() });
 
 export const historyPeriodSchema = z.enum(HISTORY_PERIODS);
+
+/**
+ * Admin CRUD for catering_checklist_defaults (parity audit Catering finding:
+ * "No admin UI for per-stage checklist default templates" — the table has a
+ * write RLS policy but nothing in the app wrote it).
+ */
+export const checklistDefaultSchema = z.object({
+  stage: z.enum(CHECKLIST_STAGES),
+  label: z.string().trim().min(1, "Label is required").max(200),
+});
+export type ChecklistDefaultInput = z.infer<typeof checklistDefaultSchema>;
+
+export const checklistDefaultIdSchema = z.object({ id: z.string().uuid() });
+
+export const updateChecklistDefaultSchema = checklistDefaultSchema.extend({
+  id: z.string().uuid(),
+  active: z.boolean(),
+});
+export type UpdateChecklistDefaultInput = z.infer<typeof updateChecklistDefaultSchema>;
+
+export const toggleChecklistDefaultActiveSchema = checklistDefaultIdSchema.extend({
+  active: z.boolean(),
+});
+export type ToggleChecklistDefaultActiveInput = z.infer<typeof toggleChecklistDefaultActiveSchema>;
