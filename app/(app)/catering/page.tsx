@@ -1,10 +1,9 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KanbanBoard } from "@/components/catering/kanban-board";
 import type { OrderCardData } from "@/components/catering/order-card";
+import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { storeLocalDate, type OrderStage } from "@/app/(app)/catering/logic";
@@ -39,41 +38,66 @@ export default async function CateringPipelinePage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  const cards: OrderCardData[] = (orders ?? []).map((o) => ({
-    id: o.id,
-    guestName: o.guest_name,
-    eventDate: o.event_date,
-    eventTime: o.event_time,
-    headcount: o.headcount,
-    amount: o.amount,
-    fulfillment: o.fulfillment,
-    stage: o.stage as OrderStage,
-  }));
+  // Checklist completion per order drives each card's progress bar. Fetched
+  // as a second query (rather than joined into the first) since it only
+  // needs order ids, which the first query already resolved.
+  const orderIds = (orders ?? []).map((o) => o.id);
+  const { data: checklistCounts } = orderIds.length
+    ? await supabase.from("catering_checklist_items").select("order_id, done").in("order_id", orderIds)
+    : { data: [] as { order_id: string; done: boolean }[] };
+
+  const progressByOrder = new Map<string, { done: number; total: number }>();
+  for (const row of checklistCounts ?? []) {
+    const existing = progressByOrder.get(row.order_id) ?? { done: 0, total: 0 };
+    existing.total += 1;
+    if (row.done) existing.done += 1;
+    progressByOrder.set(row.order_id, existing);
+  }
+
+  const cards: OrderCardData[] = (orders ?? []).map((o) => {
+    const progress = progressByOrder.get(o.id);
+    return {
+      id: o.id,
+      guestName: o.guest_name,
+      eventDate: o.event_date,
+      eventTime: o.event_time,
+      headcount: o.headcount,
+      amount: o.amount,
+      fulfillment: o.fulfillment,
+      stage: o.stage as OrderStage,
+      checklistDone: progress?.done,
+      checklistTotal: progress?.total,
+    };
+  });
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Catering pipeline</h1>
-        {canManage && (
-          <Button asChild>
-            <Link href="/catering/new">New order</Link>
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-4">
+      <SectionLabel
+        action={
+          canManage ? (
+            <Link
+              href="/catering/new"
+              aria-label="New catering order"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-accent text-white shadow-card transition-transform active:scale-95"
+            >
+              <Plus className="h-5 w-5" aria-hidden="true" />
+            </Link>
+          ) : undefined
+        }
+      >
+        Pipeline
+      </SectionLabel>
 
       {(todaysIntake ?? []).length > 0 && (
-        <Card className="border-primary/40 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">New orders today</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
+        <SectionCard title="New orders today">
+          <div className="flex flex-wrap gap-2">
             {(todaysIntake ?? []).map((o) => (
               <Link key={o.id} href={`/catering/orders/${o.id}`}>
-                <Badge variant="default">{o.guest_name}</Badge>
+                <StatusBadge tone="accent">{o.guest_name}</StatusBadge>
               </Link>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       )}
 
       <KanbanBoard orders={cards} />

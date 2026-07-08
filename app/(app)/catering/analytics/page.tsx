@@ -1,12 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { HScroll, ListRow, SectionCard, SectionLabel, StatTile } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { computeAnalytics } from "@/app/(app)/catering/logic";
@@ -32,128 +24,54 @@ export default async function CateringAnalyticsPage() {
   const analytics = computeAnalytics(orders ?? [], contacts ?? []);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Catering analytics</h1>
+    <div className="flex flex-col gap-4">
+      <SectionLabel>Analytics</SectionLabel>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Total orders</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">{analytics.totalOrders}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Total revenue</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            ${analytics.totalRevenue.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Average order</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            ${analytics.averageOrder.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Repeat guests</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {analytics.repeatGuestPercentage.toFixed(0)}%
-          </CardContent>
-        </Card>
-      </div>
+      <HScroll>
+        <StatTile value={analytics.totalOrders} label="Total orders" />
+        <StatTile value={`$${analytics.totalRevenue.toFixed(2)}`} label="Total revenue" tone="success" />
+        <StatTile value={`$${analytics.averageOrder.toFixed(2)}`} label="Average order" />
+        <StatTile value={`${analytics.repeatGuestPercentage.toFixed(0)}%`} label="Repeat guests" />
+      </HScroll>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Revenue by week</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Week</TableHead>
-                <TableHead>Revenue</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {analytics.revenueByWeek.map((w) => (
-                <TableRow key={w.week}>
-                  <TableCell>{w.week}</TableCell>
-                  <TableCell>${w.revenue.toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-              {analytics.revenueByWeek.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground">
-                    No orders yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <SectionCard title="Revenue by week" flush>
+        <div className="divide-y divide-line">
+          {analytics.revenueByWeek.map((w) => (
+            <ListRow key={w.week} title={w.week} trailing={<span className="text-[15px] font-semibold text-ink">${w.revenue.toFixed(2)}</span>} />
+          ))}
+          {analytics.revenueByWeek.length === 0 && (
+            <p className="px-4 py-3 text-[13px] text-muted-ink">No orders yet.</p>
+          )}
+        </div>
+      </SectionCard>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Busiest days</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Orders</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {analytics.busiestDays.map((d) => (
-                  <TableRow key={d.day}>
-                    <TableCell>{d.day}</TableCell>
-                    <TableCell>{d.count}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <SectionCard title="Busiest days" flush>
+          <div className="divide-y divide-line">
+            {analytics.busiestDays.map((d) => (
+              <ListRow key={d.day} title={d.day} trailing={<span className="text-[15px] font-semibold text-ink">{d.count}</span>} />
+            ))}
+            {analytics.busiestDays.length === 0 && (
+              <p className="px-4 py-3 text-[13px] text-muted-ink">No orders yet.</p>
+            )}
+          </div>
+        </SectionCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Top guests</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Guest</TableHead>
-                  <TableHead>Spend</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {analytics.topGuests.map((g) => (
-                  <TableRow key={g.contactId}>
-                    <TableCell>{g.name}</TableCell>
-                    <TableCell>${g.lifetimeSpend.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-                {analytics.topGuests.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={2} className="text-center text-muted-foreground">
-                      No guests yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <SectionCard title="Top guests" flush>
+          <div className="divide-y divide-line">
+            {analytics.topGuests.map((g) => (
+              <ListRow
+                key={g.contactId}
+                title={g.name}
+                description={`${g.orderCount} order(s)`}
+                trailing={<span className="text-[15px] font-semibold text-ink">${g.lifetimeSpend.toFixed(2)}</span>}
+              />
+            ))}
+            {analytics.topGuests.length === 0 && (
+              <p className="px-4 py-3 text-[13px] text-muted-ink">No guests yet.</p>
+            )}
+          </div>
+        </SectionCard>
       </div>
     </div>
   );
