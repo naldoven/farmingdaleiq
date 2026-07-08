@@ -7,12 +7,16 @@ import {
   computeScaledSetupItems,
   currentWeekDates,
   defaultFollowUpDueDate,
+  formatOrderNewMessage,
   formatScaledLabel,
+  formatStageChangeMessage,
   isoWeekKey,
+  normalizePhone,
   parseComponents,
   parseScalingRules,
   periodRange,
   planChecklistMaterialization,
+  storeLocalDate,
 } from "@/app/(app)/catering/logic";
 
 describe("parseComponents", () => {
@@ -291,5 +295,52 @@ describe("currentWeekDates", () => {
 describe("defaultFollowUpDueDate", () => {
   it("adds 30 days to the event date", () => {
     expect(defaultFollowUpDueDate("2026-01-01")).toBe("2026-01-31");
+  });
+});
+
+describe("storeLocalDate", () => {
+  it("returns the store-local calendar date even when UTC has already rolled to the next day", () => {
+    // 2026-07-15T02:30:00Z is still 2026-07-14 22:30 in America/New_York.
+    const now = new Date("2026-07-15T02:30:00Z");
+    expect(storeLocalDate(now, "America/New_York")).toBe("2026-07-14");
+    expect(storeLocalDate(now, "UTC")).toBe("2026-07-15");
+  });
+});
+
+describe("normalizePhone", () => {
+  it("strips formatting so differently formatted numbers compare equal", () => {
+    expect(normalizePhone("(555) 123-4567")).toBe(normalizePhone("555-123-4567"));
+    expect(normalizePhone("(555) 123-4567")).toBe("5551234567");
+  });
+
+  it("leaves an already-normalized number unchanged", () => {
+    expect(normalizePhone("5551234567")).toBe("5551234567");
+  });
+});
+
+describe("formatOrderNewMessage", () => {
+  it("includes headcount when present", () => {
+    expect(
+      formatOrderNewMessage({ guestName: "Jane Doe", eventDate: "2026-08-01", headcount: 40 }),
+    ).toBe("Jane Doe — 2026-08-01, 40 guests");
+  });
+
+  it("omits the guest count clause when headcount is null", () => {
+    expect(
+      formatOrderNewMessage({ guestName: "Jane Doe", eventDate: "2026-08-01", headcount: null }),
+    ).toBe("Jane Doe — 2026-08-01");
+  });
+});
+
+describe("formatStageChangeMessage", () => {
+  it("renders the human-readable from/to stage labels", () => {
+    expect(
+      formatStageChangeMessage({
+        guestName: "Jane Doe",
+        eventDate: "2026-08-01",
+        fromStage: "new",
+        toStage: "confirm",
+      }),
+    ).toBe("Jane Doe — 2026-08-01: New → Confirmation Call");
   });
 });

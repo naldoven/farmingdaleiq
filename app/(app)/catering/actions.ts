@@ -31,13 +31,19 @@ import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
   CHECKLIST_STAGES,
   defaultFollowUpDueDate,
+  formatOrderNewMessage,
+  formatStageChangeMessage,
+  normalizePhone,
   planChecklistMaterialization,
   type ChecklistStage,
+  type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
   addChecklistItemSchema,
   addOrderItemSchema,
   changeStageSchema,
+  checklistDefaultIdSchema,
+  checklistDefaultSchema,
   checklistItemIdSchema,
   createOrderSchema,
   menuItemIdSchema,
@@ -45,17 +51,22 @@ import {
   orderIdSchema,
   orderItemIdSchema,
   resolveFollowUpSchema,
+  toggleChecklistDefaultActiveSchema,
   toggleChecklistItemSchema,
+  updateChecklistDefaultSchema,
   updateMenuItemSchema,
   updateOrderDetailsSchema,
   updateOrderItemQtySchema,
   type AddChecklistItemInput,
   type AddOrderItemInput,
   type ChangeStageInput,
+  type ChecklistDefaultInput,
   type CreateOrderInput,
   type MenuItemInput,
   type ResolveFollowUpInput,
+  type ToggleChecklistDefaultActiveInput,
   type ToggleChecklistItemInput,
+  type UpdateChecklistDefaultInput,
   type UpdateMenuItemInput,
   type UpdateOrderDetailsInput,
   type UpdateOrderItemQtyInput,
@@ -112,12 +123,19 @@ async function emitEventSafely(...args: Parameters<typeof emitEvent>): Promise<v
  * `phone` is free-form input with no format validation, so splicing it
  * unescaped into a comma-separated filter expression would let a phone
  * value containing a comma or parenthesis corrupt or extend the filter.
+ *
+ * Phone is normalized to digits-only (normalizePhone) before both the
+ * lookup and the insert (parity audit Catering finding: "Contact dedup has
+ * no DB constraint and no phone normalization" -- "(555) 123-4567" and
+ * "555-123-4567" now dedupe to the same contact). A DB-level unique index on
+ * the normalized value would still be the stronger guarantee, but that's a
+ * migration outside this stream's file ownership (app/(app)/catering/** only).
  */
 async function findOrCreateContact(
   supabase: Awaited<ReturnType<typeof createClient>>,
   input: { guestName: string; phone?: string; email?: string },
 ): Promise<{ id: string } | null> {
-  const phone = input.phone?.trim();
+  const phone = input.phone?.trim() ? normalizePhone(input.phone.trim()) : "";
   const email = input.email?.trim();
 
   if (phone) {
@@ -267,6 +285,16 @@ export async function createOrder(
       guestName: parsed.guestName,
       eventDate: parsed.eventDate,
       headcount: parsed.headcount ?? null,
+      // title/message: lib/discord/format.ts's buildDiscordMessage reads
+      // these off the payload (falling back to a generic per-key default),
+      // so this is what makes the Discord post carry the guest/date/
+      // headcount instead of just "New catering order" every time (parity
+      // audit Catering finding: "Discord posts carry no order details").
+      message: formatOrderNewMessage({
+        guestName: parsed.guestName,
+        eventDate: parsed.eventDate,
+        headcount: parsed.headcount ?? null,
+      }),
     });
 
     revalidateCatering(order.id);
@@ -325,7 +353,7 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
 
     const { data: order, error: fetchError } = await supabase
       .from("catering_orders")
-      .select("id, stage, contact_id, event_date")
+      .select("id, stage, contact_id, event_date, guest_name")
       .eq("id", parsed.orderId)
       .single();
 
@@ -369,6 +397,14 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
       orderId: parsed.orderId,
       fromStage,
       toStage: parsed.toStage,
+      // See the matching comment in createOrder: without message/title the
+      // Discord post is the generic per-key default for every stage move.
+      message: formatStageChangeMessage({
+        guestName: order.guest_name,
+        eventDate: order.event_date,
+        fromStage: fromStage as OrderStage,
+        toStage: parsed.toStage,
+      }),
     });
 
     revalidateCatering(parsed.orderId);
@@ -769,6 +805,113 @@ export async function deleteMenuItem(input: { id: string }): Promise<ActionResul
       }
       return { ok: false, error: error.message };
     }
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Admin CRUD for catering_checklist_defaults (parity audit Catering finding:
+ * "No admin UI for per-stage checklist default templates" -- the table has
+ * had a catering.manage write RLS policy since the RLS migration, but until
+ * now nothing in the app ever wrote to it, so createOrder's
+ * planChecklistMaterialization always had zero defaults to work with).
+ * Mirrors the addChecklistItem next-sort pattern: new defaults append to the
+ * end of their stage's sort order.
+ */
+export async function createChecklistDefault(
+  input: ChecklistDefaultInput,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = checklistDefaultSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: existing } = await supabase
+      .from("catering_checklist_defaults")
+      .select("sort")
+      .eq("stage", parsed.stage)
+      .order("sort", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const nextSort = (existing?.sort ?? -1) + 1;
+
+    const { data, error } = await supabase
+      .from("catering_checklist_defaults")
+      .insert({ stage: parsed.stage, label: parsed.label, sort: nextSort })
+      .select("id")
+      .single();
+
+    if (error || !data) return { ok: false, error: error?.message ?? "Could not create the default." };
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: { id: data.id } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+export async function updateChecklistDefault(
+  input: UpdateChecklistDefaultInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = updateChecklistDefaultSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("catering_checklist_defaults")
+      .update({ stage: parsed.stage, label: parsed.label, active: parsed.active })
+      .eq("id", parsed.id);
+
+    if (error) return { ok: false, error: error.message };
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/** Retires/reactivates a default without touching its stage/label/sort. */
+export async function toggleChecklistDefaultActive(
+  input: ToggleChecklistDefaultActiveInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = toggleChecklistDefaultActiveSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("catering_checklist_defaults")
+      .update({ active: parsed.active })
+      .eq("id", parsed.id);
+
+    if (error) return { ok: false, error: error.message };
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+export async function deleteChecklistDefault(input: { id: string }): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = checklistDefaultIdSchema.parse(input);
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from("catering_checklist_defaults")
+      .delete()
+      .eq("id", parsed.id);
+
+    if (error) return { ok: false, error: error.message };
 
     revalidatePath("/catering/menu");
     return { ok: true, data: undefined };

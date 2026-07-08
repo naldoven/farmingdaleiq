@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   addChecklistItemSchema,
   changeStageSchema,
+  checklistDefaultSchema,
   createOrderSchema,
   menuItemSchema,
   resolveFollowUpSchema,
+  toggleChecklistDefaultActiveSchema,
+  updateChecklistDefaultSchema,
+  updateOrderDetailsSchema,
   updateOrderItemQtySchema,
 } from "@/app/(app)/catering/validation";
 
@@ -50,6 +54,49 @@ describe("createOrderSchema", () => {
       guestName: "Jane",
       eventDate: "2026-08-01",
       items: [{ menuItemId: "not-a-uuid", qty: 1 }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a delivery order with no delivery address", () => {
+    const result = createOrderSchema.safeParse({
+      guestName: "Jane",
+      eventDate: "2026-08-01",
+      fulfillment: "delivery",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(["deliveryAddress"]);
+    }
+  });
+
+  it("accepts a delivery order that includes a delivery address", () => {
+    const result = createOrderSchema.safeParse({
+      guestName: "Jane",
+      eventDate: "2026-08-01",
+      fulfillment: "delivery",
+      deliveryAddress: "123 Main St",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("does not require a delivery address for pickup orders", () => {
+    const result = createOrderSchema.safeParse({
+      guestName: "Jane",
+      eventDate: "2026-08-01",
+      fulfillment: "pickup",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("updateOrderDetailsSchema", () => {
+  it("rejects a delivery order with no delivery address", () => {
+    const result = updateOrderDetailsSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      guestName: "Jane",
+      eventDate: "2026-08-01",
+      fulfillment: "delivery",
     });
     expect(result.success).toBe(false);
   });
@@ -98,6 +145,45 @@ describe("resolveFollowUpSchema", () => {
   it("allows an empty outcome/note", () => {
     expect(
       resolveFollowUpSchema.safeParse({ id: "11111111-1111-4111-8111-111111111111" }).success,
+    ).toBe(true);
+  });
+});
+
+describe("checklistDefaultSchema", () => {
+  it("accepts a known checklist stage and non-empty label", () => {
+    expect(checklistDefaultSchema.safeParse({ stage: "setup", label: "Serving utensils out" }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects an order-pipeline stage (not a checklist stage)", () => {
+    expect(checklistDefaultSchema.safeParse({ stage: "closed", label: "x" }).success).toBe(false);
+  });
+
+  it("rejects a blank label", () => {
+    expect(checklistDefaultSchema.safeParse({ stage: "setup", label: "  " }).success).toBe(false);
+  });
+});
+
+describe("updateChecklistDefaultSchema", () => {
+  it("requires id and active alongside stage/label", () => {
+    const result = updateChecklistDefaultSchema.safeParse({
+      id: "11111111-1111-4111-8111-111111111111",
+      stage: "out",
+      label: "Bags loaded",
+      active: false,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("toggleChecklistDefaultActiveSchema", () => {
+  it("accepts an id and boolean active flag", () => {
+    expect(
+      toggleChecklistDefaultActiveSchema.safeParse({
+        id: "11111111-1111-4111-8111-111111111111",
+        active: true,
+      }).success,
     ).toBe(true);
   });
 });

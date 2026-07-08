@@ -442,3 +442,62 @@ export function defaultFollowUpDueDate(eventDate: string): string {
   date.setUTCDate(date.getUTCDate() + 30);
   return toIsoDate(date);
 }
+
+/**
+ * Returns YYYY-MM-DD for `now` in the given IANA timezone (parity audit
+ * Catering finding: "Today/period boundaries computed in UTC, not store
+ * timezone"). Mirrors the FIQ-12 pattern already used by the checklists cron
+ * (app/(app)/checklists/logic.ts storeLocalNow), kept as a small local copy
+ * here rather than a cross-module import so Catering's day-boundary math
+ * doesn't depend on another module's file. Used by the pipeline board's
+ * "new orders today" strip.
+ */
+export function storeLocalDate(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "01";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/**
+ * Strips everything but digits so differently formatted phone numbers (e.g.
+ * "(555) 123-4567" vs "555-123-4567") dedupe to the same contact (parity
+ * audit Catering finding: "Contact dedup has no DB constraint and no phone
+ * normalization"). A DB-level unique index on the normalized value is a
+ * schema change out of this stream's file ownership; this normalizes both
+ * the lookup and the stored value so new contacts dedupe correctly going
+ * forward.
+ */
+export function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, "");
+}
+
+/**
+ * Discord message body for a new catering order (parity audit Catering
+ * finding: "Discord posts carry no order details").
+ */
+export function formatOrderNewMessage(input: {
+  guestName: string;
+  eventDate: string;
+  headcount: number | null;
+}): string {
+  const guests = input.headcount ? `, ${input.headcount} guests` : "";
+  return `${input.guestName} — ${input.eventDate}${guests}`;
+}
+
+/**
+ * Discord message body for a catering stage change (parity audit Catering
+ * finding: "Discord posts carry no order details").
+ */
+export function formatStageChangeMessage(input: {
+  guestName: string;
+  eventDate: string;
+  fromStage: OrderStage;
+  toStage: OrderStage;
+}): string {
+  return `${input.guestName} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
+}
