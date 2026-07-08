@@ -556,6 +556,7 @@ export type Database = {
       checklist_runs: {
         Row: {
           assigned_position_id: string | null
+          assigned_team_id: string | null
           assigned_user_id: string | null
           completed_at: string | null
           completed_by: string | null
@@ -569,6 +570,7 @@ export type Database = {
         }
         Insert: {
           assigned_position_id?: string | null
+          assigned_team_id?: string | null
           assigned_user_id?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -582,6 +584,7 @@ export type Database = {
         }
         Update: {
           assigned_position_id?: string | null
+          assigned_team_id?: string | null
           assigned_user_id?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -599,6 +602,13 @@ export type Database = {
             columns: ["assigned_position_id"]
             isOneToOne: false
             referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_runs_assigned_team_id_fkey"
+            columns: ["assigned_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
           {
@@ -1470,6 +1480,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      job_cursors: {
+        Row: {
+          job_name: string
+          last_event_at: string | null
+          last_event_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          job_name: string
+          last_event_at?: string | null
+          last_event_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          job_name?: string
+          last_event_at?: string | null
+          last_event_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       layout_tiles: {
         Row: {
