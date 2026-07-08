@@ -39,6 +39,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#E51636",
+  // Draw under the iOS home indicator so env(safe-area-inset-*) is non-zero.
+  // The fixed bottom tab bar relies on that inset to lift its tap targets clear
+  // of the home-swipe gesture zone; without cover the inset is 0 and the tabs
+  // sit under the indicator where taps get eaten.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
