@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SectionCard, StatusBadge } from "@/components/mobile";
 import { completeRun, saveAnswers, startRun } from "@/app/(app)/checklists/actions";
 import {
   evaluateAnswer,
@@ -149,19 +148,16 @@ export function RunPlayerForm({
 
   return (
     <div className="flex flex-col gap-4">
-      {readOnly && <Badge variant="success">Completed</Badge>}
+      {readOnly && <StatusBadge tone="success">Completed</StatusBadge>}
       {banner && (
-        <p className={banner.kind === "error" ? "text-sm text-destructive" : "text-sm text-success"}>
+        <p className={banner.kind === "error" ? "text-[13px] text-danger" : "text-[13px] text-success"}>
           {banner.message}
         </p>
       )}
 
       {sections.map((section) => (
-        <Card key={section.id}>
-          <CardHeader>
-            <CardTitle className="text-base">{section.name}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+        <SectionCard key={section.id} title={section.name}>
+          <div className="flex flex-col gap-4">
             {section.questions.map((question) => {
               const answer = answers.get(question.id) ?? {
                 questionId: question.id,
@@ -177,15 +173,15 @@ export function RunPlayerForm({
                 <div
                   key={question.id}
                   className={
-                    "flex flex-col gap-2 rounded-md border p-3 " +
+                    "flex flex-col gap-2 rounded-lg border p-3 " +
                     (errorMessage
-                      ? "border-destructive"
+                      ? "border-danger bg-danger-soft/40"
                       : evaluated.flagged
-                        ? "border-warning"
-                        : "border-border")
+                        ? "border-warning bg-warning-soft/40"
+                        : "border-line")
                   }
                 >
-                  <p className="text-sm font-medium">{question.prompt}</p>
+                  <p className="text-[15px] font-semibold text-ink">{question.prompt}</p>
 
                   {question.type === "yes_no" && (
                     <div className="flex gap-2">
@@ -229,7 +225,7 @@ export function RunPlayerForm({
                           const mode = getHoldingMode(question);
                           const range = getTemperatureRange(foodItem, mode);
                           return (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-ink">
                               {mode === "hot" ? "Hot holding" : "Cold holding"} range: {range.min ?? "—"}&deg;F
                               to {range.max ?? "—"}&deg;F
                             </p>
@@ -252,7 +248,7 @@ export function RunPlayerForm({
                       disabled={readOnly}
                       value={typeof answer.value === "string" ? answer.value : ""}
                       onChange={(e) => updateAnswer(question.id, { value: e.target.value, isNa: false })}
-                      className="h-10 max-w-xs rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+                      className="h-10 max-w-xs rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
                     >
                       <option value="">Select...</option>
                       {getMultiChoiceOptions(question).map((choice) => (
@@ -265,7 +261,7 @@ export function RunPlayerForm({
 
                   {evaluated.requiresCorrectiveAction && (
                     <div className="flex flex-col gap-1">
-                      <Label className="text-xs text-destructive">
+                      <Label className="text-xs text-danger">
                         Out of range — corrective action required
                       </Label>
                       <Textarea
@@ -279,7 +275,7 @@ export function RunPlayerForm({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-ink">
                     {question.allow_na && (
                       <Label className="flex items-center gap-1">
                         <Checkbox
@@ -311,16 +307,16 @@ export function RunPlayerForm({
                     />
                   )}
 
-                  {errorMessage && <p className="text-xs text-destructive">{errorMessage}</p>}
+                  {errorMessage && <p className="text-xs text-danger">{errorMessage}</p>}
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       ))}
 
       {!readOnly && (
-        <div className="sticky bottom-0 flex gap-2 border-t border-border bg-background/95 p-3 backdrop-blur">
+        <div className="sticky bottom-0 flex gap-2 border-t border-line bg-canvas/95 p-3 backdrop-blur">
           <Button type="button" variant="outline" disabled={isPending} onClick={handleSave}>
             {isPending ? "Saving..." : "Save progress"}
           </Button>

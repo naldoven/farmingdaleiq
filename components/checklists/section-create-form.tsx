@@ -15,7 +15,7 @@ export function SectionCreateForm({ templateId, nextSort }: { templateId: string
 
   return (
     <form
-      className="flex items-end gap-2 border-t border-border pt-3"
+      className="flex items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);

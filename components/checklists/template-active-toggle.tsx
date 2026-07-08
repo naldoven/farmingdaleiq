@@ -3,8 +3,8 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/mobile";
 import { updateTemplate } from "@/app/(app)/checklists/templates/actions";
 
 /** Toggles a template's active flag in place (edits to name/description happen via re-creating a template today). */
@@ -24,7 +24,7 @@ export function TemplateActiveToggle({
 
   return (
     <div className="flex items-center gap-2">
-      <Badge variant={active ? "success" : "outline"}>{active ? "Active" : "Inactive"}</Badge>
+      <StatusBadge tone={active ? "success" : "neutral"}>{active ? "Active" : "Inactive"}</StatusBadge>
       <Button
         type="button"
         variant="outline"
