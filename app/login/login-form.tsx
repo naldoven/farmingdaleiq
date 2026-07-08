@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { AuthAlert } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +46,9 @@ export function LoginForm({ next }: { next: string }) {
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-[13px] font-semibold text-ink">
+          Email
+        </Label>
         <Input
           id="email"
           name="email"
@@ -57,15 +60,18 @@ export function LoginForm({ next }: { next: string }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={isPending}
+          className="h-11 rounded-lg px-3.5 text-[15px]"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password" className="text-[13px] font-semibold text-ink">
+            Password
+          </Label>
           <Link
             href="/forgot-password"
-            className="text-xs font-medium text-primary hover:underline"
+            className="text-[13px] font-semibold text-accent hover:underline"
           >
             Forgot password?
           </Link>
@@ -79,16 +85,13 @@ export function LoginForm({ next }: { next: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={isPending}
+          className="h-11 rounded-lg px-3.5 text-[15px]"
         />
       </div>
 
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <AuthAlert>{error}</AuthAlert> : null}
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="h-11 w-full rounded-lg text-[15px]" disabled={isPending}>
         {isPending ? "Signing in..." : "Sign in"}
       </Button>
     </form>
