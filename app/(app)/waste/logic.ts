@@ -83,6 +83,18 @@ export interface ItemRollupRow {
  * Groups entries by item. Quantities are only ever summed within one item,
  * so the unit is always unambiguous (unlike the category rollup below,
  * where items can have different units).
+ *
+ * KNOWN LIMITATION: cost is computed from the item's *current*
+ * `unitCost` (waste_items.unit_cost), not a value captured at log time.
+ * waste_entries (supabase/migrations/20260707000900_waste.sql) has no
+ * unit_cost column to snapshot into, and this stream cannot add one (frozen
+ * schema per PLAN.md ground rules -- see the idempotency note atop
+ * app/(app)/waste/actions.ts). Practical effect: editing an item's cost in
+ * Admin retroactively changes every past rollup that references it, so a
+ * historical report re-run after a price change will not match what was
+ * shown at the time. Fixing this for real needs a schema change (add
+ * waste_entries.unit_cost, populate it in logWasteEntry, and rollup from
+ * the entry's own value instead of the item's) -- out of scope here.
  */
 export function rollupByItem(
   entries: WasteEntryForRollup[],
@@ -128,6 +140,9 @@ export interface CategoryRollupRow {
    * *quantity* is intentionally not summed here: items in the same category
    * can use different units (each/lb/oz), so a raw quantity sum would be
    * meaningless. Cost is the common unit across items.
+   *
+   * Same not-snapshotted-per-entry limitation as rollupByItem's totalCost
+   * above (see that doc comment).
    */
   totalCost: number | null;
 }

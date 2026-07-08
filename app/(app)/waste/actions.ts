@@ -56,6 +56,29 @@ function toActionError(error: unknown): string {
 }
 
 /**
+ * Case-insensitive duplicate-name guard. There's no unique constraint on
+ * waste_categories.name / waste_items.name at the DB level (that's a schema
+ * change outside this stream's owned files), so this is the app-layer
+ * substitute: "Chicken" and "chicken" would otherwise silently become two
+ * separate rows that split the same waste across two rollup lines. Fetches
+ * the small admin-maintained table rather than using `.ilike()` so a name
+ * containing `%`/`_` (ilike wildcards) can't produce a false match/miss.
+ */
+async function findDuplicateNameId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: "waste_categories" | "waste_items",
+  name: string,
+  excludeId?: string,
+): Promise<string | null> {
+  const { data } = await supabase.from(table).select("id, name");
+  const target = name.trim().toLowerCase();
+  const match = (data ?? []).find(
+    (row) => row.id !== excludeId && row.name.trim().toLowerCase() === target,
+  );
+  return match?.id ?? null;
+}
+
+/**
  * Logs one waste entry (ARCHITECTURE.md "Waste": "Anyone can log a waste
  * entry: item + quantity"). `waste.log` is a base permission key granted to
  * every seeded role (supabase/migrations/20260707001900_seed_store_config.sql
@@ -126,6 +149,10 @@ export async function createCategory(
     const parsed = createCategorySchema.parse(input);
     const supabase = await createClient();
 
+    if (await findDuplicateNameId(supabase, "waste_categories", parsed.name)) {
+      return { ok: false, error: "A category with this name already exists." };
+    }
+
     const { data, error } = await supabase
       .from("waste_categories")
       .insert({ name: parsed.name, sort: parsed.sort })
@@ -149,6 +176,10 @@ export async function updateCategory(input: UpdateCategoryInput): Promise<Action
 
     const parsed = updateCategorySchema.parse(input);
     const supabase = await createClient();
+
+    if (await findDuplicateNameId(supabase, "waste_categories", parsed.name, parsed.id)) {
+      return { ok: false, error: "A category with this name already exists." };
+    }
 
     const { error } = await supabase
       .from("waste_categories")
@@ -207,6 +238,10 @@ export async function createItem(
     const parsed = createItemSchema.parse(input);
     const supabase = await createClient();
 
+    if (await findDuplicateNameId(supabase, "waste_items", parsed.name)) {
+      return { ok: false, error: "An item with this name already exists." };
+    }
+
     const { data, error } = await supabase
       .from("waste_items")
       .insert({
@@ -235,6 +270,10 @@ export async function updateItem(input: UpdateItemInput): Promise<ActionResult> 
 
     const parsed = updateItemSchema.parse(input);
     const supabase = await createClient();
+
+    if (await findDuplicateNameId(supabase, "waste_items", parsed.name, parsed.id)) {
+      return { ok: false, error: "An item with this name already exists." };
+    }
 
     const { error } = await supabase
       .from("waste_items")
