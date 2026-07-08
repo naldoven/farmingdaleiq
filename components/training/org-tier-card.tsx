@@ -3,9 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -13,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SectionCard, StatusBadge } from "@/components/mobile";
 import { assignSlot, createSlot, deleteSlot, deleteTier } from "@/app/(app)/people/org-chart/actions";
 
 const UNSET = "unset";
@@ -48,38 +47,39 @@ export function OrgTierCard({
   const vacancy = Math.max(goalCount - filledCount, 0);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>{name}</span>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">
-              {filledCount}/{goalCount} filled
-            </Badge>
-            {vacancy > 0 && <Badge variant="outline">{vacancy} vacant</Badge>}
-            {canManage && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  startTransition(async () => {
-                    await deleteTier({ id: tierId });
-                    router.refresh();
-                  })
-                }
-              >
-                Delete tier
-              </Button>
-            )}
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {error && <p className="text-sm text-destructive">{error}</p>}
+    <SectionCard
+      title={name}
+      action={
+        <div className="flex items-center gap-2">
+          <StatusBadge tone={vacancy > 0 ? "warning" : "success"}>
+            {filledCount}/{goalCount} filled
+          </StatusBadge>
+          {canManage && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                startTransition(async () => {
+                  await deleteTier({ id: tierId });
+                  router.refresh();
+                })
+              }
+            >
+              Delete tier
+            </Button>
+          )}
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-2">
+        {error && <p className="text-[13px] text-danger">{error}</p>}
         <ul className="flex flex-col gap-2">
           {slots.map((slot) => (
-            <li key={slot.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
-              <span className={slot.userId ? "" : "text-muted-foreground italic"}>
+            <li
+              key={slot.id}
+              className="flex items-center justify-between gap-2 rounded-xl border border-line p-2 text-[15px]"
+            >
+              <span className={slot.userId ? "text-ink" : "italic text-muted-ink"}>
                 {slot.userId ? slot.userName : slot.label || "Vacant"}
               </span>
               {canManage && (
@@ -126,7 +126,7 @@ export function OrgTierCard({
               )}
             </li>
           ))}
-          {slots.length === 0 && <li className="text-sm text-muted-foreground">No slots yet.</li>}
+          {slots.length === 0 && <li className="text-[13px] text-muted-ink">No slots yet.</li>}
         </ul>
         {canManage && (
           <Button
@@ -143,7 +143,7 @@ export function OrgTierCard({
             Add slot
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }

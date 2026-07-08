@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,14 +13,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/mobile";
 import { quickRate, rubricRate } from "@/app/(app)/ratings/actions";
 import { colorForRating, type RatingColor } from "@/app/(app)/ratings/logic";
 
 const COLOR_CLASSES: Record<RatingColor, string> = {
-  above: "border-sky-400 text-sky-600 dark:text-sky-400",
-  below: "border-red-400 text-red-600 dark:text-red-400",
-  even: "border-border text-foreground",
-  none: "border-dashed border-border text-muted-foreground",
+  above: "border-info text-info",
+  below: "border-danger text-danger",
+  even: "border-line text-ink",
+  none: "border-dashed border-line text-muted-ink",
 };
 
 export interface RubricCategories {
@@ -125,7 +125,7 @@ export function RateCell({
           <Input id="rate-comment" value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
 
-        {stars !== null && stars < 3 && <Badge variant="outline">Below qualified (3.0)</Badge>}
+        {stars !== null && stars < 3 && <StatusBadge tone="warning">Below qualified (3.0)</StatusBadge>}
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <DialogFooter>

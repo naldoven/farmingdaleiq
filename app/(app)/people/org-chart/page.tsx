@@ -1,5 +1,4 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, StatusBadge } from "@/components/mobile";
 import { CreateTierForm } from "@/components/training/create-tier-form";
 import { OrgTierCard } from "@/components/training/org-tier-card";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -15,6 +14,10 @@ const DEPARTMENT_LABEL: Record<(typeof DEPARTMENTS)[number], string> = {
 /**
  * /people/org-chart — Editable org chart: tiers, goal counts, filled and
  * vacant slots. ARCHITECTURE.md "Trainee lifecycle" > "Org chart".
+ *
+ * Restyled to the KitchenIQ mobile design system (docs/DESIGN-SYSTEM.md):
+ * department groups are SectionLabels, each tier is a SectionCard
+ * (OrgTierCard). Same queries and permission checks as before.
  */
 export default async function OrgChartPage() {
   await requirePermission("training.view");
@@ -35,21 +38,15 @@ export default async function OrgChartPage() {
   }, 0);
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Org Chart</h1>
-        <Badge variant="outline">{totalVacancy} total vacancies</Badge>
+    <div className="mx-auto flex max-w-[640px] flex-col gap-4">
+      <div className="flex items-center justify-end gap-2">
+        <StatusBadge tone={totalVacancy > 0 ? "warning" : "success"}>{totalVacancy} total vacancies</StatusBadge>
       </div>
 
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add a tier</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CreateTierForm />
-          </CardContent>
-        </Card>
+        <SectionCard title="Add a tier">
+          <CreateTierForm />
+        </SectionCard>
       )}
 
       {DEPARTMENTS.map((department) => {
@@ -57,7 +54,9 @@ export default async function OrgChartPage() {
         if (departmentTiers.length === 0) return null;
         return (
           <div key={department} className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium">{DEPARTMENT_LABEL[department]}</h2>
+            <p className="text-[13px] font-semibold uppercase tracking-wide text-muted-ink">
+              {DEPARTMENT_LABEL[department]}
+            </p>
             {departmentTiers.map((tier) => (
               <OrgTierCard
                 key={tier.id}
@@ -80,7 +79,7 @@ export default async function OrgChartPage() {
         );
       })}
 
-      {(tiers ?? []).length === 0 && <p className="text-sm text-muted-foreground">No org tiers yet.</p>}
+      {(tiers ?? []).length === 0 && <p className="text-[13px] text-muted-ink">No org tiers yet.</p>}
     </div>
   );
 }
