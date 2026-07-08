@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const DEFAULT_TAGS = ["Learn", "Position Overview", "Nug Review"] as const;
+// Re-exported so server/action code can keep importing it from here; the client
+// form imports it directly from ./constants to stay zod-free.
+export { SESSION_TAG_OPTIONS } from "./constants";
 
 export const createSessionSchema = z.object({
   enrollmentId: z.string().uuid(),
@@ -16,5 +18,3 @@ export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 
 export const deleteSessionSchema = z.object({ id: z.string().uuid() });
 export type DeleteSessionInput = z.infer<typeof deleteSessionSchema>;
-
-export const SESSION_TAG_OPTIONS = DEFAULT_TAGS;

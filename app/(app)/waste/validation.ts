@@ -1,17 +1,17 @@
 import { z } from "zod";
 
+import { WASTE_UNITS, type WasteUnit } from "./constants";
+
 /**
  * Input validation for the Waste server actions (app/(app)/waste/actions.ts).
- * Kept in a plain module (no "use server") so it's unit-testable on its own
- * and importable from both the action file and client components
- * (components/waste/*) -- same pattern as app/(app)/people/validation.ts and
- * app/(app)/checklists/validation.ts.
+ * Kept in a plain module (no "use server") so it's unit-testable on its own.
+ * The unit constants live in ./constants (zod-free) so client components
+ * (components/waste/*) can import them without pulling zod into the browser;
+ * they are re-exported here for server/action code.
  */
 
-// Matches the `unit` check constraint on public.waste_items
-// (supabase/migrations/20260707000900_waste.sql: "each" | "lb" | "oz").
-export const WASTE_UNITS = ["each", "lb", "oz"] as const;
-export type WasteUnit = (typeof WASTE_UNITS)[number];
+export { WASTE_UNITS };
+export type { WasteUnit };
 
 export const idSchema = z.object({
   id: z.string().uuid(),
