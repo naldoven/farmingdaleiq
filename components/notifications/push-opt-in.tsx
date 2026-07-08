@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Bell, BellRing } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/mobile";
+import { cn } from "@/lib/utils";
 import { saveMyPushSubscription } from "@/app/(app)/notifications/actions";
 
 /**
@@ -70,27 +70,47 @@ export function PushOptIn() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {status === "done" ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-          Turn on push notifications
-        </CardTitle>
-        <CardDescription>
-          Get an alert on this device for schedule posts, to-dos, and recognitions.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex items-center gap-2">
-        <Button size="sm" disabled={status === "working" || status === "done"} onClick={enable}>
-          {status === "done" ? "Enabled" : status === "working" ? "Enabling..." : "Enable"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
-          Not now
-        </Button>
-        {status === "error" && (
-          <p className="text-sm text-destructive">Couldn&apos;t enable notifications.</p>
-        )}
-      </CardContent>
-    </Card>
+    <SectionCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-ink">
+            {status === "done" ? (
+              <BellRing className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Bell className="h-5 w-5" aria-hidden="true" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <p className="text-[15px] font-semibold text-ink">Turn on push notifications</p>
+            <p className="text-[13px] text-muted-ink">
+              Get an alert on this device for schedule posts, to-dos, and recognitions.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={cn(
+              "rounded-full bg-accent px-4 py-1.5 text-[13px] font-semibold text-white transition-colors",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+            disabled={status === "working" || status === "done"}
+            onClick={enable}
+          >
+            {status === "done" ? "Enabled" : status === "working" ? "Enabling..." : "Enable"}
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-4 py-1.5 text-[13px] font-semibold text-muted-ink transition-colors hover:bg-secondary"
+            onClick={() => setDismissed(true)}
+          >
+            Not now
+          </button>
+          {status === "error" && (
+            <p className="text-[13px] text-danger">Couldn&apos;t enable notifications.</p>
+          )}
+        </div>
+      </div>
+    </SectionCard>
   );
 }
