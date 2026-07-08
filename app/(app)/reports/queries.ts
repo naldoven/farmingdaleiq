@@ -16,6 +16,24 @@ import type { Database } from "@/lib/db/types";
 
 type DB = SupabaseClient<Database>;
 
+/**
+ * Rolling window for the time-series report fetches. Reports are a store's
+ * recent operational picture, not an all-time archive, so the high-volume
+ * source tables (checklist runs/answers, token ledger, work orders) are
+ * bounded to this window rather than selecting full history on every page
+ * load (audit: "Reports fetches full history ... with no bound"). Slower-
+ * moving, always-relevant sets (pending reward claims, the disciplinary
+ * record whose lifetime counts matter) are intentionally left unbounded.
+ */
+const REPORT_WINDOW_DAYS = 180;
+
+/** ISO cutoff `REPORT_WINDOW_DAYS` before now, for `.gte()` window filters. */
+function reportWindowStart(now: Date = new Date()): string {
+  const start = new Date(now);
+  start.setDate(start.getDate() - REPORT_WINDOW_DAYS);
+  return start.toISOString();
+}
+
 // ---------------------------------------------------------------------
 // Base data: reports.view alone is enough (every table below has a
 // select_authenticated RLS policy).
@@ -52,11 +70,19 @@ export async function fetchBaseReportData(supabase: DB): Promise<BaseReportData>
   ] = await Promise.all([
     supabase.from("profiles").select("id, name"),
     supabase.from("positions").select("id, name"),
+    // The app writes the terminal status as "completed" (not "complete"), and
+    // the dashboard only ever surfaces still-open work; restrict to the two
+    // live statuses so the query is bounded instead of scanning every task
+    // (audit: the old `.neq("status","complete")` never matched, so this
+    // fetched the entire tasks table every load).
     supabase
       .from("tasks")
       .select("id, title, status, due_at, assigned_user_id, assigned_position_id")
-      .neq("status", "complete"),
-    supabase.from("work_orders").select("id, title, status, priority, due_at"),
+      .in("status", ["pending", "overdue"]),
+    // Dashboard only shows open/overdue work orders; drop terminal rows
+    // server-side so this fetch is bounded (the completed history the
+    // Maintenance report needs is fetched separately and windowed).
+    supabase.from("work_orders").select("id, title, status, priority, due_at").not("status", "in", "(complete,cancelled)"),
     supabase.from("equipment").select("id, name, status, area"),
     supabase.from("waste_entries").select("id, item_id, quantity, logged_at"),
     supabase.from("waste_items").select("id, name, unit, unit_cost, category_id"),
@@ -87,10 +113,12 @@ export interface ChecklistReportData {
 }
 
 export async function fetchChecklistReportData(supabase: DB): Promise<ChecklistReportData> {
+  const windowStart = reportWindowStart();
+  const windowStartDate = windowStart.slice(0, 10); // run_date is a DATE column
   const [{ data: runs }, { data: templates }, { data: answers }, { data: followUps }] = await Promise.all([
-    supabase.from("checklist_runs").select("id, template_id, status"),
+    supabase.from("checklist_runs").select("id, template_id, status").gte("run_date", windowStartDate),
     supabase.from("checklist_templates").select("id, name"),
-    supabase.from("checklist_answers").select("run_id, flagged"),
+    supabase.from("checklist_answers").select("run_id, flagged").gte("answered_at", windowStart),
     supabase.from("follow_ups").select("id, description, status, due_at, assigned_to"),
   ]);
 
@@ -136,7 +164,8 @@ export interface TokenReportData {
 export async function fetchTokenReportData(supabase: DB): Promise<TokenReportData> {
   const { data: transactions } = await supabase
     .from("token_transactions")
-    .select("id, user_id, delta, kind, created_at");
+    .select("id, user_id, delta, kind, created_at")
+    .gte("created_at", reportWindowStart());
 
   return { transactions: transactions ?? [] };
 }
@@ -169,13 +198,15 @@ export async function fetchRewardReportData(supabase: DB): Promise<RewardReportD
 
 export interface CateringReportData {
   followUps: { id: string; order_id: string; due_on: string | null; done_at: string | null }[];
-  orders: { id: string; guest_name: string; event_date: string }[];
+  orders: { id: string; guest_name: string }[];
 }
 
 export async function fetchCateringReportData(supabase: DB): Promise<CateringReportData> {
   const [{ data: followUps }, { data: orders }] = await Promise.all([
     supabase.from("catering_followups").select("id, order_id, due_on, done_at"),
-    supabase.from("catering_orders").select("id, guest_name, event_date"),
+    // event_date was fetched but never used; the dashboard tile keys the
+    // follow-up to its order by guest name only.
+    supabase.from("catering_orders").select("id, guest_name"),
   ]);
 
   return {
@@ -209,5 +240,41 @@ export async function fetchTrainingReportData(supabase: DB): Promise<TrainingRep
     passports: passports ?? [],
     traineeEnrollments: traineeEnrollments ?? [],
     roadmaps: roadmaps ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------
+// Maintenance reports (reports.view -- work_orders/equipment have a
+// select_authenticated RLS policy, same as the dashboard base reads).
+// Windowed to REPORT_WINDOW_DAYS by created_at; the three aggregations
+// (time-to-resolution, spend, repeat failures) all read completed/costed
+// history, which the bounded dashboard work_orders fetch deliberately omits.
+// ---------------------------------------------------------------------
+
+export interface MaintenanceReportData {
+  workOrders: {
+    id: string;
+    title: string;
+    status: string;
+    equipment_id: string | null;
+    created_at: string;
+    completed_at: string | null;
+    cost: number | null;
+  }[];
+  equipment: { id: string; name: string }[];
+}
+
+export async function fetchMaintenanceReportData(supabase: DB): Promise<MaintenanceReportData> {
+  const [{ data: workOrders }, { data: equipment }] = await Promise.all([
+    supabase
+      .from("work_orders")
+      .select("id, title, status, equipment_id, created_at, completed_at, cost")
+      .gte("created_at", reportWindowStart()),
+    supabase.from("equipment").select("id, name"),
+  ]);
+
+  return {
+    workOrders: workOrders ?? [],
+    equipment: equipment ?? [],
   };
 }
