@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   deleteDisciplinaryActionType,
   deleteInfractionType,
@@ -11,20 +11,24 @@ import {
 
 /** Admin row-delete control for an infraction type. Blocked server-side by the FK if still referenced. */
 export function DeleteInfractionTypeButton({ id }: { id: string }) {
-  return <DeleteRowButton id={id} action={deleteInfractionType} />;
+  return <DeleteRowButton id={id} action={deleteInfractionType} label="infraction type" />;
 }
 
 /** Admin row-delete control for a disciplinary ladder rung. Blocked server-side by the FK if still referenced. */
 export function DeleteDisciplinaryActionTypeButton({ id }: { id: string }) {
-  return <DeleteRowButton id={id} action={deleteDisciplinaryActionType} />;
+  return (
+    <DeleteRowButton id={id} action={deleteDisciplinaryActionType} label="ladder rung" />
+  );
 }
 
 function DeleteRowButton({
   id,
   action,
+  label,
 }: {
   id: string;
   action: (input: { id: string }) => Promise<{ ok: boolean; error?: string }>;
+  label: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -32,11 +36,11 @@ function DeleteRowButton({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button
+      <button
         type="button"
-        size="sm"
-        variant="ghost"
+        aria-label={`Remove ${label}`}
         disabled={isPending}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-ink transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-30"
         onClick={() => {
           setError(null);
           startTransition(async () => {
@@ -49,9 +53,9 @@ function DeleteRowButton({
           });
         }}
       >
-        {isPending ? "Removing..." : "Remove"}
-      </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {error && <p className="text-[11px] text-danger">{error}</p>}
     </div>
   );
 }

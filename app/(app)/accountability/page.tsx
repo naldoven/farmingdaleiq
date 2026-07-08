@@ -1,13 +1,10 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  AvatarInitials,
+  ListRow,
+  SectionCard,
+  StatTile,
+  StatusBadge,
+} from "@/components/mobile";
 import { AccountabilitySettingsForm } from "@/components/accountability/settings-form";
 import { AcknowledgeButton } from "@/components/accountability/acknowledge-button";
 import {
@@ -32,6 +29,11 @@ function formatDate(value: string | null): string {
  * admin: types, ladder, period settings." Every section below is gated by
  * the same permission its writes require (accountability.view_own/
  * .issue/.manage), matching what RLS independently enforces.
+ *
+ * KitchenIQ mobile redesign (docs/DESIGN-SYSTEM.md): each section is a white
+ * rounded SectionCard, lists use ListRow/StatusBadge instead of shadcn
+ * Table, and the active-points count is a StatTile. Visual/layout only —
+ * queries, server actions, and permission gates are unchanged.
  */
 export default async function AccountabilityPage() {
   const supabase = await createClient();
@@ -133,246 +135,198 @@ export default async function AccountabilityPage() {
   const infractionTypeNameById = new Map(allInfractionTypes.map((t) => [t.id, t.name]));
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Accountability</h1>
-        <p className="text-sm text-muted-foreground">
-          Infractions, disciplinary actions, and your own record.
-        </p>
-      </div>
-
+    <div className="mx-auto flex max-w-[560px] flex-col gap-4">
       {canViewOwn && (
-        <Card>
-          <CardHeader>
-            <CardTitle>My record</CardTitle>
-            <CardDescription>
-              Active points: <span className="font-semibold text-foreground">{myPoints}</span>.
-              You never see who issued an infraction, only its points and note.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Points</TableHead>
-                  <TableHead>Issued</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Note</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {myInfractions.map((i) => (
-                  <TableRow key={i.id}>
-                    <TableCell>{i.type_name}</TableCell>
-                    <TableCell>{i.points}</TableCell>
-                    <TableCell>{formatDate(i.issued_at)}</TableCell>
-                    <TableCell>{formatDate(i.expires_at)}</TableCell>
-                    <TableCell className="text-muted-foreground">{i.note ?? "—"}</TableCell>
-                  </TableRow>
-                ))}
-                {myInfractions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      No infractions on record.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+        <>
+          <SectionCard title="My record">
+            <div className="flex flex-col gap-3">
+              <StatTile
+                value={myPoints}
+                label="Active points"
+                tone={myPoints > 0 ? "danger" : "success"}
+                className="w-full"
+              />
+              <p className="text-[13px] text-muted-ink">
+                You never see who issued an infraction, only its points and note.
+              </p>
+            </div>
+          </SectionCard>
 
-            {myActions.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold">Disciplinary actions</h3>
-                {myActions.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center justify-between rounded-md border border-border p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">
-                        {disciplinaryTypeNameById.get(a.type_id) ?? "Disciplinary action"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Triggered {formatDate(a.triggered_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={a.status === "pending" ? "warning" : "outline"}>
-                        {a.status}
-                      </Badge>
-                      {a.status === "pending" && <AcknowledgeButton id={a.id} />}
-                    </div>
-                  </div>
+          <SectionCard title="Infraction history" flush>
+            {myInfractions.length === 0 ? (
+              <p className="px-4 pb-4 text-[13px] text-muted-ink">
+                No infractions on record.
+              </p>
+            ) : (
+              <div className="divide-y divide-line">
+                {myInfractions.map((i) => (
+                  <ListRow
+                    key={i.id}
+                    title={i.type_name}
+                    description={
+                      `Issued ${formatDate(i.issued_at)} · Expires ${formatDate(i.expires_at)}` +
+                      (i.note ? ` · ${i.note}` : "")
+                    }
+                    trailing={
+                      <span className="shrink-0 text-[15px] font-bold text-danger">
+                        {i.points} pts
+                      </span>
+                    }
+                  />
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </SectionCard>
+
+          {myActions.length > 0 && (
+            <SectionCard title="Disciplinary actions" flush>
+              <div className="divide-y divide-line">
+                {myActions.map((a) => (
+                  <ListRow
+                    key={a.id}
+                    title={disciplinaryTypeNameById.get(a.type_id) ?? "Disciplinary action"}
+                    description={`Triggered ${formatDate(a.triggered_at)}`}
+                    trailing={
+                      <div className="flex flex-col items-end gap-1.5">
+                        <StatusBadge tone={a.status === "pending" ? "warning" : "neutral"}>
+                          {a.status}
+                        </StatusBadge>
+                        {a.status === "pending" && <AcknowledgeButton id={a.id} />}
+                      </div>
+                    }
+                  />
+                ))}
+              </div>
+            </SectionCard>
+          )}
+        </>
       )}
 
       {canIssue && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Issue an infraction</CardTitle>
-            <CardDescription>The recipient will see the points, not you.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {people.length === 0 || infractionTypeOptions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No people or infraction types available yet.
-              </p>
-            ) : (
-              <IssueInfractionForm people={people} types={infractionTypeOptions} />
-            )}
-          </CardContent>
-        </Card>
+        <SectionCard title="Issue an infraction">
+          <p className="-mt-2 mb-3 text-[13px] text-muted-ink">
+            The recipient will see the points, not you.
+          </p>
+          {people.length === 0 || infractionTypeOptions.length === 0 ? (
+            <p className="text-[13px] text-muted-ink">
+              No people or infraction types available yet.
+            </p>
+          ) : (
+            <IssueInfractionForm people={people} types={infractionTypeOptions} />
+          )}
+        </SectionCard>
       )}
 
       {canManage && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Accountability period</CardTitle>
-              <CardDescription>
-                Rolling: points expire N days after issuance. Fixed: everyone&apos;s points
-                reset together on a shared window.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {settings ? (
-                <AccountabilitySettingsForm
-                  id={settings.id}
-                  periodKind={settings.period_kind}
-                  periodDays={settings.period_days}
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">No settings row found.</p>
-              )}
-            </CardContent>
-          </Card>
+          <SectionCard title="Accountability period">
+            <p className="-mt-2 mb-3 text-[13px] text-muted-ink">
+              Rolling: points expire N days after issuance. Fixed: everyone&apos;s points
+              reset together on a shared window.
+            </p>
+            {settings ? (
+              <AccountabilitySettingsForm
+                id={settings.id}
+                periodKind={settings.period_kind}
+                periodDays={settings.period_days}
+              />
+            ) : (
+              <p className="text-[13px] text-muted-ink">No settings row found.</p>
+            )}
+          </SectionCard>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Infraction types</CardTitle>
-              <CardDescription>Each type is worth a number of points.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
+          <SectionCard title="Infraction types">
+            <div className="flex flex-col gap-3">
               <InfractionTypeCreateForm />
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Points</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {allInfractionTypes.length === 0 ? (
+                <p className="text-[13px] text-muted-ink">No infraction types yet.</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-line rounded-xl border border-line">
                   {allInfractionTypes.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>{t.name}</TableCell>
-                      <TableCell>{t.points}</TableCell>
-                      <TableCell>
-                        <Badge variant={t.active ? "success" : "outline"}>
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[15px] font-semibold text-ink">{t.name}</p>
+                        <p className="text-[13px] text-muted-ink">{t.points} pts</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <StatusBadge tone={t.active ? "success" : "neutral"}>
                           {t.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
+                        </StatusBadge>
                         <DeleteInfractionTypeButton id={t.id} />
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                   ))}
-                  {allInfractionTypes.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No infraction types yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                </div>
+              )}
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Disciplinary ladder</CardTitle>
-              <CardDescription>
-                An action fires automatically when active points cross a threshold.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
+          <SectionCard title="Disciplinary ladder">
+            <div className="flex flex-col gap-3">
               <DisciplinaryTypeCreateForm nextSort={allDisciplinaryTypes.length + 1} />
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Threshold</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              {allDisciplinaryTypes.length === 0 ? (
+                <p className="text-[13px] text-muted-ink">No ladder rungs yet.</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-line rounded-xl border border-line">
                   {allDisciplinaryTypes.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>{t.name}</TableCell>
-                      <TableCell>{t.threshold_points} pts</TableCell>
-                      <TableCell className="text-right">
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5"
+                    >
+                      <p className="truncate text-[15px] font-semibold text-ink">{t.name}</p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-[13px] font-semibold text-muted-ink">
+                          {t.threshold_points} pts
+                        </span>
                         <DeleteDisciplinaryActionTypeButton id={t.id} />
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                   ))}
-                  {allDisciplinaryTypes.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground">
-                        No ladder rungs yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                </div>
+              )}
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent infractions (store-wide)</CardTitle>
-              <CardDescription>Admin audit view — includes who issued it.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Person</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Points</TableHead>
-                    <TableHead>Issued by</TableHead>
-                    <TableHead>Issued</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {storeLog.map((i) => (
-                    <TableRow key={i.id}>
-                      <TableCell>{profileNameById.get(i.user_id) ?? "—"}</TableCell>
-                      <TableCell>{infractionTypeNameById.get(i.type_id) ?? "—"}</TableCell>
-                      <TableCell>{i.points}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {i.issued_by ? (profileNameById.get(i.issued_by) ?? "—") : "—"}
-                      </TableCell>
-                      <TableCell>{formatDate(i.issued_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                  {storeLog.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
-                        No infractions issued yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <SectionCard
+            title="Recent infractions"
+            action={<span className="text-[13px] text-muted-ink">Store-wide</span>}
+            flush
+          >
+            {storeLog.length === 0 ? (
+              <p className="px-4 pb-4 text-[13px] text-muted-ink">
+                No infractions issued yet.
+              </p>
+            ) : (
+              <div className="divide-y divide-line">
+                {storeLog.map((i) => {
+                  const personName = profileNameById.get(i.user_id) ?? "—";
+                  const issuedByName = i.issued_by
+                    ? (profileNameById.get(i.issued_by) ?? "—")
+                    : "—";
+                  return (
+                    <div key={i.id} className="flex items-center gap-3 px-4 py-3">
+                      <AvatarInitials name={personName} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-semibold text-ink">
+                          {personName}
+                        </p>
+                        <p className="truncate text-[13px] text-muted-ink">
+                          {infractionTypeNameById.get(i.type_id) ?? "—"} · Issued by{" "}
+                          {issuedByName} · {formatDate(i.issued_at)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[15px] font-bold text-danger">
+                        {i.points} pts
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
         </>
       )}
     </div>
