@@ -23,12 +23,14 @@ import { revalidatePath } from "next/cache";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { giftTokens } from "@/lib/tokens/ledger";
+import { adjustTokens as adjustTokensLedger, giftTokens } from "@/lib/tokens/ledger";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/tokens/action-types";
 import {
+  adjustTokensSchema,
   giftTokensSchema,
   updateEarningRuleSchema,
+  type AdjustTokensInput,
   type GiftTokensInput,
   type UpdateEarningRuleInput,
 } from "@/app/(app)/tokens/validation";
@@ -96,13 +98,41 @@ export async function sendGift(
     );
 
     await emitEventSafely("gift_sent", {
-      from_user_id: user.id,
-      to_user_id: parsed.toUserId,
+      actor_id: user.id,
+      user_id: parsed.toUserId,
       amount: parsed.amount,
     });
 
     revalidatePath("/tokens");
     return { ok: true, data: { balanceAfter: result.debit.balanceAfter } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Manual admin balance correction (ARCHITECTURE.md "Tokens & Rewards": the
+ * sanctioned `adjust` path). tokens.manage-gated here AND re-checked inside
+ * the adjust_tokens() SQL function from auth.uid(), which is the only way to
+ * write an `adjust` row (a direct client insert is rejected by RLS). This is
+ * the caller the "nothing ever calls adjust_tokens()" finding was missing.
+ */
+export async function adjustTokens(
+  input: AdjustTokensInput
+): Promise<ActionResult<{ balanceAfter: number }>> {
+  try {
+    await requirePermission("tokens.manage");
+
+    const parsed = adjustTokensSchema.parse(input);
+    const supabase = await createClient();
+
+    const result = await adjustTokensLedger(
+      { userId: parsed.userId, delta: parsed.delta, note: parsed.note ? parsed.note : undefined },
+      supabase
+    );
+
+    revalidatePath("/tokens");
+    return { ok: true, data: { balanceAfter: result.balanceAfter } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

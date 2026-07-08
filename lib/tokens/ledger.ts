@@ -66,6 +66,24 @@ export interface TokenTransactionRow {
 type Client = SupabaseClient<Database>;
 
 /**
+ * Thrown when an `awardTokens` insert is rejected by a unique-index violation
+ * (Postgres error 23505) -- specifically the `token_transactions_event_id_uq`
+ * index on `ref->>'event_id'` (supabase/migrations/20260707080300_
+ * idempotency_unique_indexes.sql, FIQ-03). A caller that passes a stable
+ * `ref.event_id` (the event consumer, or createRecognition's idempotency key)
+ * uses this to tell "someone already credited this exact event" apart from a
+ * genuine failure, so a double-submit collapses to a single credit instead of
+ * surfacing as an error. Distinct error type so callers opt in explicitly
+ * rather than string-matching a Postgres message.
+ */
+export class DuplicateTokenAwardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DuplicateTokenAwardError";
+  }
+}
+
+/**
  * Executable spec of the `token_transactions_insert_award` RLS WITH CHECK
  * (supabase/migrations/20260707080000_tokens_award_policy_hardening.sql).
  * Postgres RLS is the real enforcement; this pure mirror keeps the rule
@@ -177,8 +195,20 @@ export async function awardTokens(
     .select("id")
     .single();
 
-  if (error || !data) {
-    throw new Error(`awardTokens(${input.userId}) failed: ${error?.message ?? "no row returned"}`);
+  if (error) {
+    // 23505 = unique_violation. When the caller supplied a stable
+    // ref.event_id, this means the same source event was already credited
+    // (the FIQ-03 idempotency index), which is a benign double-submit rather
+    // than a failure -- surface it as a typed error the caller can absorb.
+    if (error.code === "23505") {
+      throw new DuplicateTokenAwardError(
+        `awardTokens(${input.userId}) skipped: already credited (${error.message})`
+      );
+    }
+    throw new Error(`awardTokens(${input.userId}) failed: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error(`awardTokens(${input.userId}) failed: no row returned`);
   }
 
   const balanceAfter = await getBalance(input.userId, supabase);
@@ -278,6 +308,44 @@ export async function cancelRewardClaim(
 
   if (error || !data) {
     throw new Error(`cancelRewardClaim(${claimId}) failed: ${error?.message ?? "no row returned"}`);
+  }
+
+  return { transactionId: data.transaction_id, balanceAfter: data.balance_after };
+}
+
+export interface AdjustTokensInput {
+  userId: string;
+  /** Signed correction. Positive credits, negative debits. Must be non-zero. */
+  delta: number;
+  note?: string;
+}
+
+/**
+ * Manual admin correction of a user's balance, the ONLY sanctioned path for an
+ * `adjust` row. Delegates to the adjust_tokens() SQL function
+ * (supabase/migrations/20260707080000_tokens_award_policy_hardening.sql:
+ * SECURITY DEFINER, re-checks tokens.manage from auth.uid() itself, records the
+ * acting admin as created_by, bounded to a sane range). A direct `adjust`
+ * insert from the per-request client is rejected by the tightened RLS policy
+ * (awardInsertAllowedByPolicy above), so this wrapper is the wiring the finding
+ * "nothing ever calls adjust_tokens()" was missing.
+ */
+export async function adjustTokens(
+  input: AdjustTokensInput,
+  client?: Client
+): Promise<TokenTransactionResult> {
+  const supabase = client ?? (await createClient());
+
+  const { data, error } = await supabase
+    .rpc("adjust_tokens", {
+      p_user_id: input.userId,
+      p_delta: input.delta,
+      p_note: input.note ?? null,
+    })
+    .single();
+
+  if (error || !data) {
+    throw new Error(`adjustTokens(${input.userId}) failed: ${error?.message ?? "no row returned"}`);
   }
 
   return { transactionId: data.transaction_id, balanceAfter: data.balance_after };

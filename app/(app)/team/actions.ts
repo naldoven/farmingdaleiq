@@ -13,11 +13,13 @@
  * there's no "double submit" failure mode to guard against.
  */
 
+import { createHash } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { awardTokens } from "@/lib/tokens/ledger";
+import { awardTokens, DuplicateTokenAwardError } from "@/lib/tokens/ledger";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/team/action-types";
 import {
@@ -56,10 +58,54 @@ async function emitEventSafely(key: Parameters<typeof emitEvent>[0], payload: Re
 }
 
 /**
+ * Double-submit window for a recognition. Two identical recognitions (same
+ * author, subject, body, amount) within this window collapse to a single
+ * credit; the same recognition sent again after it is treated as a new,
+ * intentional one. See recognitionIdempotencyKey.
+ */
+const RECOGNITION_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Deterministic idempotency key for a recognition credit, stored as the
+ * award's `ref.event_id` so the `token_transactions_event_id_uq` index
+ * (FIQ-03) makes the credit exactly-once at the database. Recognitions have no
+ * natural event id (they aren't drained from app_events, they're written
+ * directly), and the "send" button is out of this lane's owned files so a
+ * client-supplied token can't be threaded in, so the key is derived from the
+ * recognition's own content plus a coarse time bucket: a rapid double-submit
+ * (double-click, retry, two tabs) lands in the same bucket and is deduped,
+ * while a genuinely-repeated shoutout after the window gets a fresh bucket.
+ */
+function recognitionIdempotencyKey(
+  authorId: string,
+  subjectUserId: string,
+  body: string,
+  amount: number,
+  now: number
+): string {
+  const bucket = Math.floor(now / RECOGNITION_DEDUP_WINDOW_MS);
+  return createHash("sha256")
+    .update(`recognition:${authorId}:${subjectUserId}:${amount}:${bucket}:${body}`)
+    .digest("hex");
+}
+
+/**
  * Sends a Recognition: tokens + a public shoutout (ARCHITECTURE.md "Tokens &
  * Rewards": "Leaders send Recognitions: tokens + a public shoutout in the
  * Team Feed"). tokens.award-gated -- the same permission the ledger insert
  * and the feed_posts insert policy both require.
+ *
+ * Double-submit safe (FIQ finding: createRecognition is not double-submit
+ * safe): the token credit carries a deterministic ref.event_id, so the FIQ-03
+ * unique index guarantees the credit happens at most once per
+ * (author, subject, body, amount, time-bucket). A duplicate submit that the
+ * index rejects falls through to "ensure exactly one feed post exists" rather
+ * than crediting again, which ALSO recovers the old phantom-credit hole (a
+ * credit that succeeded but whose feed post insert failed): the retry finds no
+ * post and creates it. The credit is the money-critical side and is
+ * DB-atomic; a duplicate feed post under true concurrency is at worst
+ * cosmetic. A fully-atomic credit+post would need one SECURITY DEFINER SQL
+ * function, which is out of this code-only lane (schema is frozen).
  */
 export async function createRecognition(
   input: CreateRecognitionInput
@@ -81,17 +127,53 @@ export async function createRecognition(
       return { ok: false, error: "You can't recognize yourself." };
     }
 
-    await awardTokens(
-      {
-        userId: parsed.subjectUserId,
-        amount: parsed.amount,
-        kind: "recognition",
-        ref: { from_user_id: user.id },
-        note: parsed.body,
-        createdBy: user.id,
-      },
-      supabase
+    const eventId = recognitionIdempotencyKey(
+      user.id,
+      parsed.subjectUserId,
+      parsed.body,
+      parsed.amount,
+      Date.now()
     );
+
+    let alreadyCredited = false;
+    try {
+      await awardTokens(
+        {
+          userId: parsed.subjectUserId,
+          amount: parsed.amount,
+          kind: "recognition",
+          ref: { from_user_id: user.id, event_id: eventId },
+          note: parsed.body,
+          createdBy: user.id,
+        },
+        supabase
+      );
+    } catch (awardError) {
+      // A prior identical submit already credited this recognition. Don't
+      // credit again; fall through to make sure its feed post exists.
+      if (!(awardError instanceof DuplicateTokenAwardError)) throw awardError;
+      alreadyCredited = true;
+    }
+
+    if (alreadyCredited) {
+      const { data: existing } = await supabase
+        .from("feed_posts")
+        .select("id")
+        .eq("kind", "recognition")
+        .eq("author_id", user.id)
+        .eq("subject_user_id", parsed.subjectUserId)
+        .eq("body", parsed.body)
+        .eq("tokens_awarded", parsed.amount)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        return { ok: true, data: { postId: existing.id } };
+      }
+      // Credited on a prior submit but the post never landed: fall through and
+      // create it now (recovery), rather than leaving a credit with no post.
+    }
 
     const { data: post, error } = await supabase
       .from("feed_posts")
@@ -111,8 +193,8 @@ export async function createRecognition(
 
     await emitEventSafely("recognition", {
       post_id: post.id,
-      from_user_id: user.id,
-      to_user_id: parsed.subjectUserId,
+      actor_id: user.id,
+      user_id: parsed.subjectUserId,
       amount: parsed.amount,
       body: parsed.body,
     });
