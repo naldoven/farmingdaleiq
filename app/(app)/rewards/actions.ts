@@ -132,17 +132,30 @@ export async function fulfillClaim(input: ClaimIdInput): Promise<ActionResult> {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error } = await supabase
+    // Scoped to status = 'pending' and returning the claimant so (a) a repeated
+    // call is a no-op that transitions no row (data is null) and emits nothing,
+    // and (b) the event carries the claimant as `user_id` -- the recipient key
+    // lib/notify's extractor recognizes -- so the "your reward is ready"
+    // notification can actually reach them (it previously carried no recipient).
+    const { data: delivered, error } = await supabase
       .from("reward_claims")
       .update({ status: "delivered", delivered_by: user?.id ?? null, delivered_at: new Date().toISOString() })
       .eq("id", parsed.claimId)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select("user_id")
+      .maybeSingle();
 
     if (error) {
       return { ok: false, error: error.message };
     }
 
-    await emitEventSafely("reward_fulfilled", { claim_id: parsed.claimId, delivered_by: user?.id ?? null });
+    if (delivered?.user_id) {
+      await emitEventSafely("reward_fulfilled", {
+        claim_id: parsed.claimId,
+        user_id: delivered.user_id,
+        delivered_by: user?.id ?? null,
+      });
+    }
 
     revalidatePath("/rewards");
     return { ok: true, data: undefined };

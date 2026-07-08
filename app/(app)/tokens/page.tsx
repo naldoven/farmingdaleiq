@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EarningRulesAdmin, type EarningRuleRow } from "@/components/tokens/earning-rules-admin";
 import { GiftForm } from "@/components/tokens/gift-form";
 import { TransactionHistory } from "@/components/tokens/transaction-history";
+import { AdjustTokensForm } from "@/app/(app)/tokens/adjust-tokens-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
@@ -39,7 +40,7 @@ export default async function TokensPage() {
     hasPermission("tokens.manage"),
   ]);
 
-  const [{ data: profiles }, earningRulesResult] = await Promise.all([
+  const [{ data: profiles }, earningRulesResult, adjustRecipientsResult] = await Promise.all([
     canGift
       ? supabase
           .from("profiles")
@@ -51,6 +52,11 @@ export default async function TokensPage() {
     canManage
       ? supabase.from("token_earning_rules").select("event_key, amount")
       : Promise.resolve({ data: [] as { event_key: string; amount: number }[] }),
+    // Adjust can correct anyone's balance, including the admin's own, so this
+    // list is not self-filtered the way gifting is.
+    canManage
+      ? supabase.from("profiles").select("id, name").eq("active", true).order("name")
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   const ruleAmountByKey = new Map((earningRulesResult.data ?? []).map((r) => [r.event_key, r.amount]));
@@ -116,6 +122,18 @@ export default async function TokensPage() {
           </CardHeader>
           <CardContent>
             <EarningRulesAdmin rules={earningRules} />
+          </CardContent>
+        </Card>
+      )}
+
+      {canManage && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Manual adjustment</CardTitle>
+            <CardDescription>Correct an employee&apos;s balance. Recorded in the ledger.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AdjustTokensForm recipients={adjustRecipientsResult.data ?? []} />
           </CardContent>
         </Card>
       )}

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adjustTokens,
   awardInsertAllowedByPolicy,
   awardTokens,
   cancelRewardClaim,
   computeBalanceFromTransactions,
+  DuplicateTokenAwardError,
   getBalance,
   giftTokens,
   redeemReward,
@@ -65,7 +67,7 @@ describe("computeBalanceFromTransactions", () => {
 /** Minimal fake Supabase client covering only what ledger.ts calls. */
 function makeFakeClient(opts: {
   transactionsByUser?: Record<string, { delta: number }[]>;
-  onInsert?: (row: Record<string, unknown>) => { id: string } | { error: string };
+  onInsert?: (row: Record<string, unknown>) => { id: string } | { error: string; code?: string };
   onRpc?: (fn: string, args: Record<string, unknown>) => unknown;
 }) {
   const transactionsByUser = opts.transactionsByUser ?? {};
@@ -93,7 +95,10 @@ function makeFakeClient(opts: {
           if ("error" in result) {
             return {
               select() {
-                return { single: () => Promise.resolve({ data: null, error: { message: result.error } }) };
+                return {
+                  single: () =>
+                    Promise.resolve({ data: null, error: { message: result.error, code: result.code } }),
+                };
               },
             };
           }
@@ -164,6 +169,59 @@ describe("awardTokens", () => {
     await expect(
       awardTokens({ userId: "user-1", amount: 15, kind: "earn", createdBy: null }, client)
     ).rejects.toThrow(/boom/);
+  });
+
+  it("throws a DuplicateTokenAwardError on a unique-violation (23505) so the caller can absorb a double-submit", async () => {
+    const client = makeFakeClient({
+      onInsert: () => ({ error: "duplicate key value violates unique constraint", code: "23505" }),
+    });
+
+    await expect(
+      awardTokens(
+        {
+          userId: "user-1",
+          amount: 15,
+          kind: "recognition",
+          ref: { event_id: "dupe-key" },
+          createdBy: "leader-1",
+        },
+        client
+      )
+    ).rejects.toBeInstanceOf(DuplicateTokenAwardError);
+  });
+});
+
+describe("adjustTokens", () => {
+  it("delegates to the adjust_tokens RPC and returns the resulting balance", async () => {
+    const client = makeFakeClient({
+      onRpc: (fn, args) => {
+        expect(fn).toBe("adjust_tokens");
+        expect(args).toEqual({ p_user_id: "user-1", p_delta: -10, p_note: "clawback" });
+        return { data: { transaction_id: "tx-adjust", balance_after: 5 }, error: null };
+      },
+    });
+
+    const result = await adjustTokens({ userId: "user-1", delta: -10, note: "clawback" }, client);
+    expect(result).toEqual({ transactionId: "tx-adjust", balanceAfter: 5 });
+  });
+
+  it("passes a null note through when none is given", async () => {
+    const client = makeFakeClient({
+      onRpc: (_fn, args) => {
+        expect(args).toEqual({ p_user_id: "user-1", p_delta: 20, p_note: null });
+        return { data: { transaction_id: "tx-adjust", balance_after: 40 }, error: null };
+      },
+    });
+
+    await adjustTokens({ userId: "user-1", delta: 20 }, client);
+  });
+
+  it("throws when the RPC rejects (e.g. missing tokens.manage)", async () => {
+    const client = makeFakeClient({
+      onRpc: () => ({ data: null, error: { message: "Missing permission: tokens.manage" } }),
+    });
+
+    await expect(adjustTokens({ userId: "user-1", delta: 5 }, client)).rejects.toThrow(/tokens\.manage/);
   });
 });
 
