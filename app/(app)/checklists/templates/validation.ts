@@ -83,6 +83,18 @@ export const scheduleSchema = z
   .refine((data) => data.frequency !== "monthly" || data.dayOfMonth != null, {
     message: "Pick a day of the month.",
     path: ["dayOfMonth"],
+  })
+  // A persistent schedule is "always available" and never swept for a missed
+  // due_time (see app/api/cron/checklists/route.ts); allowing a due_time or
+  // alert_on_incomplete on it would flip an always-open run to `missed`, which
+  // contradicts the documented invariant. Block both at the input boundary.
+  .refine((data) => data.frequency !== "persistent" || !data.dueTime, {
+    message: "Persistent checklists are always open and can't have a due time.",
+    path: ["dueTime"],
+  })
+  .refine((data) => data.frequency !== "persistent" || !data.alertOnIncomplete, {
+    message: "Persistent checklists can't alert on incomplete.",
+    path: ["alertOnIncomplete"],
   });
 export type ScheduleInput = z.infer<typeof scheduleSchema>;
 

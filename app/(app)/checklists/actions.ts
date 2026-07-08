@@ -21,17 +21,27 @@ import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/checklists/action-types";
 import {
+  buildChecklistCompletePayload,
+  buildFollowUpDescription,
+  buildFollowUpEventPayload,
+  buildFollowUpTitle,
   evaluateAnswer,
+  followUpDueAt,
+  isBeforeStartTime,
   planFollowUpInserts,
+  storeLocalNow,
+  sumAnsweredTokenValue,
   validateSubmission,
   type AnswerValue,
   type FoodItemRangeLike,
   type QuestionLike,
 } from "@/app/(app)/checklists/logic";
 import {
+  assignRunSchema,
   followUpIdSchema,
   runIdSchema,
   saveAnswersSchema,
+  type AssignRunInput,
   type SaveAnswersInput,
 } from "@/app/(app)/checklists/validation";
 
@@ -55,9 +65,9 @@ function revalidateRun(runId: string) {
  * mutations above are the source of truth for "did this run complete"; event
  * emission is notification-side plumbing consumed by other streams (S7
  * tokens, S10 notifications/Discord). It must never turn a successful
- * completion into a reported failure -- known gap: `app_events` has no RLS
- * policy yet (see this stream's final report), so emitEvent can currently
- * throw for every caller, not just this one, until that's added.
+ * completion into a reported failure. `app_events` now has an RLS policy
+ * covering these event keys, but emitEvent can still fail for transient
+ * reasons (network, a future policy change), so every emit stays best-effort.
  */
 async function emitEventSafely(...args: Parameters<typeof emitEvent>): Promise<void> {
   try {
@@ -165,7 +175,7 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
 
     const { data: run, error: runError } = await supabase
       .from("checklist_runs")
-      .select("id, status, template_id")
+      .select("id, status, template_id, schedule_id, assigned_user_id")
       .eq("id", runId)
       .maybeSingle();
     if (runError) return { ok: false, error: runError.message };
@@ -178,19 +188,39 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
       return { ok: true, data: undefined };
     }
 
-    const { data: sections, error: sectionsError } = await supabase
-      .from("checklist_sections")
-      .select("id")
-      .eq("template_id", run.template_id);
+    // Enforce the schedule's start_time (ARCHITECTURE.md "a start_time that
+    // blocks early completion"): a run scheduled to open later in the day
+    // can't be completed before then. Compared in the STORE's timezone so the
+    // window matches how the schedule was authored, not the UTC server clock.
+    if (run.schedule_id) {
+      const [{ data: schedule }, { data: store }] = await Promise.all([
+        supabase.from("checklist_schedules").select("start_time").eq("id", run.schedule_id).maybeSingle(),
+        supabase.from("stores").select("timezone").limit(1).maybeSingle(),
+      ]);
+      const timeZone = store?.timezone || "America/New_York";
+      const { timeOfDay } = storeLocalNow(new Date(), timeZone);
+      if (isBeforeStartTime(schedule?.start_time, timeOfDay)) {
+        return {
+          ok: false,
+          error: "This checklist can't be completed before its scheduled start time.",
+        };
+      }
+    }
+
+    const [{ data: sections, error: sectionsError }, { data: template }] = await Promise.all([
+      supabase.from("checklist_sections").select("id").eq("template_id", run.template_id),
+      supabase.from("checklist_templates").select("name").eq("id", run.template_id).maybeSingle(),
+    ]);
     if (sectionsError) return { ok: false, error: sectionsError.message };
+    const templateName = template?.name ?? null;
 
     const sectionIds = (sections ?? []).map((s) => s.id);
     const { data: questions, error: questionsError } = sectionIds.length
       ? await supabase
           .from("checklist_questions")
-          .select("id, type, allow_na, choices, food_item_id, photo_required")
+          .select("id, type, allow_na, choices, food_item_id, photo_required, prompt, token_value")
           .in("section_id", sectionIds)
-      : { data: [] as QuestionLike[], error: null };
+      : { data: [] as (QuestionLike & { prompt: string; token_value: number })[], error: null };
     if (questionsError) return { ok: false, error: questionsError.message };
 
     const foodItemIds = Array.from(
@@ -313,22 +343,66 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
       existingSourceAnswerIds,
     );
 
+    // Follow-ups inherit an assignee (the run's owner, else the completer),
+    // a due date, and a specific description tied back to the source question
+    // and template, so they carry real context instead of a generic line.
+    const now = new Date();
+    const assigneeId = run.assigned_user_id ?? user?.id ?? null;
+    const promptByQuestionId = new Map(
+      (questions ?? []).map((q) => [q.id, (q as { prompt?: string }).prompt ?? null]),
+    );
+    const questionIdByAnswerId = new Map((answers ?? []).map((a) => [a.id, a.question_id]));
+
+    const createdFollowUps: {
+      followUpId: string | null;
+      sourceAnswerId: string;
+      title: string;
+      description: string;
+    }[] = [];
     for (const insert of followUpInserts) {
-      const { error } = await supabase.from("follow_ups").insert({
-        source_answer_id: insert.source_answer_id,
-        description: "Follow up on a flagged checklist answer.",
-        status: "open",
-      });
+      const questionId = questionIdByAnswerId.get(insert.source_answer_id) ?? null;
+      const prompt = questionId ? promptByQuestionId.get(questionId) ?? null : null;
+      const title = buildFollowUpTitle(prompt);
+      const description = buildFollowUpDescription(prompt, templateName);
+      const { data: insertedFollowUp, error } = await supabase
+        .from("follow_ups")
+        .insert({
+          source_answer_id: insert.source_answer_id,
+          description,
+          assigned_to: assigneeId,
+          due_at: followUpDueAt(now),
+          status: "open",
+        })
+        .select("id")
+        .maybeSingle();
       if (error) return { ok: false, error: error.message };
+      createdFollowUps.push({
+        followUpId: insertedFollowUp?.id ?? null,
+        sourceAnswerId: insert.source_answer_id,
+        title,
+        description,
+      });
     }
 
-    await emitEventSafely("checklist_complete", {
-      runId,
-      templateId: run.template_id,
-      completedBy: user?.id ?? null,
-      flaggedCount: flaggedIds.length,
-      followUpsCreated: followUpInserts.length,
-    });
+    const tokenValueSum = sumAnsweredTokenValue(
+      (questions ?? []).map((q) => ({
+        id: q.id,
+        token_value: (q as { token_value?: number }).token_value ?? 0,
+      })),
+      (answers ?? []).map((a) => ({ question_id: a.question_id, is_na: a.is_na })),
+    );
+
+    await emitEventSafely(
+      "checklist_complete",
+      buildChecklistCompletePayload({
+        runId,
+        templateId: run.template_id,
+        completedBy: user?.id ?? null,
+        tokenValue: tokenValueSum,
+        flaggedCount: flaggedIds.length,
+        followUpsCreated: createdFollowUps.length,
+      }),
+    );
 
     for (const tempFailure of flaggedAnswers.filter((a) => a.isTempFailure)) {
       await emitEventSafely("temp_failed", {
@@ -338,14 +412,58 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
       });
     }
 
-    for (const created of followUpInserts) {
-      await emitEventSafely("follow_up_assigned", {
-        sourceAnswerId: created.source_answer_id,
-        runId,
-      });
+    for (const created of createdFollowUps) {
+      await emitEventSafely(
+        "follow_up_assigned",
+        buildFollowUpEventPayload({
+          followUpId: created.followUpId,
+          sourceAnswerId: created.sourceAnswerId,
+          runId,
+          title: created.title,
+          description: created.description,
+          assigneeId,
+        }),
+      );
     }
 
     revalidateRun(runId);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Delegates (or un-delegates) a run to a person mid-shift. Leader-gated on
+ * `checklists.manage_templates` (the checklist-manager tier; RLS on
+ * checklist_runs already permits that key to update). Passing `userId: null`
+ * returns the run to the unassigned pool. Completed/missed runs can't be
+ * reassigned.
+ */
+export async function assignRun(input: AssignRunInput): Promise<ActionResult> {
+  try {
+    await requirePermission("checklists.manage_templates");
+    const parsed = assignRunSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: run, error: runError } = await supabase
+      .from("checklist_runs")
+      .select("id, status")
+      .eq("id", parsed.runId)
+      .maybeSingle();
+    if (runError) return { ok: false, error: runError.message };
+    if (!run) return { ok: false, error: "Checklist run not found." };
+    if (run.status === "completed" || run.status === "missed") {
+      return { ok: false, error: "This run can no longer be reassigned." };
+    }
+
+    const { error } = await supabase
+      .from("checklist_runs")
+      .update({ assigned_user_id: parsed.userId })
+      .eq("id", parsed.runId);
+    if (error) return { ok: false, error: error.message };
+
+    revalidateRun(parsed.runId);
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };

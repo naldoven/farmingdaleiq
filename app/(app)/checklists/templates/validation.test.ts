@@ -128,6 +128,35 @@ describe("scheduleSchema", () => {
       scheduleSchema.safeParse({ ...base, frequency: "persistent", daysOfWeek: [] }).success,
     ).toBe(true);
   });
+
+  it("blocks a due_time on a persistent schedule", () => {
+    expect(
+      scheduleSchema.safeParse({
+        ...base,
+        frequency: "persistent",
+        daysOfWeek: [],
+        dueTime: "18:00",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("blocks alert_on_incomplete on a persistent schedule", () => {
+    expect(
+      scheduleSchema.safeParse({
+        ...base,
+        frequency: "persistent",
+        daysOfWeek: [],
+        alertOnIncomplete: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("still allows a due_time on a daily schedule", () => {
+    expect(
+      scheduleSchema.safeParse({ ...base, frequency: "daily", daysOfWeek: [], dueTime: "18:00" })
+        .success,
+    ).toBe(true);
+  });
 });
 
 describe("foodItemSchema", () => {

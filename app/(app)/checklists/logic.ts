@@ -266,6 +266,136 @@ export function storeLocalNow(now: Date, timeZone: string): StoreLocalNow {
   };
 }
 
+/** Normalizes a "HH:MM" or "HH:MM:SS" time-of-day string to zero-padded HH:MM:SS. */
+function normalizeTimeOfDay(value: string): string {
+  const [h = "00", m = "00", s = "00"] = value.split(":");
+  return `${h.padStart(2, "0")}:${m.padStart(2, "0")}:${s.padStart(2, "0")}`;
+}
+
+/**
+ * Whether the store-local clock is still before a schedule's start_time, i.e.
+ * the run is not yet open for completion (ARCHITECTURE.md "Checklists":
+ * "a start_time that blocks early completion"). Both arguments are store-local
+ * times-of-day; a missing start_time means "always open". Postgres `time`
+ * columns serialize as "HH:MM:SS", and storeLocalNow().timeOfDay matches, so a
+ * lexicographic compare after normalization is exact.
+ */
+export function isBeforeStartTime(
+  startTime: string | null | undefined,
+  nowTimeOfDay: string,
+): boolean {
+  if (!startTime) return false;
+  return normalizeTimeOfDay(nowTimeOfDay) < normalizeTimeOfDay(startTime);
+}
+
+export interface QuestionTokenLike {
+  id: string;
+  token_value?: number | null;
+}
+
+export interface AnswerStateLike {
+  question_id: string;
+  is_na: boolean;
+}
+
+/**
+ * Sums the per-question `token_value` across the questions a run actually
+ * answered (an answer row is present and it isn't N/A), so a completion event
+ * can carry the real reward for the work done (ARCHITECTURE.md: a checklist
+ * question "can carry its own token_value"). N/A'd and unanswered questions
+ * earn nothing. The tokens consumer treats a 0 sum as "fall back to the flat
+ * earning rule", so returning 0 here is intentional and safe.
+ */
+export function sumAnsweredTokenValue(
+  questions: QuestionTokenLike[],
+  answers: AnswerStateLike[],
+): number {
+  const answeredNonNa = new Set(answers.filter((a) => !a.is_na).map((a) => a.question_id));
+  return questions.reduce((sum, q) => {
+    if (!answeredNonNa.has(q.id)) return sum;
+    const value = typeof q.token_value === "number" ? q.token_value : 0;
+    return value > 0 ? sum + value : sum;
+  }, 0);
+}
+
+/**
+ * Builds the exact `checklist_complete` payload completeRun emits. Extracted as
+ * a pure function so the cross-module contract test can push the REAL producer
+ * shape through the REAL tokens consumer (resolveAwardsForEvents) instead of a
+ * fabricated one -- the field-name drift this fixes is precisely what per-side
+ * fabricated fixtures hid. Canonical keys: `user_id` (the completer, the token
+ * recipient), `actor_id` (same person, recorded separately per the contract),
+ * and `token_value` (summed per-question value; 0 tells the consumer to fall
+ * back to the flat earning rule). Returns a plain record so it satisfies the
+ * EventPayload contract at the emit boundary.
+ */
+export function buildChecklistCompletePayload(input: {
+  runId: string;
+  templateId: string;
+  completedBy: string | null;
+  tokenValue: number;
+  flaggedCount: number;
+  followUpsCreated: number;
+}): Record<string, unknown> {
+  return {
+    runId: input.runId,
+    templateId: input.templateId,
+    user_id: input.completedBy,
+    actor_id: input.completedBy,
+    token_value: input.tokenValue,
+    flaggedCount: input.flaggedCount,
+    followUpsCreated: input.followUpsCreated,
+  };
+}
+
+/** Short human title for a follow-up, derived from the source question prompt. */
+export function buildFollowUpTitle(questionPrompt: string | null | undefined): string {
+  const prompt = questionPrompt?.trim();
+  return prompt ? `Follow-up: ${prompt}` : "Checklist follow-up";
+}
+
+/** Detail line for a follow-up, tying it back to the source question and template. */
+export function buildFollowUpDescription(
+  questionPrompt: string | null | undefined,
+  templateName: string | null | undefined,
+): string {
+  const prompt = questionPrompt?.trim();
+  const template = templateName?.trim();
+  if (prompt && template) return `Follow up on "${prompt}" flagged in ${template}.`;
+  if (prompt) return `Follow up on "${prompt}".`;
+  if (template) return `Follow up on a flagged answer in ${template}.`;
+  return "Follow up on a flagged checklist answer.";
+}
+
+/** Due timestamp for a new follow-up: a fixed window (default 24h) after completion. */
+export function followUpDueAt(now: Date, hours = 24): string {
+  return new Date(now.getTime() + hours * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * Builds the `follow_up_assigned` payload with the canonical event-contract
+ * field names (follow_up_id, source_answer_id, run_id, title, description,
+ * user_id=assignee, nullable) so the tasks system-task consumer and the
+ * notification recipient extractor both resolve it.
+ */
+export function buildFollowUpEventPayload(input: {
+  followUpId: string | null;
+  sourceAnswerId: string;
+  runId: string;
+  title: string;
+  description: string;
+  assigneeId: string | null;
+}): Record<string, unknown> {
+  return {
+    follow_up_id: input.followUpId,
+    source_answer_id: input.sourceAnswerId,
+    run_id: input.runId,
+    title: input.title,
+    description: input.description,
+    user_id: input.assigneeId,
+  };
+}
+
 export interface ScheduleLike {
   frequency: string;
   days_of_week: number[] | null;
