@@ -325,3 +325,118 @@ export function findNavItem(href: string): NavItem | undefined {
   }
   return undefined;
 }
+
+/**
+ * The three primary destinations on the mobile bottom tab bar. "Menu" is not a
+ * route — it opens the full navigation drawer (every module in NAV_GROUPS).
+ * Kept here so the shell and any nav tests share one source of truth.
+ */
+export type PrimaryTabId = "home" | "team" | "menu";
+
+export interface PrimaryTab {
+  id: PrimaryTabId;
+  label: string;
+  /** Route to navigate to, or null for the Menu drawer trigger. */
+  href: string | null;
+  /** lucide-react icon name, resolved by the tab bar. */
+  icon: "home" | "users" | "menu";
+}
+
+export const PRIMARY_TABS: PrimaryTab[] = [
+  { id: "home", label: "Home", href: "/", icon: "home" },
+  { id: "team", label: "Team", href: "/team", icon: "users" },
+  { id: "menu", label: "Menu", href: null, icon: "menu" },
+];
+
+/**
+ * Resolves the header title + variant for a pathname. The home variant (with
+ * wordmark, store pill, avatar and bell) shows on the primary tab routes; every
+ * other route is a sub-page with a back chevron and a bold title.
+ *
+ * Longest-prefix match against the page map so nested routes
+ * (e.g. /people/roles) inherit their section's label without an exact entry.
+ */
+export interface ResolvedHeader {
+  variant: "home" | "subpage";
+  title: string;
+  /** href to return to when the back chevron is pressed */
+  backHref: string;
+}
+
+const HOME_VARIANT_PATHS = new Set(["/", "/team"]);
+
+/** The parent path, used for the sub-page back chevron. "/a/b" -> "/a". */
+function parentPath(pathname: string): string {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length <= 1) return "/";
+  return "/" + segments.slice(0, -1).join("/");
+}
+
+export function resolveHeader(pathname: string): ResolvedHeader {
+  if (HOME_VARIANT_PATHS.has(pathname)) {
+    return {
+      variant: "home",
+      title: pathname === "/team" ? "Team" : "Home",
+      backHref: "/",
+    };
+  }
+
+  const backHref = parentPath(pathname);
+
+  const exact = findNavItem(pathname);
+  if (exact) {
+    return { variant: "subpage", title: exact.label, backHref };
+  }
+
+  // Longest-prefix match for nested/detail routes so they inherit their
+  // section's label without needing an exact page-map entry.
+  let best: { item: NavItem; length: number } | null = null;
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.href === "/") continue;
+      if (
+        pathname.startsWith(item.href + "/") &&
+        (!best || item.href.length > best.length)
+      ) {
+        best = { item, length: item.href.length };
+      }
+    }
+  }
+
+  if (best) {
+    return { variant: "subpage", title: best.item.label, backHref };
+  }
+
+  return { variant: "subpage", title: "FarmingdaleIQ", backHref };
+}
+
+/** Deterministic soft avatar background + readable text color from a name. */
+export const AVATAR_PALETTE: { bg: string; fg: string }[] = [
+  { bg: "#FDE7EB", fg: "#9C0F28" }, // accent-soft / red
+  { bg: "#DBEAFE", fg: "#1E40AF" }, // blue
+  { bg: "#DCFCE7", fg: "#166534" }, // green
+  { bg: "#FEF3C7", fg: "#92400E" }, // amber
+  { bg: "#EDE9FE", fg: "#5B21B6" }, // violet
+  { bg: "#CFFAFE", fg: "#155E75" }, // cyan
+  { bg: "#FCE7F3", fg: "#9D174D" }, // pink
+  { bg: "#E0E7FF", fg: "#3730A3" }, // indigo
+];
+
+export function avatarColor(name: string): { bg: string; fg: string } {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+}
+
+export function initialsFromName(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
