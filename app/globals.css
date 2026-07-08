@@ -149,8 +149,10 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent-soft);
-  --color-accent-foreground: var(--accent-foreground);
+  /* The "accent" utility is the brand red (spec: --accent #E51636). shadcn's
+     soft hover/focus surface is bg-accent-soft with text-accent-ink instead. */
+  --color-accent: var(--accent);
+  --color-accent-foreground: #ffffff;
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
