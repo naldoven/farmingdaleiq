@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ListRow } from "@/components/mobile";
 import { DeleteButton } from "@/components/checklists/delete-button";
 import { createFoodItem, deleteFoodItem } from "@/app/(app)/checklists/templates/actions";
 
@@ -42,39 +42,20 @@ export function FoodItemsManager({ foodItems }: { foodItems: FoodItemRow[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Item</TableHead>
-            <TableHead>Cold holding (&deg;F)</TableHead>
-            <TableHead>Hot holding (&deg;F)</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      {foodItems.length === 0 ? (
+        <p className="text-[13px] text-muted-ink">No food items yet.</p>
+      ) : (
+        <div className="-mx-4 divide-y divide-line">
           {foodItems.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.name}</TableCell>
-              <TableCell className="text-muted-foreground">
-                {item.coldMinF ?? "—"} – {item.coldMaxF ?? "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {item.hotMinF ?? "—"} – {item.hotMaxF ?? "—"}
-              </TableCell>
-              <TableCell>
-                <DeleteButton id={item.id} action={deleteFoodItem} label="Remove" />
-              </TableCell>
-            </TableRow>
+            <ListRow
+              key={item.id}
+              title={item.name}
+              description={`Cold ${item.coldMinF ?? "—"}–${item.coldMaxF ?? "—"}°F · Hot ${item.hotMinF ?? "—"}–${item.hotMaxF ?? "—"}°F`}
+              trailing={<DeleteButton id={item.id} action={deleteFoodItem} label="Remove" />}
+            />
           ))}
-          {foodItems.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center text-muted-foreground">
-                No food items yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+        </div>
+      )}
 
       <form
         className="flex flex-wrap items-end gap-2"

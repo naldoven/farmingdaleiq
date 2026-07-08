@@ -46,7 +46,7 @@ export function QuestionCreateForm({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-dashed border-border p-3"
+      className="flex flex-col gap-2 rounded-lg border border-dashed border-line p-3"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -84,7 +84,7 @@ export function QuestionCreateForm({
           aria-label="Question type"
           value={type}
           onChange={(e) => setType(e.target.value as QuestionType)}
-          className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+          className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
         >
           {QUESTION_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -116,7 +116,7 @@ export function QuestionCreateForm({
             aria-label="Food item"
             value={foodItemId}
             onChange={(e) => setFoodItemId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
             required
           >
             <option value="">Select food item...</option>
@@ -130,7 +130,7 @@ export function QuestionCreateForm({
             aria-label="Holding mode"
             value={holdingMode}
             onChange={(e) => setHoldingMode(e.target.value as HoldingMode)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           >
             {HOLDING_MODES.map((m) => (
               <option key={m} value={m}>

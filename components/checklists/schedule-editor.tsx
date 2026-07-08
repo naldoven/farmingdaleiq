@@ -75,11 +75,11 @@ export function ScheduleEditor({
       {schedules.map((schedule) => (
         <div
           key={schedule.id}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line p-3"
         >
-          <div className="text-sm">
-            <p className="font-medium">{scheduleSummary(schedule)}</p>
-            <p className="text-xs text-muted-foreground">
+          <div className="text-[15px]">
+            <p className="font-semibold text-ink">{scheduleSummary(schedule)}</p>
+            <p className="text-[13px] text-muted-ink">
               {schedule.dayPartId ? dayPartName.get(schedule.dayPartId) ?? "Any day part" : "Any day part"}
               {schedule.dueTime ? ` - due ${schedule.dueTime}` : ""}
               {schedule.assignPositionId
@@ -92,10 +92,10 @@ export function ScheduleEditor({
           <DeleteButton id={schedule.id} extra={{ templateId }} action={deleteSchedule} label="Delete" />
         </div>
       ))}
-      {schedules.length === 0 && <p className="text-sm text-muted-foreground">No schedules yet.</p>}
+      {schedules.length === 0 && <p className="text-[13px] text-muted-ink">No schedules yet.</p>}
 
       <form
-        className="flex flex-col gap-2 rounded-md border border-dashed border-border p-3"
+        className="flex flex-col gap-2 rounded-lg border border-dashed border-line p-3"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
@@ -126,7 +126,7 @@ export function ScheduleEditor({
             aria-label="Frequency"
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as ScheduleFrequency)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           >
             {SCHEDULE_FREQUENCIES.map((f) => (
               <option key={f} value={f}>
@@ -138,7 +138,7 @@ export function ScheduleEditor({
             aria-label="Day part"
             value={dayPartId}
             onChange={(e) => setDayPartId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           >
             <option value="">Any day part</option>
             {dayParts.map((d) => (
@@ -175,7 +175,7 @@ export function ScheduleEditor({
             max={31}
             value={dayOfMonth}
             onChange={(e) => setDayOfMonth(e.target.value)}
-            className="h-10 w-24 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 w-24 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           />
         )}
 
@@ -186,7 +186,7 @@ export function ScheduleEditor({
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+              className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -195,7 +195,7 @@ export function ScheduleEditor({
               type="time"
               value={dueTime}
               onChange={(e) => setDueTime(e.target.value)}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+              className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
             />
           </label>
         </div>
@@ -205,7 +205,7 @@ export function ScheduleEditor({
             aria-label="Assign to position"
             value={assignPositionId}
             onChange={(e) => setAssignPositionId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           >
             <option value="">No position assignment</option>
             {positions.map((p) => (
@@ -218,7 +218,7 @@ export function ScheduleEditor({
             aria-label="Assign to team"
             value={assignTeamId}
             onChange={(e) => setAssignTeamId(e.target.value)}
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+            className="h-10 rounded-lg border border-line bg-card px-3 text-sm shadow-sm"
           >
             <option value="">No team assignment</option>
             {teams.map((t) => (

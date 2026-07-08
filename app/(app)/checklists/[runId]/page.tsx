@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { SectionLabel } from "@/components/mobile";
 import { RunPlayerForm } from "@/components/checklists/run-player-form";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -73,16 +73,10 @@ export default async function ChecklistRunPage({
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 pb-24">
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4 pb-24">
       <div>
-        <Link href="/checklists" className="text-sm text-muted-foreground hover:underline">
-          &larr; Today&apos;s checklists
-        </Link>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-semibold">{template?.name ?? "Checklist"}</h1>
-        {template?.description && <p className="text-sm text-muted-foreground">{template.description}</p>}
+        <SectionLabel>{template?.name ?? "Checklist"}</SectionLabel>
+        {template?.description && <p className="text-[13px] text-muted-ink">{template.description}</p>}
       </div>
 
       <RunPlayerForm

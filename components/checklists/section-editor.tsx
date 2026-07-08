@@ -1,5 +1,4 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, StatusBadge } from "@/components/mobile";
 import { DeleteButton } from "@/components/checklists/delete-button";
 import { QuestionCreateForm } from "@/components/checklists/question-create-form";
 import { getHoldingMode, getMultiChoiceOptions } from "@/app/(app)/checklists/logic";
@@ -43,9 +42,9 @@ export function SectionEditor({
   const foodItemNameById = new Map(foodItems.map((f) => [f.id, f.name]));
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">{section.name}</CardTitle>
+    <SectionCard
+      title={section.name}
+      action={
         <DeleteButton
           id={section.id}
           extra={{ templateId }}
@@ -53,22 +52,23 @@ export function SectionEditor({
           label="Delete section"
           confirmMessage={`Delete section "${section.name}" and all its questions?`}
         />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      }
+    >
+      <div className="flex flex-col gap-2">
         {questions.map((question) => (
           <div
             key={question.id}
-            className="flex items-start justify-between gap-2 rounded-md border border-border p-2"
+            className="flex items-start justify-between gap-2 rounded-lg border border-line p-3"
           >
             <div>
-              <p className="text-sm font-medium">{question.prompt}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[15px] font-semibold text-ink">{question.prompt}</p>
+              <p className="text-[13px] text-muted-ink">
                 {questionSubtitle(question, question.foodItemId ? foodItemNameById.get(question.foodItemId) : undefined)}
               </p>
               <div className="mt-1 flex flex-wrap gap-1">
-                {question.allowNa && <Badge variant="outline">N/A allowed</Badge>}
-                {question.photoRequired && <Badge variant="outline">Photo required</Badge>}
-                {question.tokenValue > 0 && <Badge variant="outline">{question.tokenValue} tokens</Badge>}
+                {question.allowNa && <StatusBadge tone="neutral">N/A allowed</StatusBadge>}
+                {question.photoRequired && <StatusBadge tone="info">Photo required</StatusBadge>}
+                {question.tokenValue > 0 && <StatusBadge tone="warning">{question.tokenValue} tokens</StatusBadge>}
               </div>
             </div>
             <DeleteButton
@@ -80,7 +80,7 @@ export function SectionEditor({
           </div>
         ))}
         {questions.length === 0 && (
-          <p className="text-sm text-muted-foreground">No questions in this section yet.</p>
+          <p className="text-[13px] text-muted-ink">No questions in this section yet.</p>
         )}
         <QuestionCreateForm
           templateId={templateId}
@@ -88,7 +88,7 @@ export function SectionEditor({
           nextSort={questions.length}
           foodItems={foodItems}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }

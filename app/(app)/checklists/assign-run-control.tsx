@@ -38,10 +38,10 @@ export function AssignRunControl({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-1 flex-col gap-1">
       <select
         aria-label="Assign run"
-        className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+        className="h-9 flex-1 rounded-lg border border-line bg-card px-2 text-[13px] text-ink disabled:opacity-50"
         value={value}
         disabled={pending}
         onChange={(event) => onChange(event.target.value)}
@@ -53,7 +53,7 @@ export function AssignRunControl({
           </option>
         ))}
       </select>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 }
