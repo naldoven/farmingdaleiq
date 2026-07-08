@@ -37,6 +37,12 @@ function statusVariant(status: string): "success" | "warning" | "outline" | "des
   return "warning";
 }
 
+/** A task can still be worked while it's pending or overdue (overdue just
+ * means late). Completed/cancelled tasks are terminal. */
+function isActionable(status: string): boolean {
+  return status === "pending" || status === "overdue";
+}
+
 function formatDue(dueAt: string | null): string {
   if (!dueAt) return "No due time";
   const d = new Date(dueAt);
@@ -90,10 +96,13 @@ export function TaskList({
               <Badge variant={statusVariant(t.status)}>{t.status}</Badge>
             </TableCell>
             <TableCell>
-              {mode === "mine" && t.status === "pending" && (
+              {/* An overdue task is still actionable — it's late, not closed —
+                  so Complete/Claim/Delegate stay available until it's actually
+                  completed or cancelled. */}
+              {mode === "mine" && isActionable(t.status) && (
                 <CompleteTaskButton taskId={t.id} />
               )}
-              {mode === "pool" && t.status === "pending" && (
+              {mode === "pool" && isActionable(t.status) && (
                 <div className="flex flex-col gap-2">
                   <ClaimTaskButton taskId={t.id} />
                   {canManage && (

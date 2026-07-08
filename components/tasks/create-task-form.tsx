@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,8 +46,11 @@ export function CreateTaskForm({
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(todayIso());
   const [dayPartId, setDayPartId] = useState(UNSET);
+  const [startTime, setStartTime] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [assignee, setAssignee] = useState(UNSET);
   const [tokenValue, setTokenValue] = useState("0");
+  const [notifyDiscord, setNotifyDiscord] = useState(false);
 
   return (
     <form
@@ -62,9 +66,14 @@ export function CreateTaskForm({
             description,
             date,
             dayPartId: dayPartId === UNSET ? "" : dayPartId,
+            startTime,
+            // due_at is a full timestamp; combine the task's date with the due
+            // time. Left empty when no due time is set (task never goes overdue).
+            dueAt: dueTime ? `${date}T${dueTime}` : "",
             assignedUserId: kind === "user" ? id : "",
             assignedPositionId: kind === "position" ? id : "",
             tokenValue: Number(tokenValue) || 0,
+            notifyDiscord,
           });
           if (!result.ok) {
             setError(result.error);
@@ -73,8 +82,11 @@ export function CreateTaskForm({
           setDone(true);
           setTitle("");
           setDescription("");
+          setStartTime("");
+          setDueTime("");
           setAssignee(UNSET);
           setTokenValue("0");
+          setNotifyDiscord(false);
           router.refresh();
         });
       }}
@@ -121,6 +133,26 @@ export function CreateTaskForm({
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
+          <Label htmlFor="task-start">Start time</Label>
+          <Input
+            id="task-start"
+            type="time"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="task-due">Due time</Label>
+          <Input
+            id="task-due"
+            type="time"
+            value={dueTime}
+            onChange={(e) => setDueTime(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="task-assignee">Assign to</Label>
           <Select value={assignee} onValueChange={setAssignee}>
             <SelectTrigger id="task-assignee">
@@ -158,6 +190,14 @@ export function CreateTaskForm({
           />
         </div>
       </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox
+          checked={notifyDiscord}
+          onCheckedChange={(v) => setNotifyDiscord(v === true)}
+        />
+        Notify Discord when assigned
+      </label>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {done && <p className="text-sm text-success">Task created.</p>}

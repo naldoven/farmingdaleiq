@@ -45,7 +45,7 @@ export default async function TasksPage() {
     supabase
       .from("task_templates")
       .select(
-        "id, title, frequency, days_of_week, day_part_id, assign_user_id, assign_position_id, token_value, active",
+        "id, title, description, frequency, days_of_week, day_part_id, start_time, due_time, assign_user_id, assign_position_id, token_value, active",
       )
       .order("title"),
     supabase.from("profiles").select("id, name, active").eq("active", true).order("name"),
@@ -78,16 +78,24 @@ export default async function TasksPage() {
     .filter((t) => t.assigned_user_id && t.assigned_user_id === userId && t.status !== "cancelled")
     .map(toRowView);
   const pool = allTasks
-    .filter((t) => !t.assigned_user_id && t.status === "pending")
+    .filter(
+      (t) => !t.assigned_user_id && (t.status === "pending" || t.status === "overdue"),
+    )
     .map(toRowView);
   const allToday = allTasks.map(toRowView);
 
   const templateRows: TaskTemplateRowView[] = (templates ?? []).map((t) => ({
     id: t.id,
     title: t.title,
+    description: t.description,
     frequency: t.frequency,
     daysOfWeek: t.days_of_week,
+    dayPartId: t.day_part_id,
     dayPartName: t.day_part_id ? (dayPartNameById.get(t.day_part_id) ?? null) : null,
+    startTime: t.start_time,
+    dueTime: t.due_time,
+    assignUserId: t.assign_user_id,
+    assignPositionId: t.assign_position_id,
     assigneeLabel: t.assign_user_id
       ? (profileNameById.get(t.assign_user_id) ?? null)
       : t.assign_position_id
@@ -177,7 +185,12 @@ export default async function TasksPage() {
                 <CardTitle>Recurring templates</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <TaskTemplatesTable templates={templateRows} />
+                <TaskTemplatesTable
+                  templates={templateRows}
+                  users={userOptions}
+                  positions={positionOptions}
+                  dayParts={dayPartOptions}
+                />
               </CardContent>
             </Card>
 

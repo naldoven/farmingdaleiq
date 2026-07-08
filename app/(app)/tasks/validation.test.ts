@@ -7,6 +7,7 @@ import {
   createTaskTemplateSchema,
   delegateTaskSchema,
   setTaskTemplateActiveSchema,
+  updateTaskTemplateSchema,
 } from "./validation";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
@@ -45,6 +46,31 @@ describe("createTaskSchema", () => {
       expect(result.data.dayPartId).toBeNull();
       expect(result.data.assignedUserId).toBeNull();
     }
+  });
+
+  it("defaults notifyDiscord to false and carries an explicit true", () => {
+    const off = createTaskSchema.safeParse({ title: "x", date: "2026-07-10" });
+    expect(off.success && off.data.notifyDiscord).toBe(false);
+    const on = createTaskSchema.safeParse({
+      title: "x",
+      date: "2026-07-10",
+      notifyDiscord: true,
+    });
+    expect(on.success && on.data.notifyDiscord).toBe(true);
+  });
+
+  it("accepts a valid due timestamp and rejects a malformed one", () => {
+    expect(
+      createTaskSchema.safeParse({
+        title: "x",
+        date: "2026-07-10",
+        dueAt: "2026-07-10T14:30",
+      }).success,
+    ).toBe(true);
+    expect(
+      createTaskSchema.safeParse({ title: "x", date: "2026-07-10", dueAt: "half past two" })
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -129,5 +155,50 @@ describe("delegateTaskSchema", () => {
       delegateTaskSchema.safeParse({ id: UUID_A, assignedPositionId: UUID_B })
         .success,
     ).toBe(true);
+  });
+
+  it("allows returning a task to the pool (toPool clears both assignees)", () => {
+    const result = delegateTaskSchema.safeParse({ id: UUID_A, toPool: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.assignedUserId).toBeNull();
+      expect(result.data.assignedPositionId).toBeNull();
+    }
+  });
+
+  it("rejects toPool combined with an assignee", () => {
+    expect(
+      delegateTaskSchema.safeParse({ id: UUID_A, toPool: true, assignedUserId: UUID_B })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("updateTaskTemplateSchema", () => {
+  it("requires a uuid id alongside the template fields", () => {
+    expect(
+      updateTaskTemplateSchema.safeParse({ title: "x", frequency: "daily" }).success,
+    ).toBe(false);
+    const ok = updateTaskTemplateSchema.safeParse({
+      id: UUID_A,
+      title: "Stock napkins",
+      frequency: "daily",
+    });
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.id).toBe(UUID_A);
+      expect(ok.data.daysOfWeek).toBeNull();
+    }
+  });
+
+  it("enforces the weekly-days rule like the create schema", () => {
+    expect(
+      updateTaskTemplateSchema.safeParse({
+        id: UUID_A,
+        title: "x",
+        frequency: "weekly",
+        daysOfWeek: [],
+      }).success,
+    ).toBe(false);
   });
 });
