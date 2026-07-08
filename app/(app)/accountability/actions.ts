@@ -9,15 +9,20 @@
  * migrations/20260707030000_accountability_rls.sql), and actions return a
  * discriminated ActionResult instead of throwing.
  *
- * Two deliberate exceptions use createServiceRoleClient() (the same "one
- * exception" pattern people/actions.ts uses for inviteUser), both only ever
+ * Deliberate exceptions use createServiceRoleClient() (the same "one
+ * exception" pattern people/actions.ts uses for inviteUser), each only ever
  * after a requirePermission()/ownership check has already passed:
- *  1. issueInfraction's threshold check reads the recipient's full infraction
- *     history and writes disciplinary_actions -- a leader with only
- *     accountability.issue (not accountability.manage) cannot read the base
- *     `infractions` table under RLS (manager-only SELECT, by design -- see
- *     the anonymity rule below), but escalation math is system logic that
- *     has to run regardless of the issuing leader's own read access.
+ *  1. issueInfraction's double-submit duplicate check AND its threshold
+ *     check both read the recipient's full infraction history (and the
+ *     threshold check also writes disciplinary_actions) -- a leader with
+ *     only accountability.issue (not accountability.manage) cannot read the
+ *     base `infractions` table under RLS (manager-only SELECT, by design --
+ *     see the anonymity rule below). Running either check on the
+ *     per-request client silently returns 0 rows for that caller (RLS
+ *     filters rows, it doesn't error), which is exactly how the duplicate
+ *     guard used to go dark for the two roles that actually issue
+ *     infractions. Both checks are system logic that has to run regardless
+ *     of the issuing leader's own read access, hence the service-role client.
  *  2. acknowledgeDisciplinaryAction lets a user acknowledge their OWN action
  *     without a general self-UPDATE RLS policy, which would otherwise let a
  *     user rewrite their own `status`/`note` directly (RLS restricts rows,
@@ -26,8 +31,13 @@
  * Idempotency (PLAN.md ground rules): issueInfraction short-circuits a
  * near-duplicate double-submit (see logic.ts isLikelyDuplicateSubmission),
  * acknowledgeDisciplinaryAction is a no-op once already acknowledged, and
- * findNewlyTriggeredThresholds (logic.ts) never re-fires a rung already
- * triggered within the current rolling window.
+ * findNewlyTriggeredThresholds (logic.ts) never re-fires a rung that still
+ * has an unresolved ('pending') disciplinary action open for it.
+ *
+ * issueInfraction also rejects self-issuance server-side (parsed.userId ===
+ * the caller's own id) -- the issue-form UI already excludes the caller from
+ * the recipient picker, but that's cosmetic only; a direct action call must
+ * be blocked the same way regardless of what the UI shows.
  *
  * Privacy rule (ARCHITECTURE.md "Discord integration"): emitted event
  * payloads below deliberately omit `points` and any note text -- infractions
@@ -82,9 +92,12 @@ function revalidateAccountability() {
  * Best-effort event emission: the infractions/disciplinary_actions mutations
  * above are the source of truth; event emission is notification-side
  * plumbing consumed by other streams (S10 notifications/Discord). It must
- * never turn a successful write into a reported failure -- known gap (same
- * one the Checklists stream flagged): `app_events` has no RLS policy yet, so
- * emitEvent can currently throw for every caller until that's added.
+ * never turn a successful write into a reported failure -- `app_events` now
+ * carries an RLS insert policy scoped per event key (supabase/migrations/
+ * 20260707080100_app_events_rls_hardening.sql covers infraction_issued and
+ * disciplinary_triggered), but emitEvent is still wrapped defensively here so
+ * a transient notification-layer failure (or a future policy change) can
+ * never turn the infraction/disciplinary write above into a reported error.
  */
 async function emitEventSafely(...args: Parameters<typeof emitEvent>): Promise<void> {
   try {
@@ -117,6 +130,13 @@ export async function issueInfraction(
       return { ok: false, error: "You must be signed in to do this." };
     }
 
+    // No server-side guard previously existed against a leader issuing
+    // points to themselves -- only the issue-form UI filtered the caller out
+    // of the recipient picker, which a direct action call bypasses entirely.
+    if (parsed.userId === user.id) {
+      return { ok: false, error: "You cannot issue an infraction to yourself." };
+    }
+
     const { data: type, error: typeError } = await supabase
       .from("infraction_types")
       .select("id, points, active")
@@ -135,10 +155,24 @@ export async function issueInfraction(
 
     const note = parsed.note ? parsed.note : null;
 
+    // The threshold check below needs the recipient's full infraction
+    // history, which a leader with only accountability.issue cannot read
+    // under RLS (see the module doc comment above) -- service-role client
+    // for system computations that must run regardless of the issuing
+    // leader's own read access.
+    const admin = createServiceRoleClient();
+
     // Idempotency: a double-click / retried submit shouldn't create two
     // infractions for what the UI intended as one. Check for a very recent
-    // matching row from the same issuer before inserting.
-    const { data: recent, error: recentError } = await supabase
+    // matching row from the same issuer before inserting. This MUST run on
+    // the service-role client: the only SELECT policy on `infractions`
+    // requires accountability.manage (the anonymity rule keeps ordinary
+    // issuers from reading the base table), so Team Leader/Shift Supervisor
+    // callers -- who hold only accountability.issue -- previously ran this
+    // check on the per-request client, got 0 rows back every time (RLS
+    // silently filters rather than erroring), and never detected an actual
+    // double-submit.
+    const { data: recent, error: recentError } = await admin
       .from("infractions")
       .select("id, issued_at, note")
       .eq("user_id", parsed.userId)
@@ -180,11 +214,6 @@ export async function issueInfraction(
       });
     }
 
-    // Threshold check needs the recipient's full infraction history, which a
-    // leader with only accountability.issue cannot read under RLS (see the
-    // module doc comment above) -- service-role client for this system
-    // computation only.
-    const admin = createServiceRoleClient();
     const [{ data: allInfractions, error: allError }, { data: ladder, error: ladderError }] =
       await Promise.all([
         admin.from("infractions").select("points, expires_at").eq("user_id", parsed.userId),
@@ -200,7 +229,7 @@ export async function issueInfraction(
 
     const { data: existingActions, error: existingError } = await admin
       .from("disciplinary_actions")
-      .select("type_id, triggered_at")
+      .select("type_id, triggered_at, status")
       .eq("user_id", parsed.userId);
     if (existingError) return { ok: false, error: existingError.message };
 
@@ -208,8 +237,6 @@ export async function issueInfraction(
       activePoints,
       ladder ?? [],
       existingActions ?? [],
-      now,
-      periodSettings.period_days,
     );
 
     for (const rung of triggered) {

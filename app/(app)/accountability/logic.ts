@@ -73,6 +73,7 @@ export interface DisciplinaryActionTypeLike {
 export interface ExistingDisciplinaryActionLike {
   type_id: string;
   triggered_at: string;
+  status: string;
 }
 
 /**
@@ -80,28 +81,29 @@ export interface ExistingDisciplinaryActionLike {
  * decides which rung(s) just got crossed and need a new
  * `disciplinary_actions` row.
  *
- * Idempotent: a rung that already has an action triggered within the current
- * rolling window (`now - period_days`) is skipped, so calling this again
- * after the same infraction -- or after another infraction that doesn't push
- * points past a NEW rung -- never double-fires the same threshold.
+ * Idempotent, but NOT time-windowed: a rung is suppressed only while it has
+ * an existing action that is still unresolved (`status === "pending"`), so
+ * calling this again for the same infraction -- or for another infraction
+ * that doesn't push points past a NEW rung -- never double-fires the same
+ * threshold while someone is still working the open action. Once that action
+ * is resolved (acknowledged, or auto-expired by the nightly sweep once points
+ * decay below the threshold), a legitimate re-crossing fires the rung again
+ * regardless of how much time has passed -- a flat time-window suppression
+ * previously let a re-crossing go unactioned for up to a full period after a
+ * prior action had already been closed out.
  */
 export function findNewlyTriggeredThresholds(
   activePoints: number,
   ladder: DisciplinaryActionTypeLike[],
   existingActions: ExistingDisciplinaryActionLike[],
-  now: Date,
-  periodDays: number,
 ): DisciplinaryActionTypeLike[] {
-  const windowStart = now.getTime() - periodDays * DAY_MS;
-  const recentlyTriggeredTypeIds = new Set(
-    existingActions
-      .filter((a) => new Date(a.triggered_at).getTime() > windowStart)
-      .map((a) => a.type_id),
+  const unresolvedTypeIds = new Set(
+    existingActions.filter((a) => a.status === "pending").map((a) => a.type_id),
   );
 
   return ladder
     .filter((t) => t.threshold_points <= activePoints)
-    .filter((t) => !recentlyTriggeredTypeIds.has(t.id));
+    .filter((t) => !unresolvedTypeIds.has(t.id));
 }
 
 export interface PendingDisciplinaryActionLike {

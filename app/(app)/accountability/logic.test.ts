@@ -75,7 +75,6 @@ describe("isInfractionActive / computeActivePoints", () => {
 });
 
 describe("findNewlyTriggeredThresholds", () => {
-  const now = new Date("2026-06-01T00:00:00.000Z");
   const ladder = [
     { id: "coaching", threshold_points: 10 },
     { id: "verbal", threshold_points: 15 },
@@ -83,24 +82,36 @@ describe("findNewlyTriggeredThresholds", () => {
   ];
 
   it("returns every rung at or under the active points when nothing has fired yet", () => {
-    const result = findNewlyTriggeredThresholds(16, ladder, [], now, 60);
+    const result = findNewlyTriggeredThresholds(16, ladder, []);
     expect(result.map((t) => t.id)).toEqual(["coaching", "verbal"]);
   });
 
-  it("skips a rung already triggered within the current rolling window", () => {
-    const existing = [{ type_id: "coaching", triggered_at: "2026-05-20T00:00:00.000Z" }];
-    const result = findNewlyTriggeredThresholds(16, ladder, existing, now, 60);
+  it("skips a rung with an unresolved (pending) action, however long ago it fired", () => {
+    const existing = [
+      { type_id: "coaching", triggered_at: "2020-01-01T00:00:00.000Z", status: "pending" },
+    ];
+    const result = findNewlyTriggeredThresholds(16, ladder, existing);
     expect(result.map((t) => t.id)).toEqual(["verbal"]);
   });
 
-  it("re-fires a rung whose prior trigger has rolled out of the window", () => {
-    const existing = [{ type_id: "coaching", triggered_at: "2026-01-01T00:00:00.000Z" }];
-    const result = findNewlyTriggeredThresholds(16, ladder, existing, now, 60);
+  it("re-fires a rung whose prior action was acknowledged, even moments ago", () => {
+    const existing = [
+      { type_id: "coaching", triggered_at: "2026-06-01T00:00:00.000Z", status: "acknowledged" },
+    ];
+    const result = findNewlyTriggeredThresholds(16, ladder, existing);
+    expect(result.map((t) => t.id)).toEqual(["coaching", "verbal"]);
+  });
+
+  it("re-fires a rung whose prior action auto-expired", () => {
+    const existing = [
+      { type_id: "coaching", triggered_at: "2026-06-01T00:00:00.000Z", status: "expired" },
+    ];
+    const result = findNewlyTriggeredThresholds(16, ladder, existing);
     expect(result.map((t) => t.id)).toEqual(["coaching", "verbal"]);
   });
 
   it("returns nothing when points are below every threshold", () => {
-    expect(findNewlyTriggeredThresholds(5, ladder, [], now, 60)).toEqual([]);
+    expect(findNewlyTriggeredThresholds(5, ladder, [])).toEqual([]);
   });
 });
 
