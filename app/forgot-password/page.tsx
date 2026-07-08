@@ -11,7 +11,7 @@ import {
 import { ForgotPasswordForm } from "@/app/forgot-password/forgot-password-form";
 
 export const metadata: Metadata = {
-  title: "Reset password - FarmingdaleIQ",
+  title: "Reset password",
 };
 
 /**
