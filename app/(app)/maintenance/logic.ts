@@ -127,3 +127,78 @@ export function resolvePmPriority(priority: string | null): WorkOrderPriority {
     ? (priority as WorkOrderPriority)
     : "medium";
 }
+
+/**
+ * The `app_events.payload` recipient fragment for the person who submitted a
+ * maintenance request (ARCHITECTURE.md "Requests": "any team member submits
+ * ... and is notified as its status changes"). Uses the canonical recipient
+ * key (`user_id`, string) that `lib/notify/recipients.ts`'s
+ * `extractRecipientIds` reads — see this function's contract test in
+ * logic.test.ts, which runs the real extractor against this real shape.
+ * Returns an empty object (no key) rather than `{ user_id: null }` when
+ * there's no requester to notify, since a payload with `user_id` present but
+ * not a non-empty string would still be silently ignored by the extractor
+ * anyway; omitting the key is the more honest shape.
+ */
+export function requesterRecipientPayload(submittedBy: string | null): { user_id?: string } {
+  return submittedBy ? { user_id: submittedBy } : {};
+}
+
+export interface ChecklistRunInsert {
+  template_id: string;
+  run_date: string;
+  assigned_user_id: string | null;
+}
+
+/**
+ * The checklist_runs row to materialize for a PM schedule's "optional
+ * checklist procedure" (ARCHITECTURE.md "Preventive maintenance": "optionally
+ * attaching a checklist template"), or null when the schedule has none
+ * configured. The run inherits the PM schedule's assignee (if any) so it
+ * shows up assigned the same way a checklist-module-native run would.
+ */
+export function pmChecklistRunInsert(
+  schedule: PmScheduleLike,
+  asOfDate: string,
+): ChecklistRunInsert | null {
+  if (!schedule.checklist_template_id) return null;
+  return {
+    template_id: schedule.checklist_template_id,
+    run_date: asOfDate,
+    assigned_user_id: schedule.assign_user_id,
+  };
+}
+
+export interface WorkOrderDiscordFlags {
+  notify_discord: boolean;
+  discord_channel_id: string | null;
+}
+
+/**
+ * Forwards a work order's per-instance Discord opt-in (ARCHITECTURE.md
+ * "Discord integration" > "The flag": "Leaders toggle it on for the
+ * important stuff") into an emitEvent payload, using the keys
+ * lib/notify/events.ts already reads (`notifyDiscord`, and a channel id for
+ * whenever that consumer starts preferring a payload channel over the
+ * global route).
+ *
+ * Deliberately one-directional: only forwards the `true` case. The column
+ * defaults `notify_discord` to `false` for every existing/new row (see
+ * supabase/migrations/20260707001400_maintenance.sql), and the shared
+ * consumer (lib/notify/events.ts, owned by the Notifications stream, not
+ * this one) currently treats a payload's `notifyDiscord: false` as a
+ * per-instance SUPPRESS override ahead of the global discord_event_routes
+ * table. Forwarding the column's default `false` verbatim would therefore
+ * silently mute every maintenance Discord post the moment this ships,
+ * which contradicts "toggle it on" (opt-in, not opt-out). Once the
+ * Notifications stream's consumer distinguishes "explicitly opted in" from
+ * "never set" (and reads the channel id), this can forward both directions.
+ */
+export function discordFlagPayload(
+  row: WorkOrderDiscordFlags,
+): { notifyDiscord: true; discordChannelId: string } | { notifyDiscord: true } | Record<string, never> {
+  if (!row.notify_discord) return {};
+  return row.discord_channel_id
+    ? { notifyDiscord: true, discordChannelId: row.discord_channel_id }
+    : { notifyDiscord: true };
+}

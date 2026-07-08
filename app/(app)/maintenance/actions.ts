@@ -27,7 +27,12 @@ import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/maintenance/action-types";
 import { closeOpenDowntimeSpan } from "@/app/(app)/maintenance/downtime";
-import { isValidWorkOrderTransition, type WorkOrderStatus } from "@/app/(app)/maintenance/logic";
+import {
+  discordFlagPayload,
+  isValidWorkOrderTransition,
+  requesterRecipientPayload,
+  type WorkOrderStatus,
+} from "@/app/(app)/maintenance/logic";
 import {
   addWorkOrderCommentSchema,
   approveRequestSchema,
@@ -129,7 +134,7 @@ export async function approveRequest(
 
     const { data: request, error: fetchError } = await supabase
       .from("maintenance_requests")
-      .select("id, title, description, equipment_id, status, work_order_id")
+      .select("id, title, description, equipment_id, status, work_order_id, submitted_by")
       .eq("id", parsed.requestId)
       .single();
 
@@ -202,7 +207,12 @@ export async function approveRequest(
       return { ok: false, error: linkError.message };
     }
 
-    await emitEvent("maint_request", { requestId: request.id, status: "approved", workOrderId: workOrder.id });
+    await emitEvent("maint_request", {
+      requestId: request.id,
+      status: "approved",
+      workOrderId: workOrder.id,
+      ...requesterRecipientPayload(request.submitted_by),
+    });
     await emitEvent("work_order_status", { workOrderId: workOrder.id, status: "open" });
 
     revalidateMaintenance(workOrder.id);
@@ -238,7 +248,7 @@ export async function declineRequest(input: DeclineRequestInput): Promise<Action
       })
       .eq("id", parsed.requestId)
       .eq("status", "pending")
-      .select("id")
+      .select("id, submitted_by")
       .maybeSingle();
 
     if (error) {
@@ -257,7 +267,11 @@ export async function declineRequest(input: DeclineRequestInput): Promise<Action
       return { ok: false, error: "This request has already been reviewed." };
     }
 
-    await emitEvent("maint_request", { requestId: parsed.requestId, status: "declined" });
+    await emitEvent("maint_request", {
+      requestId: parsed.requestId,
+      status: "declined",
+      ...requesterRecipientPayload(claimed.submitted_by),
+    });
 
     revalidateMaintenance();
     return { ok: true, data: undefined };
@@ -327,6 +341,8 @@ export async function assignWorkOrder(input: AssignWorkOrderInput): Promise<Acti
     if (parsed.scheduledFor !== undefined) update.scheduled_for = parsed.scheduledFor;
     if (parsed.dueAt !== undefined) update.due_at = parsed.dueAt;
     if (parsed.priority !== undefined) update.priority = parsed.priority;
+    if (parsed.notifyDiscord !== undefined) update.notify_discord = parsed.notifyDiscord;
+    if (parsed.discordChannelId !== undefined) update.discord_channel_id = parsed.discordChannelId ?? null;
 
     const { error } = await supabase.from("work_orders").update(update).eq("id", parsed.workOrderId);
 
@@ -385,7 +401,7 @@ export async function updateWorkOrderStatus(
     const supabase = await createClient();
     const { data: workOrder, error: fetchError } = await supabase
       .from("work_orders")
-      .select("id, status, assigned_user_id")
+      .select("id, status, assigned_user_id, notify_discord, discord_channel_id")
       .eq("id", parsed.workOrderId)
       .single();
 
@@ -434,7 +450,11 @@ export async function updateWorkOrderStatus(
       return { ok: false, error: "Status changed elsewhere — refresh and try again." };
     }
 
-    await emitEvent("work_order_status", { workOrderId: parsed.workOrderId, status: nextStatus });
+    await emitEvent("work_order_status", {
+      workOrderId: parsed.workOrderId,
+      status: nextStatus,
+      ...discordFlagPayload(workOrder),
+    });
 
     revalidateMaintenance(parsed.workOrderId);
     return { ok: true, data: undefined };
@@ -456,7 +476,7 @@ export async function completeWorkOrder(input: CompleteWorkOrderInput): Promise<
 
     const { data: workOrder, error: fetchError } = await supabase
       .from("work_orders")
-      .select("id, status, assigned_user_id, equipment_id")
+      .select("id, status, assigned_user_id, equipment_id, notify_discord, discord_channel_id")
       .eq("id", parsed.workOrderId)
       .single();
 
@@ -516,7 +536,11 @@ export async function completeWorkOrder(input: CompleteWorkOrderInput): Promise<
       await closeOpenDowntimeSpan(supabase, workOrder.equipment_id);
     }
 
-    await emitEvent("work_order_status", { workOrderId: parsed.workOrderId, status: "complete" });
+    await emitEvent("work_order_status", {
+      workOrderId: parsed.workOrderId,
+      status: "complete",
+      ...discordFlagPayload(workOrder),
+    });
 
     revalidateMaintenance(parsed.workOrderId);
     revalidatePath("/maintenance/equipment");
