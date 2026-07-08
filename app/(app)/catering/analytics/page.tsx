@@ -21,7 +21,11 @@ export default async function CateringAnalyticsPage() {
 
   const supabase = await createClient();
   const [{ data: orders }, { data: contacts }] = await Promise.all([
-    supabase.from("catering_orders").select("id, contact_id, amount, event_date"),
+    // Excludes stage "new": an order that hasn't even had its confirmation
+    // call yet isn't real revenue (parity audit Catering finding:
+    // "Analytics/history include every order regardless of stage --
+    // unconfirmed New orders count in revenue").
+    supabase.from("catering_orders").select("id, contact_id, amount, event_date").neq("stage", "new"),
     supabase.from("catering_contacts").select("id, name"),
   ]);
 
