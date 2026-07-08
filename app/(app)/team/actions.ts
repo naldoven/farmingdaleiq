@@ -200,6 +200,7 @@ export async function createRecognition(
     });
 
     revalidatePath("/team");
+    revalidatePath("/team/feed");
     revalidatePath("/tokens");
     return { ok: true, data: { postId: post.id } };
   } catch (error) {
@@ -237,6 +238,7 @@ export async function createBroadcast(
     await emitEventSafely("broadcast", { post_id: post.id, author_id: user?.id ?? null, body: parsed.body });
 
     revalidatePath("/team");
+    revalidatePath("/team/feed");
     return { ok: true, data: { postId: post.id } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
@@ -277,6 +279,7 @@ export async function toggleLike(input: PostIdInput): Promise<ActionResult<{ lik
         .eq("user_id", user.id);
       if (error) return { ok: false, error: error.message };
       revalidatePath("/team");
+      revalidatePath("/team/feed");
       return { ok: true, data: { liked: false } };
     }
 
@@ -286,6 +289,7 @@ export async function toggleLike(input: PostIdInput): Promise<ActionResult<{ lik
     if (error) return { ok: false, error: error.message };
 
     revalidatePath("/team");
+    revalidatePath("/team/feed");
     return { ok: true, data: { liked: true } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
@@ -312,6 +316,7 @@ export async function addComment(input: AddCommentInput): Promise<ActionResult> 
     }
 
     revalidatePath("/team");
+    revalidatePath("/team/feed");
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
