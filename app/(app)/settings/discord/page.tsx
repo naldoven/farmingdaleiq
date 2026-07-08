@@ -82,7 +82,8 @@ export default async function DiscordSettingsPage() {
         <CardHeader>
           <CardTitle>Discord IDs</CardTitle>
           <CardDescription>
-            Members link their own Discord user ID for @mentions from their profile.
+            An admin sets each member&apos;s Discord user ID on their People profile (it is
+            admin-only, enforced by a database guard) so @mentions can reach them.
           </CardDescription>
         </CardHeader>
         <CardContent>

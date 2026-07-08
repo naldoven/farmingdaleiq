@@ -28,3 +28,14 @@ export async function POST(request: Request) {
   const result = await deliverPendingOutbox();
   return NextResponse.json(result);
 }
+
+/**
+ * Vercel Cron invokes scheduled routes with GET (and its own
+ * `Authorization: Bearer <CRON_SECRET>` header), so a POST-only route would
+ * 405 on every scheduled run and the outbox would never deliver in
+ * production (parity finding #6). Delegate to POST so both verbs share the
+ * exact same auth check and delivery logic.
+ */
+export async function GET(request: Request) {
+  return POST(request);
+}
