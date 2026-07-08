@@ -27,7 +27,6 @@ export default async function TemplateEditorPage({
   const [
     { data: template },
     { data: sections },
-    { data: questions },
     { data: foodItems },
     { data: schedules },
     { data: dayParts },
@@ -43,12 +42,6 @@ export default async function TemplateEditorPage({
       .from("checklist_sections")
       .select("id, name, sort")
       .eq("template_id", templateId)
-      .order("sort"),
-    supabase
-      .from("checklist_questions")
-      .select(
-        "id, section_id, sort, type, prompt, allow_na, choices, food_item_id, corrective_actions, photo_required, token_value",
-      )
       .order("sort"),
     supabase.from("food_items").select("id, name, cold_min_f, cold_max_f, hot_min_f, hot_max_f").order("name"),
     supabase
@@ -66,10 +59,21 @@ export default async function TemplateEditorPage({
     notFound();
   }
 
-  const sectionIds = new Set((sections ?? []).map((s) => s.id));
+  // Scope the question fetch to THIS template's sections instead of scanning
+  // every checklist_question in the store and filtering client-side.
+  const sectionIdList = (sections ?? []).map((s) => s.id);
+  const { data: questions } = sectionIdList.length
+    ? await supabase
+        .from("checklist_questions")
+        .select(
+          "id, section_id, sort, type, prompt, allow_na, choices, food_item_id, corrective_actions, photo_required, token_value",
+        )
+        .in("section_id", sectionIdList)
+        .order("sort")
+    : { data: [] };
+
   const questionsBySection = new Map<string, typeof questions>();
   for (const q of questions ?? []) {
-    if (!sectionIds.has(q.section_id)) continue;
     const list = questionsBySection.get(q.section_id) ?? [];
     list.push(q);
     questionsBySection.set(q.section_id, list);
