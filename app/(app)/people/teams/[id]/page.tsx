@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/mobile";
+import { PersonRow } from "@/components/people/person-row";
 import { TeamMemberManager } from "@/components/people/team-member-manager";
 import { TeamSettingsForm } from "@/components/people/team-settings-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
-/** /people/teams/[id] — rename/delete a team, manage its membership. */
+/**
+ * /people/teams/[id] — rename/delete a team, manage its membership.
+ * Visual/layout redesign onto the KitchenIQ mobile system
+ * (docs/DESIGN-SYSTEM.md): SectionCards replace the shadcn Card wrappers;
+ * the read-only member list renders as PersonRows (AvatarInitials + name).
+ */
 export default async function TeamDetailPage({
   params,
 }: {
@@ -40,49 +46,36 @@ export default async function TeamDetailPage({
     .map((p) => ({ id: p.id, name: p.name }));
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <Link href="/people/teams" className="text-sm text-muted-foreground hover:underline">
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <Link href="/people/teams" className="text-[13px] font-semibold text-accent">
         &larr; Teams
       </Link>
 
-      <h1 className="text-2xl font-semibold">{team.name}</h1>
+      <h1 className="text-[22px] font-bold text-ink">{team.name}</h1>
 
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Team settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TeamSettingsForm teamId={team.id} initialName={team.name} />
-          </CardContent>
-        </Card>
+        <SectionCard title="Team settings">
+          <TeamSettingsForm teamId={team.id} initialName={team.name} />
+        </SectionCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {canManage ? (
-            <TeamMemberManager
-              teamId={team.id}
-              members={members}
-              addableProfiles={addableProfiles}
-            />
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {members.length === 0 && (
-                <li className="text-sm text-muted-foreground">No members yet.</li>
-              )}
-              {members.map((member) => (
-                <li key={member.id} className="text-sm">
-                  {member.name}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <SectionCard title="Members" flush={!canManage}>
+        {canManage ? (
+          <TeamMemberManager
+            teamId={team.id}
+            members={members}
+            addableProfiles={addableProfiles}
+          />
+        ) : members.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[13px] text-muted-ink">No members yet.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {members.map((member) => (
+              <PersonRow key={member.id} name={member.name} />
+            ))}
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }

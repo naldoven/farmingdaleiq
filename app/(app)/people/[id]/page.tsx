@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AvatarInitials, HScroll, MetricCard, SectionCard, StatTile, StatusBadge } from "@/components/mobile";
 import { ProfileEditForm } from "@/components/people/profile-edit-form";
 import { SelfProfileEditForm } from "@/components/people/self-profile-edit-form";
 import { RoleAssignForm } from "@/components/people/role-assign-form";
-import { PersonBadges } from "@/components/people/person-badges";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBadges } from "@/lib/setups/badges";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
@@ -119,132 +118,109 @@ export default async function ProfilePage({
     tokenBalance = await getBalance(profile.id, supabase);
   }
 
+  const trainingSubline =
+    trainingProgress.active === 0 && trainingProgress.graduated === 0 && trainingProgress.pip === 0
+      ? "—"
+      : [
+          `${trainingProgress.active} active`,
+          trainingProgress.graduated > 0 ? `${trainingProgress.graduated} graduated` : null,
+          trainingProgress.pip > 0 ? `${trainingProgress.pip} on PIP` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+  const passportSubline =
+    passportProgress.completed + passportProgress.inProgress === 0
+      ? "—"
+      : `${passportProgress.completed} completed, ${passportProgress.inProgress} in progress`;
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Link href="/people" className="text-sm text-muted-foreground hover:underline">
-          &larr; Roster
-        </Link>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <Link href="/people" className="text-[13px] font-semibold text-accent">
+        &larr; Roster
+      </Link>
+
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-card p-6 text-center shadow-card">
+        <AvatarInitials name={profile.name} size="lg" />
+        <div>
+          <p className="text-[22px] font-bold text-ink">{profile.name}</p>
+          <p className="text-[13px] text-muted-ink">{profile.email}</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <StatusBadge tone={profile.active ? "success" : "neutral"} dot>
+            {profile.active ? "Active" : "Inactive"}
+          </StatusBadge>
+          {badges.map((badge) => (
+            <StatusBadge key={badge.kind} tone="accent">
+              {badge.label}
+            </StatusBadge>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">{profile.name}</h1>
-        <p className="text-sm text-muted-foreground">{profile.email}</p>
-        <PersonBadges badges={badges} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Personal record</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Open to-dos
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">{openTaskCount}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Completed to-dos
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">{completedTaskCount}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Token balance
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">
-                {tokenBalance !== null ? tokenBalance : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Accountability points
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">
-                {accountabilityPoints !== null ? accountabilityPoints : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Trainee lifecycle
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">
-                {trainingProgress.active} active
-                {trainingProgress.graduated > 0 && `, ${trainingProgress.graduated} graduated`}
-                {trainingProgress.pip > 0 && `, ${trainingProgress.pip} on PIP`}
-                {trainingProgress.active === 0 &&
-                  trainingProgress.graduated === 0 &&
-                  trainingProgress.pip === 0 &&
-                  "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Development passports
-              </dt>
-              <dd className="mt-0.5 text-lg font-semibold">
-                {passportProgress.completed + passportProgress.inProgress === 0
-                  ? "—"
-                  : `${passportProgress.completed} completed, ${passportProgress.inProgress} in progress`}
-              </dd>
-            </div>
-          </dl>
+      <SectionCard title="Personal record">
+        <div className="flex flex-col gap-4">
+          <HScroll>
+            <StatTile value={openTaskCount} label="Open to-dos" />
+            <StatTile value={completedTaskCount} label="Completed to-dos" tone="success" />
+            <StatTile
+              value={tokenBalance !== null ? tokenBalance : "—"}
+              label="Token balance"
+              tone="warning"
+            />
+            <StatTile
+              value={accountabilityPoints !== null ? accountabilityPoints : "—"}
+              label="Accountability"
+              tone={accountabilityPoints ? "danger" : "neutral"}
+            />
+          </HScroll>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <MetricCard title="Trainee lifecycle" value={trainingSubline} />
+            <MetricCard title="Development passports" value={passportSubline} />
+          </div>
           {accountabilityPoints === null && !isSelf && (
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="text-[13px] text-muted-ink">
               Accountability points are hidden — requires accountability.manage.
             </p>
           )}
           {tokenBalance === null && !isSelf && (
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-[13px] text-muted-ink">
               Token balance is hidden — requires tokens.manage.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Role</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RoleAssignForm
+      <SectionCard title="Role">
+        <RoleAssignForm
+          profileId={profile.id}
+          initialRoleId={profile.role_id}
+          roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))}
+          canEdit={canManage}
+        />
+      </SectionCard>
+
+      <SectionCard title="Profile">
+        {isSelf && !canManage ? (
+          <SelfProfileEditForm
+            initialPhone={profile.phone}
+            initialBirthdate={profile.birthdate}
+            initialAvatarUrl={profile.avatar_url}
+          />
+        ) : (
+          <ProfileEditForm
             profileId={profile.id}
-            initialRoleId={profile.role_id}
-            roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))}
+            initialName={profile.name}
+            initialPhone={profile.phone}
+            initialDiscordUserId={profile.discord_user_id}
+            initialBirthdate={profile.birthdate}
+            initialHiredOn={profile.hired_on}
+            initialAvatarUrl={profile.avatar_url}
+            initialActive={profile.active}
             canEdit={canManage}
           />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isSelf && !canManage ? (
-            <SelfProfileEditForm
-              initialPhone={profile.phone}
-              initialBirthdate={profile.birthdate}
-              initialAvatarUrl={profile.avatar_url}
-            />
-          ) : (
-            <ProfileEditForm
-              profileId={profile.id}
-              initialName={profile.name}
-              initialPhone={profile.phone}
-              initialDiscordUserId={profile.discord_user_id}
-              initialBirthdate={profile.birthdate}
-              initialHiredOn={profile.hired_on}
-              initialAvatarUrl={profile.avatar_url}
-              initialActive={profile.active}
-              canEdit={canManage}
-            />
-          )}
-        </CardContent>
-      </Card>
+        )}
+      </SectionCard>
     </div>
   );
 }
