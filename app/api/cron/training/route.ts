@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { isRerateDue } from "@/app/(app)/ratings/logic";
+import { ACTIVELY_WORKED_WINDOW_DAYS, activelyWorkedKeys, shouldCreateReratePrompt } from "@/app/api/cron/training/logic";
 
 /**
  * Scheduled job for S4 Ratings/Training (ARCHITECTURE.md "Position
@@ -38,14 +39,25 @@ async function run(request: NextRequest) {
   const supabase = createServiceRoleClient();
   const now = new Date();
 
-  const [{ data: currentRatings, error: ratingsError }, { data: openPrompts, error: promptsError }] =
-    await Promise.all([
-      supabase
-        .from("position_ratings")
-        .select("user_id, position_id, rated_at")
-        .eq("is_current", true),
-      supabase.from("rerate_prompts").select("user_id, position_id").is("resolved_at", null),
-    ]);
+  const activeWorkCutoff = new Date(now);
+  activeWorkCutoff.setDate(activeWorkCutoff.getDate() - ACTIVELY_WORKED_WINDOW_DAYS);
+  const activeWorkCutoffStr = activeWorkCutoff.toISOString().slice(0, 10);
+
+  const [
+    { data: currentRatings, error: ratingsError },
+    { data: openPrompts, error: promptsError },
+    { data: recentAssignments, error: assignmentsError },
+  ] = await Promise.all([
+    supabase.from("position_ratings").select("user_id, position_id, rated_at").eq("is_current", true),
+    supabase.from("rerate_prompts").select("user_id, position_id").is("resolved_at", null),
+    // "Actively-worked" gate: only positions someone has actually been
+    // assigned to in a recent posted Setup, not merely rated once. Filters
+    // the embedded setups.date via the required inner join.
+    supabase
+      .from("setup_assignments")
+      .select("user_id, position_id, setups!inner(date)")
+      .gte("setups.date", activeWorkCutoffStr),
+  ]);
 
   if (ratingsError) {
     return NextResponse.json({ error: ratingsError.message }, { status: 500 });
@@ -53,15 +65,21 @@ async function run(request: NextRequest) {
   if (promptsError) {
     return NextResponse.json({ error: promptsError.message }, { status: 500 });
   }
+  if (assignmentsError) {
+    return NextResponse.json({ error: assignmentsError.message }, { status: 500 });
+  }
 
   const openPromptKeys = new Set((openPrompts ?? []).map((p) => `${p.user_id}:${p.position_id}`));
+  const workedKeys = activelyWorkedKeys(recentAssignments ?? []);
 
   let createdCount = 0;
   for (const rating of currentRatings ?? []) {
     if (!rating.user_id || !rating.position_id) continue;
     const key = `${rating.user_id}:${rating.position_id}`;
-    if (openPromptKeys.has(key)) continue;
     if (!isRerateDue(rating.rated_at, now)) continue;
+    if (!shouldCreateReratePrompt({ hasOpenPrompt: openPromptKeys.has(key), activelyWorked: workedKeys.has(key) })) {
+      continue;
+    }
 
     const { error: insertError } = await supabase.from("rerate_prompts").insert({
       user_id: rating.user_id,
