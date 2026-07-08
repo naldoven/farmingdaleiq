@@ -1,22 +1,23 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreateTaskForm } from "@/components/tasks/create-task-form";
-import { CreateTemplateForm } from "@/components/tasks/create-template-form";
-import { TaskList, type TaskRowView } from "@/components/tasks/task-list";
-import { TaskTemplatesTable, type TaskTemplateRowView } from "@/components/tasks/task-templates-table";
+import { TaskBoard } from "@/components/tasks/task-board";
+import { type TaskRowView } from "@/components/tasks/task-list";
+import { type TaskTemplateRowView } from "@/components/tasks/task-templates-table";
 import type { NamedOption } from "@/components/tasks/delegate-task-control";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 /**
  * /tasks — ARCHITECTURE.md "Tasks (To-Dos)" + PLAN.md S2 brief: "My tasks +
- * shift pool; create ad-hoc tasks." Reads are gated by tasks.complete, which
- * every seeded role holds (supabase/migrations/20260707001900_seed_store_
- * config.sql base_keys), mirroring the intended RLS reality once tasks/
- * task_templates RLS policies are added (see the stream report: not added
- * here, blocked on the "don't touch migrations" hard boundary). Manage-only
- * sections (create/templates/cancel) check tasks.manage and are enforced for
- * real in the server actions regardless of what this page renders.
+ * shift pool; create ad-hoc tasks." KitchenIQ mobile redesign
+ * (docs/DESIGN-SYSTEM.md): the sub-page header ("Tasks" + back chevron) comes
+ * from the shell via lib/nav/page-map.ts resolveHeader, so this page only
+ * renders the FilterChip tabs + SectionCard/ListRow board (components/tasks/
+ * task-board.tsx). Reads are gated by tasks.complete, which every seeded role
+ * holds (supabase/migrations/20260707001900_seed_store_config.sql base_keys),
+ * mirroring the intended RLS reality once tasks/task_templates RLS policies
+ * are added (see the stream report: not added here, blocked on the "don't
+ * touch migrations" hard boundary). Manage-only sections (create/templates/
+ * cancel) check tasks.manage and are enforced for real in the server actions
+ * regardless of what this page renders.
  */
 export default async function TasksPage() {
   await requirePermission("tasks.complete");
@@ -106,111 +107,20 @@ export default async function TasksPage() {
   }));
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Tasks</h1>
-      </div>
-
-      <Tabs defaultValue="mine">
-        <TabsList>
-          <TabsTrigger value="mine">My tasks</TabsTrigger>
-          <TabsTrigger value="pool">Pool ({pool.length})</TabsTrigger>
-          {canManage && <TabsTrigger value="manage">Manage</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="mine">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today&apos;s tasks</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TaskList
-                tasks={mine}
-                mode="mine"
-                canManage={canManage}
-                users={userOptions}
-                positions={positionOptions}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="pool">
-          <Card>
-            <CardHeader>
-              <CardTitle>Unassigned — shift pool</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TaskList
-                tasks={pool}
-                mode="pool"
-                canManage={canManage}
-                users={userOptions}
-                positions={positionOptions}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {canManage && (
-          <TabsContent value="manage" className="flex flex-col gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Create ad hoc task</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CreateTaskForm
-                  users={userOptions}
-                  positions={positionOptions}
-                  dayParts={dayPartOptions}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Create recurring template</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CreateTemplateForm
-                  users={userOptions}
-                  positions={positionOptions}
-                  dayParts={dayPartOptions}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Recurring templates</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <TaskTemplatesTable
-                  templates={templateRows}
-                  users={userOptions}
-                  positions={positionOptions}
-                  dayParts={dayPartOptions}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>All tasks today</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <TaskList
-                  tasks={allToday}
-                  mode="all"
-                  canManage={canManage}
-                  users={userOptions}
-                  positions={positionOptions}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-      </Tabs>
+    // Data-heavy screen (forms + templates table on the Manage tab), so this
+    // gets the wider desktop column docs/DESIGN-SYSTEM.md allows beyond the
+    // 480px dashboard width; mobile is unaffected below md.
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <TaskBoard
+        mine={mine}
+        pool={pool}
+        allToday={allToday}
+        templates={templateRows}
+        canManage={canManage}
+        users={userOptions}
+        positions={positionOptions}
+        dayParts={dayPartOptions}
+      />
     </div>
   );
 }

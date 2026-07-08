@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Repeat } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,14 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, StatusBadge } from "@/components/mobile";
 import { setTaskTemplateActive } from "@/app/(app)/tasks/actions";
 import {
   CreateTemplateForm,
@@ -64,6 +58,14 @@ function toFormValues(t: TaskTemplateRowView): TemplateFormValues {
   };
 }
 
+function scheduleLabel(t: TaskTemplateRowView): string {
+  const cadence =
+    t.frequency === "weekly"
+      ? (t.daysOfWeek ?? []).map((d) => DAY_LABELS[d]).join(", ") || "Weekly"
+      : "Daily";
+  return `${cadence} · ${t.dayPartName ?? "Any"} · ${t.assigneeLabel ?? "Pool"} · ${t.tokenValue} tokens`;
+}
+
 export function TaskTemplatesTable({
   templates,
   users,
@@ -79,85 +81,68 @@ export function TaskTemplatesTable({
   const [isPending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  if (templates.length === 0) {
+    return (
+      <p className="px-4 py-6 text-center text-[13px] text-muted-ink">
+        No recurring templates yet.
+      </p>
+    );
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Title</TableHead>
-          <TableHead>Schedule</TableHead>
-          <TableHead>Day-part</TableHead>
-          <TableHead>Assigned</TableHead>
-          <TableHead>Tokens</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {templates.map((t) => (
-          <TableRow key={t.id}>
-            <TableCell className="font-medium">{t.title}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {t.frequency === "weekly"
-                ? (t.daysOfWeek ?? []).map((d) => DAY_LABELS[d]).join(", ") || "Weekly"
-                : "Daily"}
-            </TableCell>
-            <TableCell className="text-muted-foreground">{t.dayPartName ?? "Any"}</TableCell>
-            <TableCell className="text-muted-foreground">{t.assigneeLabel ?? "Pool"}</TableCell>
-            <TableCell>{t.tokenValue}</TableCell>
-            <TableCell>
-              <Badge variant={t.active ? "success" : "outline"}>
+    <div className="flex flex-col">
+      {templates.map((t, i) => (
+        <div key={t.id} className={cn("flex flex-col gap-2", i > 0 && "border-t border-line")}>
+          <ListRow
+            icon={Repeat}
+            iconTone={t.active ? "accent" : "neutral"}
+            title={t.title}
+            description={scheduleLabel(t)}
+            trailing={
+              <StatusBadge tone={t.active ? "success" : "neutral"} dot>
                 {t.active ? "Active" : "Paused"}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <div className="flex gap-2">
-                <Dialog
-                  open={editingId === t.id}
-                  onOpenChange={(open) => setEditingId(open ? t.id : null)}
-                >
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      Edit
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Edit template</DialogTitle>
-                    </DialogHeader>
-                    <CreateTemplateForm
-                      users={users}
-                      positions={positions}
-                      dayParts={dayParts}
-                      initial={toFormValues(t)}
-                      onSuccess={() => setEditingId(null)}
-                    />
-                  </DialogContent>
-                </Dialog>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isPending}
-                  onClick={() => {
-                    startTransition(async () => {
-                      await setTaskTemplateActive({ id: t.id, active: !t.active });
-                      router.refresh();
-                    });
-                  }}
-                >
-                  {t.active ? "Pause" : "Resume"}
+              </StatusBadge>
+            }
+          />
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <Dialog
+              open={editingId === t.id}
+              onOpenChange={(open) => setEditingId(open ? t.id : null)}
+            >
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  Edit
                 </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-        {templates.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={7} className="text-center text-muted-foreground">
-              No recurring templates yet.
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit template</DialogTitle>
+                </DialogHeader>
+                <CreateTemplateForm
+                  users={users}
+                  positions={positions}
+                  dayParts={dayParts}
+                  initial={toFormValues(t)}
+                  onSuccess={() => setEditingId(null)}
+                />
+              </DialogContent>
+            </Dialog>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => {
+                startTransition(async () => {
+                  await setTaskTemplateActive({ id: t.id, active: !t.active });
+                  router.refresh();
+                });
+              }}
+            >
+              {t.active ? "Pause" : "Resume"}
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

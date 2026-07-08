@@ -1,12 +1,14 @@
-import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ClipboardList,
+  Crown,
+  Gift,
+  MessageCircle,
+  Repeat,
+  type LucideIcon,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { ListRow, StatusBadge, type ListRowTone, type StatusTone } from "@/components/mobile";
 import { CancelTaskButton } from "@/components/tasks/cancel-task-button";
 import { ClaimTaskButton } from "@/components/tasks/claim-task-button";
 import { CompleteTaskButton } from "@/components/tasks/complete-task-button";
@@ -30,10 +32,32 @@ const KIND_LABELS: Record<string, string> = {
   lead_duty: "Lead duty",
 };
 
-function statusVariant(status: string): "success" | "warning" | "outline" | "destructive" {
+const KIND_ICONS: Record<string, LucideIcon> = {
+  adhoc: ClipboardList,
+  recurring: Repeat,
+  reward_fulfillment: Gift,
+  follow_up: MessageCircle,
+  lead_duty: Crown,
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  overdue: "Overdue",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+function rowTone(status: string): ListRowTone {
   if (status === "completed") return "success";
-  if (status === "overdue") return "destructive";
-  if (status === "cancelled") return "outline";
+  if (status === "overdue") return "danger";
+  if (status === "cancelled") return "neutral";
+  return "accent";
+}
+
+function badgeTone(status: string): StatusTone {
+  if (status === "completed") return "success";
+  if (status === "overdue") return "danger";
+  if (status === "cancelled") return "neutral";
   return "warning";
 }
 
@@ -50,8 +74,24 @@ function formatDue(dueAt: string | null): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** The gray subtitle line: kind, day-part, due time (red when overdue), and
+ * token value. */
+function TaskMeta({ task }: { task: TaskRowView }) {
+  const overdue = task.status === "overdue";
+  return (
+    <>
+      {KIND_LABELS[task.kind] ?? task.kind} · {task.dayPartName ?? "Any"} ·{" "}
+      <span className={cn(overdue && "font-semibold text-danger")}>
+        {formatDue(task.dueAt)}
+      </span>{" "}
+      · {task.tokenValue} {task.tokenValue === 1 ? "token" : "tokens"}
+    </>
+  );
+}
+
 /**
- * Renders one section of the tasks board. `mode` controls the action column:
+ * Renders one section of the tasks board as SectionCard/ListRow entries
+ * (docs/DESIGN-SYSTEM.md). `mode` controls the trailing action:
  * - "mine": Complete button (the task is already assigned to the viewer).
  * - "pool": Claim button for anyone, plus a delegate control for managers.
  * - "all": manager view over every task today, with a Cancel button.
@@ -69,61 +109,48 @@ export function TaskList({
   users: NamedOption[];
   positions: NamedOption[];
 }) {
+  if (tasks.length === 0) {
+    return <p className="px-4 py-6 text-center text-[13px] text-muted-ink">Nothing here.</p>;
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Title</TableHead>
-          <TableHead>Kind</TableHead>
-          <TableHead>Day-part</TableHead>
-          <TableHead>Due</TableHead>
-          <TableHead>Tokens</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {tasks.map((t) => (
-          <TableRow key={t.id}>
-            <TableCell className="font-medium">{t.title}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {KIND_LABELS[t.kind] ?? t.kind}
-            </TableCell>
-            <TableCell className="text-muted-foreground">{t.dayPartName ?? "Any"}</TableCell>
-            <TableCell className="text-muted-foreground">{formatDue(t.dueAt)}</TableCell>
-            <TableCell>{t.tokenValue}</TableCell>
-            <TableCell>
-              <Badge variant={statusVariant(t.status)}>{t.status}</Badge>
-            </TableCell>
-            <TableCell>
-              {/* An overdue task is still actionable — it's late, not closed —
-                  so Complete/Claim/Delegate stay available until it's actually
-                  completed or cancelled. */}
-              {mode === "mine" && isActionable(t.status) && (
-                <CompleteTaskButton taskId={t.id} />
+    <div className="flex flex-col">
+      {tasks.map((t, i) => (
+        <div key={t.id} className={cn("flex flex-col gap-2", i > 0 && "border-t border-line")}>
+          <ListRow
+            icon={KIND_ICONS[t.kind] ?? ClipboardList}
+            iconTone={rowTone(t.status)}
+            title={t.title}
+            description={<TaskMeta task={t} />}
+            trailing={
+              <StatusBadge tone={badgeTone(t.status)} dot>
+                {STATUS_LABELS[t.status] ?? t.status}
+              </StatusBadge>
+            }
+          />
+
+          {mode === "mine" && isActionable(t.status) && (
+            <div className="flex justify-end px-4 pb-3">
+              <CompleteTaskButton taskId={t.id} />
+            </div>
+          )}
+
+          {mode === "pool" && isActionable(t.status) && (
+            <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pl-[4.25rem]">
+              <ClaimTaskButton taskId={t.id} />
+              {canManage && (
+                <DelegateTaskControl taskId={t.id} users={users} positions={positions} />
               )}
-              {mode === "pool" && isActionable(t.status) && (
-                <div className="flex flex-col gap-2">
-                  <ClaimTaskButton taskId={t.id} />
-                  {canManage && (
-                    <DelegateTaskControl taskId={t.id} users={users} positions={positions} />
-                  )}
-                </div>
-              )}
-              {mode === "all" && canManage && t.status !== "completed" && (
-                <CancelTaskButton taskId={t.id} />
-              )}
-            </TableCell>
-          </TableRow>
-        ))}
-        {tasks.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={7} className="text-center text-muted-foreground">
-              Nothing here.
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+            </div>
+          )}
+
+          {mode === "all" && canManage && t.status !== "completed" && (
+            <div className="flex justify-end px-4 pb-3">
+              <CancelTaskButton taskId={t.id} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
