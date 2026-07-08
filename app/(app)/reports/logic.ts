@@ -97,7 +97,7 @@ export interface ChecklistCompletionRow {
   totalRuns: number;
   completedRuns: number;
   missedRuns: number;
-  /** completedRuns / totalRuns, 0 when there are no runs yet. */
+  /** completedRuns / totalRuns. A bucket only exists once a run is seen, so totalRuns is always >= 1. */
   completionRate: number;
   flaggedAnswers: number;
 }
@@ -143,7 +143,7 @@ export function computeChecklistCompletion(
       totalRuns: b.total,
       completedRuns: b.completed,
       missedRuns: b.missed,
-      completionRate: b.total > 0 ? b.completed / b.total : 0,
+      completionRate: b.completed / b.total,
       flaggedAnswers: b.flagged,
     }))
     .sort((a, b) => b.totalRuns - a.totalRuns);
@@ -191,6 +191,13 @@ const WEEK_MS = 7 * DAY_MS;
  * have never been priced. Items with no baseline activity in the lookback
  * window are never flagged: there's nothing to compare against, so a first-
  * ever entry isn't a "spike," it's just new data.
+ *
+ * The trailing weekly average divides the baseline total by the number of
+ * weeks that actually have data, NOT the full `lookbackWeeks`. Dividing a
+ * one-week baseline by 4 understated the average four-fold and flagged
+ * perfectly normal weeks as spikes (a store with only one prior week of
+ * history would trip on its second week); dividing by populated weeks
+ * compares like with like.
  */
 export function findWasteSpikes(
   entries: WasteEntryForSpikeLike[],
@@ -204,6 +211,7 @@ export function findWasteSpikes(
 
   const currentByItem = new Map<string, number>();
   const baselineByItem = new Map<string, number>();
+  const baselineWeeksByItem = new Map<string, Set<number>>();
 
   for (const entry of entries) {
     const loggedAt = new Date(entry.loggedAt).getTime();
@@ -213,6 +221,10 @@ export function findWasteSpikes(
       currentByItem.set(entry.itemId, (currentByItem.get(entry.itemId) ?? 0) + entry.quantity);
     } else if (loggedAt >= baselineStart) {
       baselineByItem.set(entry.itemId, (baselineByItem.get(entry.itemId) ?? 0) + entry.quantity);
+      const weekIndex = Math.floor((currentWeekStart - loggedAt) / WEEK_MS);
+      const weeks = baselineWeeksByItem.get(entry.itemId) ?? new Set<number>();
+      weeks.add(weekIndex);
+      baselineWeeksByItem.set(entry.itemId, weeks);
     }
   }
 
@@ -220,7 +232,9 @@ export function findWasteSpikes(
   for (const [itemId, currentWeekQuantity] of currentByItem) {
     const baselineTotal = baselineByItem.get(itemId) ?? 0;
     if (baselineTotal <= 0) continue; // no baseline: can't call it a spike
-    const trailingWeeklyAverage = baselineTotal / lookbackWeeks;
+    const populatedWeeks = baselineWeeksByItem.get(itemId)?.size ?? 0;
+    if (populatedWeeks <= 0) continue;
+    const trailingWeeklyAverage = baselineTotal / populatedWeeks;
     if (trailingWeeklyAverage <= 0) continue;
 
     const ratio = currentWeekQuantity / trailingWeeklyAverage;
@@ -484,6 +498,167 @@ export interface EquipmentForReportLike {
 
 export function selectDownEquipment(equipment: EquipmentForReportLike[]): EquipmentForReportLike[] {
   return equipment.filter((e) => e.status === "down").sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------------------------------------------------------------------
+// Maintenance reports: time-to-resolution, spend-by-equipment, repeat
+// failures (ARCHITECTURE.md "Maintenance": "reporting surfaces ...
+// time-to-resolution, spend, and repeat-failure reports"). These are the
+// three named maintenance reports the audit flagged as missing from
+// /reports. All three are pure aggregations over work_orders (read-only).
+// ---------------------------------------------------------------------
+
+export interface WorkOrderForMaintenanceLike {
+  id: string;
+  title: string;
+  status: string;
+  equipment_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+  cost: number | null;
+}
+
+export interface EquipmentNameLike {
+  id: string;
+  name: string;
+}
+
+const UNASSIGNED_EQUIPMENT = "Unassigned";
+const HOUR_MS = 60 * 60 * 1000;
+
+function equipmentLabel(equipmentId: string | null, nameById: Map<string, string>): string {
+  if (equipmentId == null) return UNASSIGNED_EQUIPMENT;
+  return nameById.get(equipmentId) ?? "Unknown equipment";
+}
+
+export interface ResolutionTimeRow {
+  equipmentId: string | null;
+  equipmentName: string;
+  resolvedCount: number;
+  avgHoursToResolve: number;
+}
+
+/**
+ * Average hours from creation to completion, grouped by equipment. Only
+ * completed work orders with a valid completed_at >= created_at contribute
+ * (an out-of-order or missing timestamp is skipped rather than producing a
+ * negative resolution time).
+ */
+export function computeResolutionTimes(
+  workOrders: WorkOrderForMaintenanceLike[],
+  equipment: EquipmentNameLike[],
+): ResolutionTimeRow[] {
+  const nameById = new Map(equipment.map((e) => [e.id, e.name]));
+
+  interface Bucket {
+    totalHours: number;
+    count: number;
+  }
+  const byEquipment = new Map<string, Bucket>();
+  const idByKey = new Map<string, string | null>();
+
+  for (const wo of workOrders) {
+    if (wo.status !== "complete" || wo.completed_at == null) continue;
+    const created = new Date(wo.created_at).getTime();
+    const completed = new Date(wo.completed_at).getTime();
+    if (Number.isNaN(created) || Number.isNaN(completed) || completed < created) continue;
+
+    const key = wo.equipment_id ?? UNASSIGNED_EQUIPMENT;
+    idByKey.set(key, wo.equipment_id);
+    const bucket = byEquipment.get(key) ?? { totalHours: 0, count: 0 };
+    bucket.totalHours += (completed - created) / HOUR_MS;
+    bucket.count += 1;
+    byEquipment.set(key, bucket);
+  }
+
+  return [...byEquipment.entries()]
+    .map(([key, b]) => ({
+      equipmentId: idByKey.get(key) ?? null,
+      equipmentName: equipmentLabel(idByKey.get(key) ?? null, nameById),
+      resolvedCount: b.count,
+      avgHoursToResolve: b.totalHours / b.count,
+    }))
+    .sort((a, b) => b.avgHoursToResolve - a.avgHoursToResolve);
+}
+
+export interface SpendByEquipmentRow {
+  equipmentId: string | null;
+  equipmentName: string;
+  totalSpend: number;
+  workOrderCount: number;
+}
+
+/**
+ * Total maintenance spend grouped by equipment. Sums work_orders.cost for
+ * every order that carries a cost (any status -- a cost is only ever set on
+ * completion, but a cancelled order that still incurred a call-out fee should
+ * still count against the equipment).
+ */
+export function computeSpendByEquipment(
+  workOrders: WorkOrderForMaintenanceLike[],
+  equipment: EquipmentNameLike[],
+): SpendByEquipmentRow[] {
+  const nameById = new Map(equipment.map((e) => [e.id, e.name]));
+
+  interface Bucket {
+    totalSpend: number;
+    count: number;
+  }
+  const byEquipment = new Map<string, Bucket>();
+  const idByKey = new Map<string, string | null>();
+
+  for (const wo of workOrders) {
+    if (wo.cost == null) continue;
+    const key = wo.equipment_id ?? UNASSIGNED_EQUIPMENT;
+    idByKey.set(key, wo.equipment_id);
+    const bucket = byEquipment.get(key) ?? { totalSpend: 0, count: 0 };
+    bucket.totalSpend += wo.cost;
+    bucket.count += 1;
+    byEquipment.set(key, bucket);
+  }
+
+  return [...byEquipment.entries()]
+    .map(([key, b]) => ({
+      equipmentId: idByKey.get(key) ?? null,
+      equipmentName: equipmentLabel(idByKey.get(key) ?? null, nameById),
+      totalSpend: b.totalSpend,
+      workOrderCount: b.count,
+    }))
+    .sort((a, b) => b.totalSpend - a.totalSpend);
+}
+
+export interface RepeatFailureRow {
+  equipmentId: string;
+  equipmentName: string;
+  failureCount: number;
+}
+
+/**
+ * Equipment with more than one work order against it (a "repeat failure").
+ * Only equipment-linked work orders count -- an unassigned order isn't a
+ * failure of any tracked asset. `minFailures` default of 2 is a SEED-DEFAULT.
+ */
+export function computeRepeatFailures(
+  workOrders: WorkOrderForMaintenanceLike[],
+  equipment: EquipmentNameLike[],
+  { minFailures = 2 }: { minFailures?: number } = {},
+): RepeatFailureRow[] {
+  const nameById = new Map(equipment.map((e) => [e.id, e.name]));
+  const countByEquipment = new Map<string, number>();
+
+  for (const wo of workOrders) {
+    if (wo.equipment_id == null) continue;
+    countByEquipment.set(wo.equipment_id, (countByEquipment.get(wo.equipment_id) ?? 0) + 1);
+  }
+
+  return [...countByEquipment.entries()]
+    .filter(([, count]) => count >= minFailures)
+    .map(([equipmentId, count]) => ({
+      equipmentId,
+      equipmentName: nameById.get(equipmentId) ?? "Unknown equipment",
+      failureCount: count,
+    }))
+    .sort((a, b) => b.failureCount - a.failureCount);
 }
 
 // ---------------------------------------------------------------------

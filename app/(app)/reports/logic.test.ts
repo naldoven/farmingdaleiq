@@ -5,6 +5,9 @@ import {
   computeActivePointsByUser,
   computeChecklistCompletion,
   computePassportCompletion,
+  computeRepeatFailures,
+  computeResolutionTimes,
+  computeSpendByEquipment,
   computeTraineeCompletion,
   findEmployeesNearThreshold,
   findWasteSpikes,
@@ -144,14 +147,18 @@ describe("findWasteSpikes", () => {
 
   it("flags an item whose current-week total is well above its trailing average", () => {
     const entries = [
-      // Baseline: 4 weeks back, 10/week average
-      { id: "e1", itemId: "i1", quantity: 40, loggedAt: "2026-06-05T00:00:00.000Z" },
+      // Baseline: four distinct populated weeks, 10/week (avg 10)
+      { id: "b0", itemId: "i1", quantity: 10, loggedAt: "2026-06-24T00:00:00.000Z" },
+      { id: "b1", itemId: "i1", quantity: 10, loggedAt: "2026-06-17T00:00:00.000Z" },
+      { id: "b2", itemId: "i1", quantity: 10, loggedAt: "2026-06-10T00:00:00.000Z" },
+      { id: "b3", itemId: "i1", quantity: 10, loggedAt: "2026-06-03T00:00:00.000Z" },
       // Current week: 30 (3x the 10/week baseline)
       { id: "e2", itemId: "i1", quantity: 30, loggedAt: "2026-07-06T00:00:00.000Z" },
     ];
     const spikes = findWasteSpikes(entries, items, NOW);
     expect(spikes).toHaveLength(1);
     expect(spikes[0].itemId).toBe("i1");
+    expect(spikes[0].trailingWeeklyAverage).toBeCloseTo(10, 5);
     expect(spikes[0].ratio).toBeCloseTo(3, 5);
   });
 
@@ -160,9 +167,36 @@ describe("findWasteSpikes", () => {
     expect(findWasteSpikes(entries, items, NOW)).toEqual([]);
   });
 
+  it("divides the baseline by weeks actually populated, not the full lookback (no partial-baseline inflation)", () => {
+    // Only ONE prior week has data (40 in that week). Dividing by the full
+    // 4-week lookback would make the average 10 and flag the 30 current week
+    // as a 3x spike; dividing by the one populated week makes the average 40,
+    // so 30 is BELOW baseline and correctly not a spike.
+    const entries = [
+      { id: "b0", itemId: "i1", quantity: 40, loggedAt: "2026-06-05T00:00:00.000Z" },
+      { id: "e2", itemId: "i1", quantity: 30, loggedAt: "2026-07-06T00:00:00.000Z" },
+    ];
+    expect(findWasteSpikes(entries, items, NOW)).toEqual([]);
+  });
+
+  it("averages over the two populated weeks when only two weeks have data", () => {
+    const entries = [
+      { id: "b0", itemId: "i1", quantity: 20, loggedAt: "2026-06-24T00:00:00.000Z" }, // week 0
+      { id: "b1", itemId: "i1", quantity: 20, loggedAt: "2026-06-17T00:00:00.000Z" }, // week 1
+      { id: "e2", itemId: "i1", quantity: 40, loggedAt: "2026-07-06T00:00:00.000Z" }, // current
+    ];
+    const spikes = findWasteSpikes(entries, items, NOW);
+    expect(spikes).toHaveLength(1);
+    expect(spikes[0].trailingWeeklyAverage).toBeCloseTo(20, 5); // 40 / 2 weeks, not 40 / 4
+    expect(spikes[0].ratio).toBeCloseTo(2, 5);
+  });
+
   it("does not flag an item whose current week is under the multiplier", () => {
     const entries = [
-      { id: "e1", itemId: "i1", quantity: 40, loggedAt: "2026-06-05T00:00:00.000Z" }, // 10/week baseline
+      { id: "b0", itemId: "i1", quantity: 10, loggedAt: "2026-06-24T00:00:00.000Z" },
+      { id: "b1", itemId: "i1", quantity: 10, loggedAt: "2026-06-17T00:00:00.000Z" },
+      { id: "b2", itemId: "i1", quantity: 10, loggedAt: "2026-06-10T00:00:00.000Z" },
+      { id: "b3", itemId: "i1", quantity: 10, loggedAt: "2026-06-03T00:00:00.000Z" }, // avg 10
       { id: "e2", itemId: "i1", quantity: 11, loggedAt: "2026-07-06T00:00:00.000Z" }, // 1.1x, under 1.5x
     ];
     expect(findWasteSpikes(entries, items, NOW)).toEqual([]);
@@ -171,6 +205,68 @@ describe("findWasteSpikes", () => {
   it("ignores entries logged in the future", () => {
     const entries = [{ id: "e1", itemId: "i1", quantity: 999, loggedAt: "2099-01-01T00:00:00.000Z" }];
     expect(findWasteSpikes(entries, items, NOW)).toEqual([]);
+  });
+});
+
+describe("maintenance reports", () => {
+  const equipment = [
+    { id: "eq1", name: "Fryer 1" },
+    { id: "eq2", name: "Grill" },
+  ];
+
+  describe("computeResolutionTimes", () => {
+    it("averages creation-to-completion hours per equipment for completed orders only", () => {
+      const workOrders = [
+        { id: "w1", title: "A", status: "complete", equipment_id: "eq1", created_at: "2026-07-01T00:00:00.000Z", completed_at: "2026-07-01T05:00:00.000Z", cost: null },
+        { id: "w2", title: "B", status: "complete", equipment_id: "eq1", created_at: "2026-07-02T00:00:00.000Z", completed_at: "2026-07-02T15:00:00.000Z", cost: null },
+        { id: "w3", title: "C", status: "open", equipment_id: "eq2", created_at: "2026-07-03T00:00:00.000Z", completed_at: null, cost: null },
+        // completed_at before created_at: skipped rather than counted as negative
+        { id: "w4", title: "D", status: "complete", equipment_id: "eq1", created_at: "2026-07-04T10:00:00.000Z", completed_at: "2026-07-04T09:00:00.000Z", cost: null },
+      ];
+      expect(computeResolutionTimes(workOrders, equipment)).toEqual([
+        { equipmentId: "eq1", equipmentName: "Fryer 1", resolvedCount: 2, avgHoursToResolve: 10 },
+      ]);
+    });
+
+    it("labels a null-equipment order as Unassigned", () => {
+      const workOrders = [
+        { id: "w1", title: "A", status: "complete", equipment_id: null, created_at: "2026-07-01T00:00:00.000Z", completed_at: "2026-07-01T02:00:00.000Z", cost: null },
+      ];
+      expect(computeResolutionTimes(workOrders, equipment)[0].equipmentName).toBe("Unassigned");
+    });
+  });
+
+  describe("computeSpendByEquipment", () => {
+    it("sums cost per equipment and sorts by spend descending", () => {
+      const workOrders = [
+        { id: "w1", title: "A", status: "complete", equipment_id: "eq1", created_at: "2026-07-01T00:00:00.000Z", completed_at: null, cost: 100 },
+        { id: "w2", title: "B", status: "complete", equipment_id: "eq1", created_at: "2026-07-02T00:00:00.000Z", completed_at: null, cost: 50 },
+        { id: "w3", title: "C", status: "complete", equipment_id: "eq2", created_at: "2026-07-03T00:00:00.000Z", completed_at: null, cost: 30 },
+        { id: "w4", title: "D", status: "cancelled", equipment_id: null, created_at: "2026-07-04T00:00:00.000Z", completed_at: null, cost: 20 },
+        // no cost: skipped
+        { id: "w5", title: "E", status: "open", equipment_id: "eq2", created_at: "2026-07-05T00:00:00.000Z", completed_at: null, cost: null },
+      ];
+      expect(computeSpendByEquipment(workOrders, equipment)).toEqual([
+        { equipmentId: "eq1", equipmentName: "Fryer 1", totalSpend: 150, workOrderCount: 2 },
+        { equipmentId: "eq2", equipmentName: "Grill", totalSpend: 30, workOrderCount: 1 },
+        { equipmentId: null, equipmentName: "Unassigned", totalSpend: 20, workOrderCount: 1 },
+      ]);
+    });
+  });
+
+  describe("computeRepeatFailures", () => {
+    it("keeps only equipment with 2+ work orders, ignoring unassigned", () => {
+      const workOrders = [
+        { id: "w1", title: "A", status: "complete", equipment_id: "eq1", created_at: "2026-07-01T00:00:00.000Z", completed_at: null, cost: null },
+        { id: "w2", title: "B", status: "complete", equipment_id: "eq1", created_at: "2026-07-02T00:00:00.000Z", completed_at: null, cost: null },
+        { id: "w3", title: "C", status: "open", equipment_id: "eq1", created_at: "2026-07-03T00:00:00.000Z", completed_at: null, cost: null },
+        { id: "w4", title: "D", status: "open", equipment_id: "eq2", created_at: "2026-07-04T00:00:00.000Z", completed_at: null, cost: null },
+        { id: "w5", title: "E", status: "open", equipment_id: null, created_at: "2026-07-05T00:00:00.000Z", completed_at: null, cost: null },
+      ];
+      expect(computeRepeatFailures(workOrders, equipment)).toEqual([
+        { equipmentId: "eq1", equipmentName: "Fryer 1", failureCount: 3 },
+      ]);
+    });
   });
 });
 
