@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,9 +83,9 @@ export function TemplateEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-col gap-2 rounded-xl border border-dashed border-line p-3"
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -105,29 +106,32 @@ export function TemplateEditor({
           placeholder="New template name (e.g. Lunch rush)"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          className="rounded-full"
           required
         />
-        <Select value={dayPartId} onValueChange={setDayPartId}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Day part" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>No day part</SelectItem>
-            {dayParts.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button type="submit" disabled={isPending}>
-          Create template
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={dayPartId} onValueChange={setDayPartId}>
+            <SelectTrigger className="w-48 rounded-full">
+              <SelectValue placeholder="Day part" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>No day part</SelectItem>
+              {dayParts.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="submit" disabled={isPending}>
+            Create template
+          </Button>
+        </div>
       </form>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         {templates.map((template) => {
           const ordered = templatePositions
             .filter((tp) => tp.template_id === template.id)
@@ -137,35 +141,37 @@ export function TemplateEditor({
           const selectedToAdd = addPositionByTemplate[template.id] ?? "";
 
           return (
-            <div key={template.id} className="rounded-md border border-border p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium">{template.name}</h3>
-                  <p className="text-xs text-muted-foreground">
+            <div key={template.id} className="rounded-2xl border border-line bg-card p-3 shadow-card">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="truncate text-[15px] font-semibold text-ink">{template.name}</h3>
+                  <p className="truncate text-[13px] text-muted-ink">
                     {template.day_part_id ? dayPartName.get(template.day_part_id) : "No day part"}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
+                  type="button"
+                  aria-label={`Delete ${template.name}`}
                   disabled={isPending}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-danger hover:bg-danger-soft disabled:opacity-50"
                   onClick={() => run(() => deleteSetupTemplate({ id: template.id }))}
                 >
-                  Delete
-                </Button>
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
               </div>
 
-              <ol className="mb-3 flex flex-col gap-1">
+              <ol className="mb-3 flex flex-col divide-y divide-line rounded-xl border border-line">
                 {ordered.map((tp, index) => (
-                  <li key={tp.position_id} className="flex items-center justify-between text-sm">
-                    <span>
+                  <li key={tp.position_id} className="flex items-center justify-between gap-2 px-3 py-2">
+                    <span className="min-w-0 truncate text-[13px] text-ink">
                       {index + 1}. {positionName.get(tp.position_id) ?? "Unknown position"}
                     </span>
-                    <span className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                    <span className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label="Move up"
                         disabled={isPending || index === 0}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
                         onClick={() =>
                           run(() =>
                             reorderTemplatePosition({
@@ -176,12 +182,13 @@ export function TemplateEditor({
                           )
                         }
                       >
-                        Up
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                        <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Move down"
                         disabled={isPending || index === ordered.length - 1}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
                         onClick={() =>
                           run(() =>
                             reorderTemplatePosition({
@@ -192,12 +199,13 @@ export function TemplateEditor({
                           )
                         }
                       >
-                        Down
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${positionName.get(tp.position_id) ?? "position"}`}
                         disabled={isPending}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-danger-soft hover:text-danger disabled:opacity-30"
                         onClick={() =>
                           run(() =>
                             removeTemplatePosition({
@@ -207,19 +215,19 @@ export function TemplateEditor({
                           )
                         }
                       >
-                        Remove
-                      </Button>
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     </span>
                   </li>
                 ))}
                 {ordered.length === 0 && (
-                  <li className="text-sm text-muted-foreground">No positions on this template yet.</li>
+                  <li className="px-3 py-2 text-[13px] text-muted-ink">No positions on this template yet.</li>
                 )}
               </ol>
 
               {available.length > 0 && (
                 <form
-                  className="flex gap-2"
+                  className="flex flex-wrap gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!selectedToAdd) return;
@@ -241,7 +249,7 @@ export function TemplateEditor({
                       setAddPositionByTemplate((prev) => ({ ...prev, [template.id]: value }))
                     }
                   >
-                    <SelectTrigger className="w-56">
+                    <SelectTrigger className="w-56 rounded-full">
                       <SelectValue placeholder="Add a position" />
                     </SelectTrigger>
                     <SelectContent>
@@ -260,9 +268,7 @@ export function TemplateEditor({
             </div>
           );
         })}
-        {templates.length === 0 && (
-          <p className="text-sm text-muted-foreground">No templates yet.</p>
-        )}
+        {templates.length === 0 && <p className="text-[13px] text-muted-ink">No templates yet.</p>}
       </div>
     </div>
   );
