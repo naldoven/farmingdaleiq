@@ -28,3 +28,6 @@ supabase/.temp/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+
+# claude code local state (worktrees, settings, memory)
+.claude/
