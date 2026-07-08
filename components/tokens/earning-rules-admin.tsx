@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { updateEarningRule } from "@/app/(app)/tokens/actions";
 
 export interface EarningRuleRow {
@@ -21,24 +20,17 @@ export interface EarningRuleRow {
  * are owned by S10, per docs/agent-map.md). Always shows the three event
  * keys the consumer (app/api/cron/tokens/route.ts) reacts to today, even if
  * a row doesn't exist yet in the table (defaults to 0, matching
- * resolveEarnAmount's "no rule -> award nothing" behavior).
+ * resolveEarnAmount's "no rule -> award nothing" behavior). Styled as a
+ * KitchenIQ list card -- each row is title + event key over an inline
+ * amount input and Save button.
  */
 export function EarningRulesAdmin({ rules }: { rules: EarningRuleRow[] }) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Event</TableHead>
-          <TableHead className="w-40">Tokens</TableHead>
-          <TableHead className="w-24" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rules.map((rule) => (
-          <EarningRuleRowEditor key={rule.eventKey} rule={rule} />
-        ))}
-      </TableBody>
-    </Table>
+    <div className="divide-y divide-line">
+      {rules.map((rule) => (
+        <EarningRuleRowEditor key={rule.eventKey} rule={rule} />
+      ))}
+    </div>
   );
 }
 
@@ -49,41 +41,39 @@ function EarningRuleRowEditor({ rule }: { rule: EarningRuleRow }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <TableRow>
-      <TableCell>
-        <div className="font-medium">{rule.label}</div>
-        <div className="text-xs text-muted-foreground">{rule.eventKey}</div>
-      </TableCell>
-      <TableCell>
-        <Input
-          type="number"
-          min="0"
-          step="1"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-        />
-        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-      </TableCell>
-      <TableCell>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={isPending}
-          onClick={() => {
-            setError(null);
-            startTransition(async () => {
-              const result = await updateEarningRule({ eventKey: rule.eventKey, amount: Number(amount) });
-              if (!result.ok) {
-                setError(result.error);
-                return;
-              }
-              router.refresh();
-            });
-          }}
-        >
-          {isPending ? "Saving..." : "Save"}
-        </Button>
-      </TableCell>
-    </TableRow>
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-semibold text-ink">{rule.label}</p>
+        <p className="truncate text-[13px] text-muted-ink">{rule.eventKey}</p>
+        {error && <p className="mt-1 text-[13px] text-danger">{error}</p>}
+      </div>
+      <Input
+        type="number"
+        min="0"
+        step="1"
+        value={amount}
+        onChange={(event) => setAmount(event.target.value)}
+        className="w-20 shrink-0 text-center"
+      />
+      <Button
+        size="sm"
+        variant="secondary"
+        className="shrink-0 rounded-full"
+        disabled={isPending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await updateEarningRule({ eventKey: rule.eventKey, amount: Number(amount) });
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            router.refresh();
+          });
+        }}
+      >
+        {isPending ? "Saving..." : "Save"}
+      </Button>
+    </div>
   );
 }

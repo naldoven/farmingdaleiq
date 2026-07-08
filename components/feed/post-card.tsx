@@ -2,12 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, MessageCircle } from "lucide-react";
+import { Coins, Heart, MessageCircle, Send } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AvatarInitials, StatusBadge } from "@/components/mobile";
 import { addComment, toggleLike } from "@/app/(app)/team/actions";
 
 export interface FeedPostComment {
@@ -36,11 +35,19 @@ const KIND_LABELS: Record<FeedPostData["kind"], string> = {
   broadcast: "Broadcast",
 };
 
+const KIND_TONE: Record<FeedPostData["kind"], "success" | "warning" | "accent"> = {
+  recognition: "success",
+  top_performer: "success",
+  broadcast: "warning",
+};
+
 /**
  * One post in the Team Feed (ARCHITECTURE.md "Team Feed": "A store-wide
  * feed of Recognitions, Top Performer shoutouts, and leader Broadcasts ...
  * Team members can like and comment on posts"). Like/comment are optimistic
  * -- toggleLike/addComment re-check feed.post server-side either way.
+ * Styled as a KitchenIQ feed card: avatar + headline + kind badge, body,
+ * token pill, like/comment row, inline comment thread.
  */
 export function PostCard({ post }: { post: FeedPostData }) {
   const router = useRouter();
@@ -49,94 +56,109 @@ export function PostCard({ post }: { post: FeedPostData }) {
   const [commentBody, setCommentBody] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const avatarName = post.kind === "broadcast" ? post.authorName ?? "A leader" : post.authorName ?? "Someone";
   const headline =
     post.kind === "broadcast"
       ? post.authorName ?? "A leader"
       : `${post.authorName ?? "Someone"} → ${post.subjectName ?? "a coworker"}`;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 pb-2">
-        <div className="flex items-center gap-2">
-          <Badge variant={post.kind === "broadcast" ? "outline" : "success"}>{KIND_LABELS[post.kind]}</Badge>
-          <span className="text-sm font-medium">{headline}</span>
-        </div>
-        <span className="text-xs text-muted-foreground">{new Date(post.createdAt).toLocaleString()}</span>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {post.body && <p className="text-sm">{post.body}</p>}
-        {post.tokensAwarded !== null && (
-          <Badge variant="secondary" className="w-fit">
-            +{post.tokensAwarded} tokens
-          </Badge>
-        )}
-
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <button
-            type="button"
-            className="flex items-center gap-1 disabled:opacity-50"
-            disabled={isLikePending}
-            onClick={() => {
-              setError(null);
-              startLikeTransition(async () => {
-                const result = await toggleLike({ postId: post.id });
-                if (!result.ok) {
-                  setError(result.error);
-                  return;
-                }
-                router.refresh();
-              });
-            }}
-          >
-            <Heart className={`h-4 w-4 ${post.likedByMe ? "fill-current text-destructive" : ""}`} />
-            {post.likeCount}
-          </button>
-          <span className="flex items-center gap-1">
-            <MessageCircle className="h-4 w-4" />
-            {post.comments.length}
-          </span>
-        </div>
-
-        {post.comments.length > 0 && (
-          <div className="flex flex-col gap-1 border-t border-border pt-2">
-            {post.comments.map((comment) => (
-              <p key={comment.id} className="text-sm">
-                <span className="font-medium">{comment.authorName}</span>{" "}
-                <span className="text-muted-foreground">{comment.body}</span>
-              </p>
-            ))}
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4 shadow-card">
+      <div className="flex items-start gap-3">
+        <AvatarInitials name={avatarName} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-[15px] font-semibold text-ink">{headline}</p>
+            <StatusBadge tone={KIND_TONE[post.kind]}>{KIND_LABELS[post.kind]}</StatusBadge>
           </div>
-        )}
+          <p className="text-[13px] text-muted-ink">{new Date(post.createdAt).toLocaleString()}</p>
+        </div>
+      </div>
 
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!commentBody.trim()) return;
+      {post.body && <p className="text-[15px] text-ink">{post.body}</p>}
+
+      {post.tokensAwarded !== null && (
+        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-soft px-2.5 py-1 text-[13px] font-bold text-warning">
+          <Coins className="h-3.5 w-3.5" aria-hidden="true" />+{post.tokensAwarded} tokens
+        </span>
+      )}
+
+      <div className="flex items-center gap-5 border-t border-line pt-3 text-[13px] text-muted-ink">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 disabled:opacity-50"
+          disabled={isLikePending}
+          onClick={() => {
             setError(null);
-            startCommentTransition(async () => {
-              const result = await addComment({ postId: post.id, body: commentBody });
+            startLikeTransition(async () => {
+              const result = await toggleLike({ postId: post.id });
               if (!result.ok) {
                 setError(result.error);
                 return;
               }
-              setCommentBody("");
               router.refresh();
             });
           }}
         >
-          <Input
-            placeholder="Add a comment..."
-            value={commentBody}
-            onChange={(event) => setCommentBody(event.target.value)}
+          <Heart
+            className={`h-4 w-4 ${post.likedByMe ? "fill-danger text-danger" : ""}`}
+            aria-hidden="true"
           />
-          <Button type="submit" size="sm" variant="secondary" disabled={isCommentPending || !commentBody.trim()}>
-            Post
-          </Button>
-        </form>
+          <span className={post.likedByMe ? "font-semibold text-danger" : undefined}>{post.likeCount}</span>
+        </button>
+        <span className="flex items-center gap-1.5">
+          <MessageCircle className="h-4 w-4" aria-hidden="true" />
+          {post.comments.length}
+        </span>
+      </div>
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </CardContent>
-    </Card>
+      {post.comments.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {post.comments.map((comment) => (
+            <p key={comment.id} className="text-[13px] leading-snug">
+              <span className="font-semibold text-ink">{comment.authorName}</span>{" "}
+              <span className="text-muted-ink">{comment.body}</span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!commentBody.trim()) return;
+          setError(null);
+          startCommentTransition(async () => {
+            const result = await addComment({ postId: post.id, body: commentBody });
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            setCommentBody("");
+            router.refresh();
+          });
+        }}
+      >
+        <Input
+          placeholder="Add a comment..."
+          className="h-9 rounded-full"
+          value={commentBody}
+          onChange={(event) => setCommentBody(event.target.value)}
+        />
+        <Button
+          type="submit"
+          size="icon"
+          variant="secondary"
+          className="h-9 w-9 shrink-0 rounded-full"
+          aria-label="Post comment"
+          disabled={isCommentPending || !commentBody.trim()}
+        >
+          <Send className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </form>
+
+      {error && <p className="text-[13px] text-danger">{error}</p>}
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
+import { Coins } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { ClaimsQueue, type ClaimQueueRow } from "@/components/tokens/claims-queue";
 import { RewardAdminForm } from "@/components/tokens/reward-admin-form";
 import { RewardAdminList, type RewardAdminRow } from "@/components/tokens/reward-admin-list";
@@ -14,7 +14,9 @@ import { getBalance } from "@/lib/tokens/ledger";
  * /rewards: store + claims; admin manages rewards (ARCHITECTURE.md page
  * map). rewards.claim is a base permission granted to every seeded role, so
  * the store grid is visible to everyone signed in; rewards.manage/
- * rewards.fulfill unlock the admin sections below it.
+ * rewards.fulfill unlock the admin sections below it. Restyled to the
+ * KitchenIQ mobile design system (docs/DESIGN-SYSTEM.md) -- data, actions,
+ * and permission checks unchanged.
  */
 export default async function RewardsPage() {
   const supabase = await createClient();
@@ -84,79 +86,86 @@ export default async function RewardsPage() {
     }));
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Rewards</h1>
-          <p className="text-sm text-muted-foreground">Redeem tokens for real rewards.</p>
-        </div>
-        <Badge variant="secondary">{balance} tokens</Badge>
-      </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <section className="flex flex-col gap-3">
+        <SectionLabel
+          action={
+            <StatusBadge tone="warning">
+              <Coins className="h-3 w-3" aria-hidden="true" />
+              {balance} tokens
+            </StatusBadge>
+          }
+        >
+          Store
+        </SectionLabel>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {storeRewards.map((reward) => (
-          <RewardCard key={reward.id} reward={reward} balance={balance} canClaimAtAll={canClaim} />
-        ))}
-        {storeRewards.length === 0 && (
-          <p className="text-sm text-muted-foreground">No rewards are set up yet.</p>
+        {storeRewards.length === 0 ? (
+          <SectionCard>
+            <p className="text-[15px] text-muted-ink">No rewards are set up yet.</p>
+          </SectionCard>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {storeRewards.map((reward) => (
+              <RewardCard key={reward.id} reward={reward} balance={balance} canClaimAtAll={canClaim} />
+            ))}
+          </div>
         )}
-      </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>My claims</CardTitle>
-          <CardDescription>Your most recent reward claims.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {(myClaims ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">You haven&apos;t claimed anything yet.</p>
-          )}
-          {(myClaims ?? []).map((claim) => (
-            <div key={claim.id} className="flex items-center justify-between text-sm">
-              <span>{rewardNameById.get(claim.reward_id) ?? "—"}</span>
-              <span className="text-muted-foreground">
-                {claim.cost} tokens · <Badge variant="outline">{claim.status}</Badge>
-              </span>
+      <section className="flex flex-col gap-3">
+        <SectionLabel>My claims</SectionLabel>
+        <SectionCard flush>
+          {(myClaims ?? []).length === 0 ? (
+            <p className="p-4 text-[15px] text-muted-ink">You haven&apos;t claimed anything yet.</p>
+          ) : (
+            <div className="divide-y divide-line">
+              {(myClaims ?? []).map((claim) => (
+                <div key={claim.id} className="flex items-center justify-between gap-2 px-4 py-3">
+                  <span className="truncate text-[15px] font-semibold text-ink">
+                    {rewardNameById.get(claim.reward_id) ?? "—"}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-[13px] text-muted-ink">
+                    {claim.cost} tokens
+                    <StatusBadge tone={claim.status === "delivered" ? "success" : claim.status === "cancelled" ? "danger" : "warning"}>
+                      {claim.status}
+                    </StatusBadge>
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          )}
+        </SectionCard>
+      </section>
 
       {(canManage || canFulfill) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Fulfillment queue</CardTitle>
-            <CardDescription>Pending claims across the team.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <section className="flex flex-col gap-3">
+          <SectionLabel>Fulfillment queue</SectionLabel>
+          <SectionCard flush>
             <ClaimsQueue claims={pendingQueue} />
-          </CardContent>
-        </Card>
+          </SectionCard>
+        </section>
       )}
 
       {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Manage rewards</CardTitle>
-            <CardDescription>Add a reward or edit an existing one.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3">
+          <SectionLabel>Manage rewards</SectionLabel>
+          <SectionCard>
             <RewardAdminForm />
-            <RewardAdminList
-              rewards={(rewards ?? []).map(
-                (r): RewardAdminRow => ({
-                  id: r.id,
-                  name: r.name,
-                  description: r.description,
-                  imageUrl: r.image_url,
-                  tokenCost: r.token_cost,
-                  stock: r.stock,
-                  active: r.active,
-                })
-              )}
-            />
-          </CardContent>
-        </Card>
+          </SectionCard>
+          <RewardAdminList
+            rewards={(rewards ?? []).map(
+              (r): RewardAdminRow => ({
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                imageUrl: r.image_url,
+                tokenCost: r.token_cost,
+                stock: r.stock,
+                active: r.active,
+              })
+            )}
+          />
+        </section>
       )}
     </div>
   );

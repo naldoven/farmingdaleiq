@@ -78,7 +78,9 @@ export function RewardAdminForm({
       }}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="reward-name">Name</Label>
+        <Label className="text-[13px] font-semibold text-muted-ink" htmlFor="reward-name">
+          Name
+        </Label>
         <Input
           id="reward-name"
           required
@@ -88,7 +90,9 @@ export function RewardAdminForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="reward-description">Description</Label>
+        <Label className="text-[13px] font-semibold text-muted-ink" htmlFor="reward-description">
+          Description
+        </Label>
         <Textarea
           id="reward-description"
           rows={2}
@@ -99,7 +103,9 @@ export function RewardAdminForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reward-cost">Token cost</Label>
+          <Label className="text-[13px] font-semibold text-muted-ink" htmlFor="reward-cost">
+            Token cost
+          </Label>
           <Input
             id="reward-cost"
             type="number"
@@ -111,7 +117,9 @@ export function RewardAdminForm({
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reward-stock">Stock (blank = unlimited)</Label>
+          <Label className="text-[13px] font-semibold text-muted-ink" htmlFor="reward-stock">
+            Stock (blank = unlimited)
+          </Label>
           <Input
             id="reward-stock"
             type="number"
@@ -129,12 +137,14 @@ export function RewardAdminForm({
           checked={values.active}
           onCheckedChange={(checked) => setValues((v) => ({ ...v, active: checked === true }))}
         />
-        <Label htmlFor="reward-active">Active (visible in the store)</Label>
+        <Label className="text-[13px] text-ink" htmlFor="reward-active">
+          Active (visible in the store)
+        </Label>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" className="rounded-full" disabled={isPending}>
         {isPending ? "Saving..." : isEdit ? "Save changes" : "Add reward"}
       </Button>
     </form>
