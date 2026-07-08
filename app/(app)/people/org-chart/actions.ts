@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/people/org-chart/action-types";
+import { buildVacantSlotRows } from "@/app/(app)/people/org-chart/logic";
 import {
   assignSlotSchema,
   createSlotSchema,
@@ -34,6 +35,9 @@ function toActionError(error: unknown): string {
   return "Something went wrong.";
 }
 
+/** Creates a tier and immediately provisions its goal_count vacant slots, so
+ * a pipeline stamp (stampPassport in app/(app)/training/actions.ts) has a
+ * slot to auto-fill right away instead of finding zero slots. */
 export async function createTier(input: CreateTierInput): Promise<ActionResult<{ id: string }>> {
   try {
     await requirePermission("training.org_chart_manage");
@@ -48,6 +52,14 @@ export async function createTier(input: CreateTierInput): Promise<ActionResult<{
 
     if (error || !data) {
       return { ok: false, error: error?.message ?? "Could not create the tier." };
+    }
+
+    const slotRows = buildVacantSlotRows(data.id, parsed.goalCount);
+    if (slotRows.length > 0) {
+      const { error: slotsError } = await supabase.from("org_slots").insert(slotRows);
+      if (slotsError) {
+        return { ok: false, error: slotsError.message };
+      }
     }
 
     revalidatePath("/people/org-chart");
