@@ -206,3 +206,135 @@ export async function inviteUser(
     return { ok: false, error: toActionError(error) };
   }
 }
+
+/**
+ * Read-only bootstrap-eligibility check (KITCHENIQ-PARITY-AUDIT.md
+ * "People & Teams" [HIGH]: "No bootstrap path for the first admin; live DB
+ * has zero users — new signups always get the lowest role, and inviteUser
+ * requires people.manage that nobody holds yet"). Deliberately callable by
+ * anyone signed in (no requirePermission): its only job is to tell the
+ * /people/bootstrap page whether the "claim admin access" button should show,
+ * and it leaks nothing more sensitive than "an admin exists or not".
+ *
+ * Runs on the service-role client because the honest answer ("is anyone an
+ * admin yet") must see past `profiles_select_store_member` RLS, which would
+ * otherwise silently return 0 rows for a brand-new user with no role at all.
+ */
+export async function getBootstrapEligibility(): Promise<{
+  eligible: boolean;
+  reason?: string;
+}> {
+  try {
+    const admin = createServiceRoleClient();
+
+    const { data: adminRoles, error: adminRolesError } = await admin
+      .from("role_permissions")
+      .select("role_id")
+      .eq("permission_key", "people.manage");
+
+    if (adminRolesError) {
+      return { eligible: false, reason: adminRolesError.message };
+    }
+
+    const adminRoleIds = (adminRoles ?? []).map((r) => r.role_id);
+    if (adminRoleIds.length === 0) {
+      return {
+        eligible: false,
+        reason: "No role is configured with people.manage yet.",
+      };
+    }
+
+    const { count, error: countError } = await admin
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .in("role_id", adminRoleIds);
+
+    if (countError) {
+      return { eligible: false, reason: countError.message };
+    }
+
+    if ((count ?? 0) > 0) {
+      return {
+        eligible: false,
+        reason: "An admin already exists for this store. Ask them to invite you.",
+      };
+    }
+
+    return { eligible: true };
+  } catch {
+    return { eligible: false };
+  }
+}
+
+/**
+ * One-time first-admin bootstrap. Deliberately skips requirePermission():
+ * by definition nobody holds people.manage yet, so no permission check could
+ * ever pass. Safety comes from the bootstrap condition itself instead — see
+ * `getBootstrapEligibility()` above, re-checked here immediately before the
+ * write so a race between two simultaneous callers can promote at most one
+ * of them (the second call's own re-check sees the first call's write... in
+ * the rare case both reads land before either write, this is a known,
+ * accepted narrow race for a one-time, pre-launch bootstrap action, not a
+ * standing privilege hole: the instant one admin exists this action is
+ * permanently inert for everyone, including the two racers).
+ *
+ * The write runs on the service-role client because
+ * `profile_privilege_guard` (supabase/migrations/20260707002000_
+ * profile_privilege_guard.sql) only allows a role_id change when the actor
+ * already holds people.manage or is the service-role client — exactly the
+ * same escape hatch `inviteUser` above already relies on.
+ */
+export async function bootstrapFirstAdmin(): Promise<
+  ActionResult<{ roleId: string; roleName: string }>
+> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { ok: false, error: "You must be signed in." };
+    }
+
+    const eligibility = await getBootstrapEligibility();
+    if (!eligibility.eligible) {
+      return {
+        ok: false,
+        error: eligibility.reason ?? "Bootstrap is no longer available.",
+      };
+    }
+
+    const admin = createServiceRoleClient();
+
+    const { data: topRole, error: topRoleError } = await admin
+      .from("roles")
+      .select("id, name")
+      .order("rank", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (topRoleError || !topRole) {
+      return {
+        ok: false,
+        error: topRoleError?.message ?? "No roles are configured yet.",
+      };
+    }
+
+    const { error: updateError } = await admin
+      .from("profiles")
+      .update({ role_id: topRole.id })
+      .eq("id", user.id);
+
+    if (updateError) {
+      return { ok: false, error: updateError.message };
+    }
+
+    revalidatePath("/people");
+    revalidatePath(`/people/${user.id}`);
+    revalidatePath("/people/bootstrap");
+    return { ok: true, data: { roleId: topRole.id, roleName: topRole.name } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}

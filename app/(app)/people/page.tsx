@@ -87,6 +87,11 @@ export default async function PeoplePage({
               <Link href="/people/invite">Invite person</Link>
             </Button>
           )}
+          {!canManage && (
+            <Button asChild variant="ghost">
+              <Link href="/people/bootstrap">Claim admin access</Link>
+            </Button>
+          )}
         </div>
       </div>
 
