@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -32,14 +35,54 @@ import type { WasteUnit } from "@/app/(app)/waste/validation";
  * sub-routes), so it's one page with permission-gated tabs rather than
  * separate routes.
  */
-export default async function WastePage() {
+/** YYYY-MM-DD, no other characters -- guards the date search param before it
+ * reaches a query bound (bad input just falls back to the default view). */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Hard ceiling on an explicit date filter so a leader can't accidentally
+ * request an unbounded scan; comfortably above any single day's real volume. */
+const DATE_FILTER_LIMIT = 500;
+
+export default async function WastePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   // waste.log is a base permission granted to every seeded role (see
   // supabase/migrations/20260707001900_seed_store_config.sql base_keys), so
   // in practice every active team member can reach this page to log waste.
   await requirePermission("waste.log");
   const canManage = await hasPermission("waste.manage");
+  // The same rollup is also reachable from /reports gated on reports.view
+  // (Team Leader tier), one tier below waste.manage (Shift Supervisor tier).
+  // Gating the tab here on the lower of the two keeps "can see the rollup"
+  // consistent between the two entry points instead of a Team Leader seeing
+  // it in one place and not the other.
+  const canViewReports = canManage || (await hasPermission("reports.view"));
+
+  const { date } = await searchParams;
+  const selectedDate = date && ISO_DATE_RE.test(date) ? date : null;
 
   const supabase = await createClient();
+
+  let recentEntriesQuery = supabase
+    .from("waste_entries")
+    .select("id, item_id, quantity, note, logged_at, day_part_id, logged_by")
+    .order("logged_at", { ascending: false });
+
+  if (selectedDate) {
+    // Filtering by a specific day is an explicit, bounded query (unlike the
+    // default view below), so it's safe to lift the normal 25-row cap.
+    const dayStart = new Date(`${selectedDate}T00:00:00.000Z`);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    recentEntriesQuery = recentEntriesQuery
+      .gte("logged_at", dayStart.toISOString())
+      .lt("logged_at", dayEnd.toISOString())
+      .limit(DATE_FILTER_LIMIT);
+  } else {
+    recentEntriesQuery = recentEntriesQuery.limit(25);
+  }
 
   const [
     { data: categories },
@@ -54,14 +97,10 @@ export default async function WastePage() {
       .select("id, name, category_id, unit, unit_cost")
       .order("name"),
     supabase.from("day_parts").select("id, name").order("sort"),
-    supabase
-      .from("waste_entries")
-      .select("id, item_id, quantity, note, logged_at, day_part_id")
-      .order("logged_at", { ascending: false })
-      .limit(25),
-    // Reports tab is manager-only, so only pull the full entry history when
-    // it's actually needed for the rollups.
-    canManage
+    recentEntriesQuery,
+    // Reports tab is manager/reports-tier only, so only pull the full entry
+    // history when it's actually needed for the rollups.
+    canViewReports
       ? supabase.from("waste_entries").select("id, item_id, quantity, logged_at")
       : Promise.resolve({ data: [] as { id: string; item_id: string; quantity: number; logged_at: string }[] }),
   ]);
@@ -69,9 +108,18 @@ export default async function WastePage() {
   const categoryRows = categories ?? [];
   const itemRows = items ?? [];
   const dayPartRows = dayParts ?? [];
+  const recentEntryRows = recentEntries ?? [];
+
+  const loggedByIds = Array.from(
+    new Set(recentEntryRows.map((entry) => entry.logged_by).filter((id): id is string => Boolean(id))),
+  );
+  const { data: loggedByProfiles } = loggedByIds.length
+    ? await supabase.from("profiles").select("id, name").in("id", loggedByIds)
+    : { data: [] as { id: string; name: string }[] };
 
   const itemNameById = new Map(itemRows.map((item) => [item.id, item.name]));
   const dayPartNameById = new Map(dayPartRows.map((dayPart) => [dayPart.id, dayPart.name]));
+  const loggedByNameById = new Map((loggedByProfiles ?? []).map((profile) => [profile.id, profile.name]));
 
   const itemsForRollup = itemRows.map((item) => ({
     id: item.id,
@@ -98,7 +146,7 @@ export default async function WastePage() {
       <Tabs defaultValue="log">
         <TabsList>
           <TabsTrigger value="log">Log</TabsTrigger>
-          {canManage && <TabsTrigger value="reports">Reports</TabsTrigger>}
+          {canViewReports && <TabsTrigger value="reports">Reports</TabsTrigger>}
           {canManage && <TabsTrigger value="admin">Admin</TabsTrigger>}
         </TabsList>
 
@@ -117,8 +165,33 @@ export default async function WastePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Recent entries</CardTitle>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>
+                {selectedDate ? `Entries on ${selectedDate}` : "Recent entries"}
+              </CardTitle>
+              {/* Plain GET form: a same-day mistake older than the 25-row
+                  default view is still findable by date, with no client
+                  component needed. */}
+              <form className="flex items-center gap-2" action="/waste">
+                <label className="sr-only" htmlFor="waste-date-filter">
+                  Filter by date
+                </label>
+                <input
+                  id="waste-date-filter"
+                  type="date"
+                  name="date"
+                  defaultValue={selectedDate ?? ""}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                />
+                <Button type="submit" variant="secondary" size="sm">
+                  Filter
+                </Button>
+                {selectedDate && (
+                  <Button asChild type="button" variant="ghost" size="sm">
+                    <Link href="/waste">Clear</Link>
+                  </Button>
+                )}
+              </form>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -128,11 +201,12 @@ export default async function WastePage() {
                     <TableHead>Qty</TableHead>
                     <TableHead>Day part</TableHead>
                     <TableHead>Logged</TableHead>
+                    <TableHead>Logged by</TableHead>
                     {canManage && <TableHead />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(recentEntries ?? []).map((entry) => (
+                  {recentEntryRows.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell className="font-medium">
                         {itemNameById.get(entry.item_id) ?? "Item"}
@@ -144,6 +218,9 @@ export default async function WastePage() {
                       <TableCell className="text-muted-foreground">
                         {new Date(entry.logged_at).toLocaleString()}
                       </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {entry.logged_by ? (loggedByNameById.get(entry.logged_by) ?? "—") : "—"}
+                      </TableCell>
                       {canManage && (
                         <TableCell>
                           <DeleteEntryButton id={entry.id} />
@@ -151,13 +228,13 @@ export default async function WastePage() {
                       )}
                     </TableRow>
                   ))}
-                  {(recentEntries ?? []).length === 0 && (
+                  {recentEntryRows.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={canManage ? 5 : 4}
+                        colSpan={canManage ? 6 : 5}
                         className="text-center text-muted-foreground"
                       >
-                        No waste logged yet.
+                        {selectedDate ? "No waste logged on this date." : "No waste logged yet."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -167,7 +244,7 @@ export default async function WastePage() {
           </Card>
         </TabsContent>
 
-        {canManage && (
+        {canViewReports && (
           <TabsContent value="reports">
             <WasteReports
               entries={entriesForRollup}
