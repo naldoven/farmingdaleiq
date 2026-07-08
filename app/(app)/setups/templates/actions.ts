@@ -22,6 +22,7 @@ import type { ActionResult } from "@/app/(app)/setups/action-types";
 import {
   SEED_DEFAULT_POSITION_GROUPS,
   addTemplatePositionSchema,
+  hasSeedPositionGroups,
   createLayoutSchema,
   createPositionGroupSchema,
   createPositionSchema,
@@ -189,20 +190,28 @@ export async function deletePosition(
  * Idempotent SEED-DEFAULT seeding (PLAN.md ground rules: "Where a
  * Farmingdale value is unknown, seed the Avondale default... mark it
  * SEED-DEFAULT"). Farmingdale's real position list is still an open
- * question (ARCHITECTURE.md "Open questions" #1). Safe to click twice: it
- * only inserts when position_groups is currently empty.
+ * question (ARCHITECTURE.md "Open questions" #1).
+ *
+ * HIGH parity-audit fix: this used to gate on "position_groups is
+ * completely empty", which no-ops forever once the unrelated
+ * training-roadmap group ("FOH", from S4's onboarding stations) exists —
+ * exactly the live-DB state. Gates instead on whether any of THIS seed's own
+ * group names already exist, so it seeds the real setup positions
+ * regardless of what other modules' groups are present, and is still safe
+ * to click twice (a second click finds all 5 names already there and
+ * inserts nothing).
  */
 export async function seedDefaultPositions(): Promise<ActionResult<{ inserted: number }>> {
   try {
     await requirePermission("setups.manage");
     const supabase = await createClient();
 
-    const { count, error: countError } = await supabase
+    const { data: existingGroups, error: countError } = await supabase
       .from("position_groups")
-      .select("id", { count: "exact", head: true });
+      .select("name");
 
     if (countError) return { ok: false, error: countError.message };
-    if ((count ?? 0) > 0) {
+    if (hasSeedPositionGroups((existingGroups ?? []).map((g) => g.name))) {
       return { ok: true, data: { inserted: 0 } };
     }
 
@@ -359,19 +368,22 @@ export async function reorderTemplatePosition(
 
     const a = ordered[index];
     const b = ordered[swapWith];
-    const { error: updateAError } = await supabase
-      .from("setup_template_positions")
-      .update({ sort: b.sort })
-      .eq("template_id", parsed.templateId)
-      .eq("position_id", a.position_id);
-    const { error: updateBError } = await supabase
-      .from("setup_template_positions")
-      .update({ sort: a.sort })
-      .eq("template_id", parsed.templateId)
-      .eq("position_id", b.position_id);
 
-    if (updateAError || updateBError) {
-      return { ok: false, error: (updateAError ?? updateBError)?.message ?? "Could not reorder." };
+    // LOW parity-audit fix: the two sort updates used to be separate
+    // round-trips, so a mid-swap failure (network blip, connection drop)
+    // between them could leave two rows sharing one sort value. A single
+    // upsert call sends both rows' new sort in one statement, so either both
+    // land or neither does.
+    const { error: swapError } = await supabase.from("setup_template_positions").upsert(
+      [
+        { template_id: parsed.templateId, position_id: a.position_id, sort: b.sort },
+        { template_id: parsed.templateId, position_id: b.position_id, sort: a.sort },
+      ],
+      { onConflict: "template_id,position_id" },
+    );
+
+    if (swapError) {
+      return { ok: false, error: swapError.message };
     }
 
     revalidateTemplates();

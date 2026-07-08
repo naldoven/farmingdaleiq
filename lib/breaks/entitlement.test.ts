@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   ageBandFromBirthdate,
+  authorizationToStartLagMinutes,
   buildBreakPlan,
   canTransition,
+  computeBreakDueAt,
+  entitledMinutesForKind,
   expandRuleToBreaks,
   isMissed,
   isOverdue,
@@ -157,6 +160,50 @@ describe("isMissed", () => {
   it("is false before the shift ends", () => {
     const shiftEnd = new Date(NOW.getTime() + 60_000);
     expect(isMissed({ status: "pending", authorized_at: null }, shiftEnd, NOW)).toBe(false);
+  });
+});
+
+describe("computeBreakDueAt", () => {
+  it("is arrival time plus the rule's min_shift_minutes", () => {
+    const arrival = new Date("2026-07-07T06:00:00-04:00");
+    const dueAt = computeBreakDueAt(arrival, ADULT_RULE);
+    expect(dueAt?.toISOString()).toBe(new Date(arrival.getTime() + 360 * 60_000).toISOString());
+  });
+
+  it("is null with no arrival time", () => {
+    expect(computeBreakDueAt(null, ADULT_RULE)).toBeNull();
+  });
+
+  it("is null with no matched rule", () => {
+    expect(computeBreakDueAt(new Date(), null)).toBeNull();
+  });
+});
+
+describe("entitledMinutesForKind", () => {
+  it("returns meal_minutes_unpaid for a meal break", () => {
+    expect(entitledMinutesForKind(ADULT_RULE, "meal")).toBe(30);
+  });
+
+  it("returns rest_minutes_paid for a rest break", () => {
+    const both: BreakRule = { ...ADULT_RULE, rest_minutes_paid: 10 };
+    expect(entitledMinutesForKind(both, "rest")).toBe(10);
+  });
+
+  it("is null with no rule", () => {
+    expect(entitledMinutesForKind(null, "meal")).toBeNull();
+  });
+});
+
+describe("authorizationToStartLagMinutes", () => {
+  it("computes the minutes between authorized_at and started_at", () => {
+    const authorizedAt = "2026-07-07T12:00:00-04:00";
+    const startedAt = "2026-07-07T12:07:00-04:00";
+    expect(authorizationToStartLagMinutes(authorizedAt, startedAt)).toBe(7);
+  });
+
+  it("is null until both timestamps exist", () => {
+    expect(authorizationToStartLagMinutes(null, null)).toBeNull();
+    expect(authorizationToStartLagMinutes("2026-07-07T12:00:00-04:00", null)).toBeNull();
   });
 });
 

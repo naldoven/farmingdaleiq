@@ -19,6 +19,7 @@ import {
   generateBreaksForSetup,
   startBreak,
 } from "@/app/(app)/breaks/actions";
+import { authorizationToStartLagMinutes } from "@/lib/breaks/entitlement";
 import { needsBreakBadge } from "@/lib/setups/badges";
 
 export interface BreakRow {
@@ -30,6 +31,10 @@ export interface BreakRow {
   authorized_at: string | null;
   started_at: string | null;
   ended_at: string | null;
+  /** Real due time (arrival + rule.min_shift_minutes), or null if not computable. */
+  breakDueAt?: string | null;
+  /** Entitled minutes for this break's kind, joined from break_rules. */
+  entitledMinutes?: number | null;
 }
 
 export interface ProfileOption {
@@ -110,24 +115,35 @@ export function BreakBoard({
             <TableHead>#</TableHead>
             <TableHead>Person</TableHead>
             <TableHead>Kind</TableHead>
+            <TableHead>Entitled</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Auth → Start lag</TableHead>
             <TableHead>Badges</TableHead>
             {canManage && <TableHead>Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {sorted.map((b) => {
-            const needsBreak = needsBreakBadge(b.status, b.authorized_at ? new Date(b.authorized_at) : null, now);
+            // MED parity-audit fix: real breakDueAt (arrival + rule) instead
+            // of null/authorized_at, so the pending-but-due branch of
+            // needsBreakBadge can actually fire.
+            const dueAt = b.breakDueAt ? new Date(b.breakDueAt) : null;
+            const needsBreak = needsBreakBadge(b.status, dueAt, now);
+            const lagMinutes = authorizationToStartLagMinutes(b.authorized_at, b.started_at);
             return (
               <TableRow key={b.id}>
                 <TableCell>{b.sequence ?? "—"}</TableCell>
                 <TableCell>{b.user_id ? profileName.get(b.user_id) ?? "Unknown" : "Unassigned"}</TableCell>
                 <TableCell className="capitalize">{b.kind}</TableCell>
                 <TableCell>
+                  {b.entitledMinutes != null ? `${b.entitledMinutes} min` : "—"}
+                </TableCell>
+                <TableCell>
                   <Badge variant={STATUS_VARIANT[b.status] ?? "outline"} className="capitalize">
                     {b.status}
                   </Badge>
                 </TableCell>
+                <TableCell>{lagMinutes != null ? `${lagMinutes} min` : "—"}</TableCell>
                 <TableCell>
                   {needsBreak && <Badge variant="warning">Needs Break</Badge>}
                 </TableCell>
@@ -167,7 +183,7 @@ export function BreakBoard({
           })}
           {sorted.length === 0 && (
             <TableRow>
-              <TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">
+              <TableCell colSpan={canManage ? 8 : 7} className="text-center text-muted-foreground">
                 No breaks generated yet.
               </TableCell>
             </TableRow>

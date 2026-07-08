@@ -24,7 +24,9 @@ import {
   suggestAssignees,
 } from "@/app/(app)/setups/actions";
 import { computeBadges } from "@/lib/setups/badges";
+import { GRID_COLUMNS, GRID_ROWS } from "@/lib/setups/layout-grid";
 import type { SuggestedCandidate } from "@/app/(app)/setups/action-types";
+import type { PositionSuitability } from "@/lib/integration/position-ratings";
 
 export interface ProfileRow {
   id: string;
@@ -70,6 +72,22 @@ export interface ShiftNoteRow {
   created_at: string;
 }
 
+export interface LayoutRow {
+  id: string;
+  name: string;
+  day_part_id: string | null;
+}
+
+export interface LayoutTileRow {
+  id: string;
+  position_id: string | null;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  area_label: string | null;
+}
+
 const UNASSIGNED = "unassigned";
 
 export function SetupBoard({
@@ -82,11 +100,15 @@ export function SetupBoard({
   roles,
   templates,
   breakStatuses,
+  breakDueAtByUser,
   traineeUserIds,
   shiftNotes,
   canManage,
   canPost,
   topPerformerSelected,
+  suitabilityByAssignment,
+  layout,
+  layoutTiles,
 }: {
   date: string;
   dayPartId: string;
@@ -97,11 +119,17 @@ export function SetupBoard({
   roles: RoleRow[];
   templates: TemplateRow[];
   breakStatuses: BreakStatusRow[];
+  /** Real "Needs Break" due time per user (arrival + rule), keyed by user id. */
+  breakDueAtByUser: [string, string | null][];
   traineeUserIds: string[];
   shiftNotes: ShiftNoteRow[];
   canManage: boolean;
   canPost: boolean;
   topPerformerSelected: boolean;
+  /** Under-qualified suitability for already-assigned positions, computed server-side on render. */
+  suitabilityByAssignment: [string, PositionSuitability][];
+  layout: LayoutRow | null;
+  layoutTiles: LayoutTileRow[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -110,11 +138,14 @@ export function SetupBoard({
   const [noteBody, setNoteBody] = useState("");
   const [topPerformerId, setTopPerformerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<Record<string, SuggestedCandidate[]>>({});
+  const [view, setView] = useState<"list" | "canvas">("list");
 
   const positionName = new Map(positions.map((p) => [p.id, p.name]));
   const roleRankById = new Map(roles.map((r) => [r.id, r.rank]));
   const profileById = new Map(profiles.map((p) => [p.id, p]));
   const breakByUser = new Map(breakStatuses.filter((b) => b.user_id).map((b) => [b.user_id as string, b]));
+  const breakDueAtMap = new Map(breakDueAtByUser);
+  const suitabilityByAssignmentMap = new Map(suitabilityByAssignment);
   const traineeSet = new Set(traineeUserIds);
   const now = new Date();
 
@@ -193,6 +224,27 @@ export function SetupBoard({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
+      {layout && (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setView(view === "canvas" ? "list" : "canvas")}
+          >
+            {view === "canvas" ? "Switch to list view" : `Switch to canvas view (${layout.name})`}
+          </Button>
+        </div>
+      )}
+
+      {view === "canvas" && !layout && (
+        <p className="text-sm text-muted-foreground">
+          No active layout for this day-part yet — showing the list view. Build one under Setup
+          templates &gt; Store layout.
+        </p>
+      )}
+
+      {view === "list" || !layout ? (
       <ul className="flex flex-col gap-2">
         {assignments.map((assignment) => {
           const assignedProfile = assignment.user_id ? profileById.get(assignment.user_id) : undefined;
@@ -204,7 +256,11 @@ export function SetupBoard({
                   roleRank: assignedProfile.role_id ? roleRankById.get(assignedProfile.role_id) ?? null : null,
                   isTrainee: traineeSet.has(assignedProfile.id), // P2 wiring: real S4 trainee status
                   breakStatus: breakByUser.get(assignedProfile.id)?.status ?? null,
-                  breakDueAt: null,
+                  // HIGH/MED parity-audit fix: real due time instead of null.
+                  breakDueAt: (() => {
+                    const dueAt = breakDueAtMap.get(assignedProfile.id);
+                    return dueAt ? new Date(dueAt) : null;
+                  })(),
                 },
                 now,
               )
@@ -219,15 +275,19 @@ export function SetupBoard({
             .map((id) => profileById.get(id))
             .filter((p): p is ProfileRow => Boolean(p));
 
-          // P2 wiring: warn when the assigned person is under-qualified for
-          // this position (under 3 stars or missing the position passport
-          // stamp), surfaced from the last auto-place suggestion.
+          // LOW parity-audit fix: warn when the assigned person is
+          // under-qualified for this position (under 3 stars or missing the
+          // position passport stamp). Server-computed suitability (present
+          // for every assigned position on every render) takes priority; the
+          // last auto-place Suggest result is only a fallback for the
+          // instant after a Suggest click, before the page re-fetches.
+          const serverSuitability = suitabilityByAssignmentMap.get(assignment.id);
           const assignedFlag = assignment.user_id
             ? positionSuggestions?.find((c) => c.userId === assignment.user_id)
             : undefined;
-          const underQualified = Boolean(
-            assignedFlag && (assignedFlag.underThreeStars || assignedFlag.unstampedPassport),
-          );
+          const underQualified = serverSuitability
+            ? serverSuitability.underThreeStars || serverSuitability.unstampedPassport
+            : Boolean(assignedFlag && (assignedFlag.underThreeStars || assignedFlag.unstampedPassport));
 
           return (
             <li
@@ -342,6 +402,75 @@ export function SetupBoard({
           </li>
         )}
       </ul>
+      ) : (
+        // MED parity-audit fix: the layout canvas used to exist only under
+        // /setups/templates and only ever showed bare position tiles — never
+        // the live posted board (assigned people, badges, break state).
+        <div
+          className="grid gap-1 rounded-md border border-border bg-muted/30 p-2"
+          style={{
+            gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${GRID_ROWS}, 4.5rem)`,
+          }}
+        >
+          {layoutTiles.map((tile) => {
+            const assignment = assignments.find((a) => a.position_id === tile.position_id);
+            const assignedProfile =
+              assignment?.user_id ? profileById.get(assignment.user_id) : undefined;
+            const badges = assignedProfile
+              ? computeBadges(
+                  {
+                    hiredOn: assignedProfile.hired_on,
+                    birthdate: assignedProfile.birthdate,
+                    roleRank: assignedProfile.role_id ? roleRankById.get(assignedProfile.role_id) ?? null : null,
+                    isTrainee: traineeSet.has(assignedProfile.id),
+                    breakStatus: breakByUser.get(assignedProfile.id)?.status ?? null,
+                    breakDueAt: (() => {
+                      const dueAt = breakDueAtMap.get(assignedProfile.id);
+                      return dueAt ? new Date(dueAt) : null;
+                    })(),
+                  },
+                  now,
+                )
+              : [];
+            const serverSuitability = assignment ? suitabilityByAssignmentMap.get(assignment.id) : undefined;
+            const underQualified = Boolean(
+              serverSuitability && (serverSuitability.underThreeStars || serverSuitability.unstampedPassport),
+            );
+
+            return (
+              <div
+                key={tile.id}
+                className="flex flex-col items-center justify-center gap-1 rounded-md border border-primary/40 bg-primary/10 p-1 text-center text-xs shadow-sm"
+                style={{
+                  gridColumn: `${tile.x + 1} / span ${tile.w}`,
+                  gridRow: `${tile.y + 1} / span ${tile.h}`,
+                }}
+              >
+                <span className="font-medium leading-tight">
+                  {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")}
+                </span>
+                <span className="text-muted-foreground">
+                  {assignedProfile ? assignedProfile.name : "Unassigned"}
+                </span>
+                <span className="flex flex-wrap justify-center gap-0.5">
+                  {underQualified && <Badge variant="destructive">Under-qualified</Badge>}
+                  {badges.map((badge) => (
+                    <Badge key={badge.kind} variant="secondary">
+                      {badge.label}
+                    </Badge>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+          {layoutTiles.length === 0 && (
+            <p className="col-span-full text-sm text-muted-foreground">
+              This layout has no tiles placed yet.
+            </p>
+          )}
+        </div>
+      )}
 
       {canPost && assignments.some((a) => a.user_id) && (
         <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">

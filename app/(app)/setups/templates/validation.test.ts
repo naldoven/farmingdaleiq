@@ -5,6 +5,7 @@ import {
   createPositionGroupSchema,
   createPositionSchema,
   createSetupTemplateSchema,
+  hasSeedPositionGroups,
   moveTileSchema,
   upsertTileSchema,
 } from "./validation";
@@ -75,6 +76,20 @@ describe("upsertTileSchema", () => {
 
   it("rejects non-integer coordinates", () => {
     expect(upsertTileSchema.safeParse({ ...base, x: 1.5 }).success).toBe(false);
+  });
+});
+
+describe("hasSeedPositionGroups", () => {
+  it("is false when no groups exist at all", () => {
+    expect(hasSeedPositionGroups([])).toBe(false);
+  });
+
+  it("is false when only unrelated groups exist (HIGH fix: training-roadmap 'FOH')", () => {
+    expect(hasSeedPositionGroups(["FOH"])).toBe(false);
+  });
+
+  it("is true once any seed group name is present", () => {
+    expect(hasSeedPositionGroups(["FOH", "Kitchen"])).toBe(true);
   });
 });
 

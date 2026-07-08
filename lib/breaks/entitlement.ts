@@ -153,6 +153,49 @@ export function isMissed(breakRow: BreakRow, shiftEnd: Date, now: Date): boolean
   return now.getTime() >= shiftEnd.getTime();
 }
 
+/**
+ * Real "Needs Break" due time (P2 wiring fix — the board previously hardcoded
+ * `breakDueAt: null` or passed `authorized_at`, so the pending-but-due branch
+ * of `needsBreakBadge` never fired). A break becomes due once the person has
+ * worked the rule's `min_shift_minutes` since arrival — that's the same
+ * threshold `selectBreakRule` used to grant the entitlement in the first
+ * place, so "due" and "entitled" agree by construction. Returns null when
+ * either input is missing (can't compute without an arrival time and a rule).
+ */
+export function computeBreakDueAt(
+  arrivalTime: Date | null,
+  rule: Pick<BreakRule, "min_shift_minutes"> | null,
+): Date | null {
+  if (!arrivalTime || !rule) return null;
+  return new Date(arrivalTime.getTime() + rule.min_shift_minutes * 60_000);
+}
+
+/** Entitled minutes for one break row, by kind (LOW: "entitlement minutes computed then discarded"). */
+export function entitledMinutesForKind(
+  rule: Pick<BreakRule, "rest_minutes_paid" | "meal_minutes_unpaid"> | null,
+  kind: BreakKind | string,
+): number | null {
+  if (!rule) return null;
+  return kind === "rest" ? rule.rest_minutes_paid : rule.meal_minutes_unpaid;
+}
+
+/**
+ * Lag (in minutes) between a break being authorized and actually started
+ * (ARCHITECTURE.md: "tracks each break through authorized -> started ->
+ * completed, recording the lag between authorization and actually going").
+ * Returns null until both timestamps exist.
+ */
+export function authorizationToStartLagMinutes(
+  authorizedAt: string | null,
+  startedAt: string | null,
+): number | null {
+  if (!authorizedAt || !startedAt) return null;
+  const authorized = new Date(authorizedAt);
+  const started = new Date(startedAt);
+  if (Number.isNaN(authorized.getTime()) || Number.isNaN(started.getTime())) return null;
+  return Math.max(0, Math.round((started.getTime() - authorized.getTime()) / 60_000));
+}
+
 /** Legal status transitions, used to keep authorize/start/complete idempotent (double-submit safe). */
 export const VALID_TRANSITIONS: Record<BreakStatus, BreakStatus[]> = {
   pending: ["authorized", "missed"],

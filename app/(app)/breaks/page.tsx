@@ -4,6 +4,7 @@ import { BreakBoard } from "@/components/breaks/break-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { computeBreakDueAt, entitledMinutesForKind } from "@/lib/breaks/entitlement";
 import { createClient } from "@/lib/supabase/server";
 
 function todayIso(): string {
@@ -44,7 +45,7 @@ export default async function BreaksPage({
   const { data: breaks } = setup
     ? await supabase
         .from("breaks")
-        .select("id, user_id, kind, status, sequence, authorized_at, started_at, ended_at")
+        .select("id, user_id, kind, status, sequence, rule_id, authorized_at, started_at, ended_at")
         .eq("setup_id", setup.id)
     : { data: [] };
 
@@ -54,13 +55,50 @@ export default async function BreaksPage({
       ? await supabase.from("profiles").select("id, name").in("id", userIds)
       : { data: [] };
 
+  // MED/LOW parity-audit fixes: real breakDueAt (so "Needs Break" fires for a
+  // pending-but-due break instead of never), entitled minutes per row (were
+  // computed at plan time then discarded), and the authorization-to-start
+  // lag (recorded but never surfaced). Needs each break's assignee's arrival
+  // time and the break_rules row it was planned against.
+  const { data: assignments } = setup
+    ? await supabase.from("setup_assignments").select("user_id, arrival_time").eq("setup_id", setup.id)
+    : { data: [] };
+  const arrivalByUser = new Map(
+    (assignments ?? []).filter((a) => a.user_id).map((a) => [a.user_id as string, a.arrival_time]),
+  );
+
+  const ruleIds = [...new Set((breaks ?? []).map((b) => b.rule_id).filter(Boolean))] as string[];
+  const { data: rules } =
+    ruleIds.length > 0
+      ? await supabase
+          .from("break_rules")
+          .select("id, min_shift_minutes, rest_minutes_paid, meal_minutes_unpaid")
+          .in("id", ruleIds)
+      : { data: [] };
+  const ruleById = new Map((rules ?? []).map((r) => [r.id, r]));
+
+  const breakRows = (breaks ?? []).map((b) => {
+    const rule = b.rule_id ? (ruleById.get(b.rule_id) ?? null) : null;
+    const arrivalIso = b.user_id ? (arrivalByUser.get(b.user_id) ?? null) : null;
+    return {
+      ...b,
+      breakDueAt: computeBreakDueAt(arrivalIso ? new Date(arrivalIso) : null, rule)?.toISOString() ?? null,
+      entitledMinutes: entitledMinutesForKind(rule, b.kind),
+    };
+  });
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Breaks</h1>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/setups">Setup board</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/breaks/report">Compliance report</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/setups">Setup board</Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -101,7 +139,7 @@ export default async function BreaksPage({
           <BreakBoard
             setupId={setup?.id ?? null}
             canManage={canManage}
-            breaks={breaks ?? []}
+            breaks={breakRows}
             profiles={profiles ?? []}
           />
         </CardContent>
