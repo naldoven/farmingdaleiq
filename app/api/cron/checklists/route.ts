@@ -67,7 +67,7 @@ async function run(request: NextRequest) {
     await Promise.all([
       supabase
         .from("checklist_schedules")
-        .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, due_time, alert_on_incomplete"),
+        .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, assign_team_id, due_time, alert_on_incomplete"),
       supabase.from("checklist_templates").select("id, active"),
     ]);
 
@@ -115,6 +115,10 @@ async function run(request: NextRequest) {
             run_date: today,
             day_part_id: schedule.day_part_id,
             assigned_position_id: schedule.assign_position_id,
+            // FIQ R10: carry the schedule's team onto the run so team-scheduled
+            // runs are visible/filterable instead of materializing as
+            // indistinguishable-from-unassigned.
+            assigned_team_id: schedule.assign_team_id,
             status: "pending",
           },
           { onConflict: "schedule_id,run_date", ignoreDuplicates: true },
