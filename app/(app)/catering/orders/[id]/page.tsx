@@ -28,32 +28,45 @@ export default async function CateringOrderPage({
 
   const supabase = await createClient();
 
-  const [{ data: order }, { data: orderItems }, { data: menuItems }, { data: checklistItems }] =
-    await Promise.all([
-      supabase
-        .from("catering_orders")
-        .select(
-          "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id",
-        )
-        .eq("id", id)
-        .maybeSingle(),
-      supabase
-        .from("catering_order_items")
-        .select("id, menu_item_id, qty")
-        .eq("order_id", id),
-      supabase.from("catering_menu_items").select("id, name").eq("active", true).order("name"),
-      supabase
-        .from("catering_checklist_items")
-        .select("id, stage, label, done")
-        .eq("order_id", id)
-        .order("sort"),
-    ]);
+  const [
+    { data: order },
+    { data: orderItems },
+    { data: activeMenuItems },
+    { data: allMenuItems },
+    { data: checklistItems },
+  ] = await Promise.all([
+    supabase
+      .from("catering_orders")
+      .select(
+        "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id",
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("catering_order_items")
+      .select("id, menu_item_id, qty")
+      .eq("order_id", id),
+    // Active-only: the "add item to this order" picker in OrderItemEditor
+    // should only ever offer items still on the catalog.
+    supabase.from("catering_menu_items").select("id, name").eq("active", true).order("name"),
+    // Unfiltered: the name-lookup for items already on this order must find
+    // deactivated items too, or an order placed before a menu item was
+    // retired shows "Unknown item" forever (parity audit Catering finding:
+    // "Order detail shows 'Unknown item' for deactivated menu items" --
+    // deactivation, not deletion, is the documented way to retire an item).
+    supabase.from("catering_menu_items").select("id, name"),
+    supabase
+      .from("catering_checklist_items")
+      .select("id, stage, label, done")
+      .eq("order_id", id)
+      .order("sort"),
+  ]);
 
   if (!order) {
     notFound();
   }
 
-  const menuItemNameById = new Map((menuItems ?? []).map((m) => [m.id, m.name]));
+  const menuItemNameById = new Map((allMenuItems ?? []).map((m) => [m.id, m.name]));
   const itemRows = (orderItems ?? []).map((i) => ({
     id: i.id,
     menuItemId: i.menu_item_id,
@@ -129,7 +142,7 @@ export default async function CateringOrderPage({
           <CardTitle>Menu items</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrderItemEditor orderId={order.id} items={itemRows} menuItems={menuItems ?? []} />
+          <OrderItemEditor orderId={order.id} items={itemRows} menuItems={activeMenuItems ?? []} />
         </CardContent>
       </Card>
 
