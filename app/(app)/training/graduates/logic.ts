@@ -14,7 +14,10 @@ export function auditDueDate(graduatedOn: string | Date): Date {
 
 export type AuditResult = "pass" | "pip";
 
-/** PASS keeps the trainee graduated; PIP sends them back into development. */
-export function enrollmentStatusAfterAudit(result: AuditResult): "graduated" | "active" {
-  return result === "pass" ? "graduated" : "active";
+/** PASS keeps the trainee graduated; PIP moves them back into development,
+ * tracked under the dedicated 'pip' status (not 'active') so the Graduates
+ * page -- which queries status in (graduated, pip) -- keeps showing their
+ * audit history instead of the row silently vanishing. */
+export function enrollmentStatusAfterAudit(result: AuditResult): "graduated" | "pip" {
+  return result === "pass" ? "graduated" : "pip";
 }
