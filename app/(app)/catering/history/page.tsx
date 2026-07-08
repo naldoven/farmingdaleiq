@@ -1,16 +1,8 @@
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { FollowUpResolveForm } from "@/components/catering/followup-resolve-form";
+import { HistoryPeriodFilter } from "@/components/catering/history-period-filter";
+import { ListRow, SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -57,7 +49,7 @@ export default async function CateringHistoryPage({
   // audit Catering finding: "Analytics/history include every order
   // regardless of stage -- unconfirmed New orders count in revenue"). The
   // guest-name lookup below still uses the unfiltered allOrders list, and
-  // the Order history table further down intentionally lists every stage
+  // the Order history list further down intentionally lists every stage
   // (including "new") since it displays each row's own stage already.
   const rollups = computeContactRollups((allOrders ?? []).filter((o) => o.stage !== "new"));
 
@@ -72,135 +64,85 @@ export default async function CateringHistoryPage({
   const guestNameByOrderId = new Map((allOrders ?? []).map((o) => [o.id, o.guest_name]));
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Catering history</h1>
+    <div className="flex flex-col gap-4">
+      <SectionLabel>History</SectionLabel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Follow-ups due</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(openFollowUps ?? []).map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell>
-                    <Link href={`/catering/orders/${f.order_id}`} className="text-primary hover:underline">
-                      {guestNameByOrderId.get(f.order_id) ?? "Order"}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{f.due_on ?? "—"}</TableCell>
-                  <TableCell>
-                    <FollowUpResolveForm id={f.id} />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(openFollowUps ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
-                    No follow-ups due.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <SectionCard title="Follow-ups due" flush>
+        <div className="divide-y divide-line">
+          {(openFollowUps ?? []).map((f) => (
+            <ListRow
+              key={f.id}
+              title={
+                <Link href={`/catering/orders/${f.order_id}`} className="hover:underline">
+                  {guestNameByOrderId.get(f.order_id) ?? "Order"}
+                </Link>
+              }
+              description={f.due_on ? `Due ${f.due_on}` : "Due date not set"}
+              trailing={<FollowUpResolveForm id={f.id} />}
+            />
+          ))}
+          {(openFollowUps ?? []).length === 0 && (
+            <p className="px-4 py-3 text-[13px] text-muted-ink">No follow-ups due.</p>
+          )}
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Contacts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Orders</TableHead>
-                <TableHead>Lifetime spend</TableHead>
-                <TableHead>Last event</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(contacts ?? []).map((c) => {
-                const rollup = rollups.get(c.id);
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.phone ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.email ?? "—"}</TableCell>
-                    <TableCell>{rollup?.orderCount ?? 0}</TableCell>
-                    <TableCell>${(rollup?.lifetimeSpend ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>{rollup?.lastEventDate ?? "—"}</TableCell>
-                  </TableRow>
-                );
-              })}
-              {(contacts ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    No contacts yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <SectionCard title={`Contacts (${(contacts ?? []).length})`} flush>
+        <div className="divide-y divide-line">
+          {(contacts ?? []).map((c) => {
+            const rollup = rollups.get(c.id);
+            return (
+              <ListRow
+                key={c.id}
+                title={c.name}
+                description={c.phone ?? c.email ?? "No contact info"}
+                trailing={
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-[15px] font-semibold text-ink">
+                      ${(rollup?.lifetimeSpend ?? 0).toFixed(2)}
+                    </span>
+                    <span className="text-[13px] text-muted-ink">
+                      {rollup?.orderCount ?? 0} order(s)
+                    </span>
+                  </div>
+                }
+              />
+            );
+          })}
+          {(contacts ?? []).length === 0 && (
+            <p className="px-4 py-3 text-[13px] text-muted-ink">No contacts yet.</p>
+          )}
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Order history</CardTitle>
-          <div className="flex gap-2 pt-2">
-            {HISTORY_PERIODS.map((p) => (
-              <Button key={p} asChild variant={p === period ? "default" : "outline"} size="sm">
-                <Link href={`/catering/history?period=${p}`}>{p}</Link>
-              </Button>
+      <SectionCard title="Order history">
+        <div className="flex flex-col gap-3">
+          <HistoryPeriodFilter period={period} />
+          <div className="-mx-4 divide-y divide-line">
+            {(periodOrders ?? []).map((o) => (
+              <ListRow
+                key={o.id}
+                href={`/catering/orders/${o.id}`}
+                title={o.guest_name}
+                description={o.event_date}
+                trailing={
+                  <div className="flex flex-col items-end gap-0.5">
+                    {o.amount != null && (
+                      <span className="text-[15px] font-semibold text-ink">
+                        ${o.amount.toFixed(2)}
+                      </span>
+                    )}
+                    <StatusBadge tone="neutral">{ORDER_STAGE_LABELS[o.stage as OrderStage]}</StatusBadge>
+                  </div>
+                }
+              />
             ))}
+            {(periodOrders ?? []).length === 0 && (
+              <p className="px-4 py-3 text-[13px] text-muted-ink">No orders in this period.</p>
+            )}
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Guest</TableHead>
-                <TableHead>Event date</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Stage</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(periodOrders ?? []).map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell>
-                    <Link href={`/catering/orders/${o.id}`} className="text-primary hover:underline">
-                      {o.guest_name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{o.event_date}</TableCell>
-                  <TableCell>{o.amount != null ? `$${o.amount.toFixed(2)}` : "—"}</TableCell>
-                  <TableCell>{ORDER_STAGE_LABELS[o.stage as OrderStage]}</TableCell>
-                </TableRow>
-              ))}
-              {(periodOrders ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No orders in this period.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }

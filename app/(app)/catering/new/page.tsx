@@ -1,4 +1,5 @@
 import { NewOrderForm } from "@/components/catering/new-order-form";
+import { SectionLabel } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
@@ -15,7 +16,7 @@ export default async function NewCateringOrderPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">New catering order</h1>
+      <SectionLabel>New catering order</SectionLabel>
       <NewOrderForm menuItems={menuItems ?? []} />
     </div>
   );

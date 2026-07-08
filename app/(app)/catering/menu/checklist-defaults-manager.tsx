@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,12 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-} from "@/components/ui/table";
+import { StatusBadge } from "@/components/mobile";
 import {
   createChecklistDefault,
   deleteChecklistDefault,
@@ -59,59 +53,52 @@ export function ChecklistDefaultsManager({ defaults }: { defaults: ChecklistDefa
       {CHECKLIST_STAGES.map((s) => {
         const rows = defaults.filter((d) => d.stage === s);
         return (
-          <div key={s} className="flex flex-col gap-1">
-            <p className="text-sm font-medium">{CHECKLIST_STAGE_LABELS[s]}</p>
-            <Table>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.label}</TableCell>
-                    <TableCell>
-                      <Badge variant={row.active ? "success" : "outline"}>
-                        {row.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => {
-                          startTransition(async () => {
-                            await toggleChecklistDefaultActive({ id: row.id, active: !row.active });
-                            router.refresh();
-                          });
-                        }}
-                      >
-                        {row.active ? "Retire" : "Reactivate"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => {
-                          startTransition(async () => {
-                            await deleteChecklistDefault({ id: row.id });
-                            router.refresh();
-                          });
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-xs text-muted-foreground">
-                      No default items for this stage.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          <div key={s} className="flex flex-col gap-1.5">
+            <p className="text-[13px] font-semibold text-ink">{CHECKLIST_STAGE_LABELS[s]}</p>
+            <div className="flex flex-col gap-1.5">
+              {rows.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-center gap-2 rounded-xl border border-line px-3 py-2"
+                >
+                  <span className="flex-1 text-[15px] text-ink">{row.label}</span>
+                  <StatusBadge tone={row.active ? "success" : "neutral"}>
+                    {row.active ? "Active" : "Inactive"}
+                  </StatusBadge>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isPending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        await toggleChecklistDefaultActive({ id: row.id, active: !row.active });
+                        router.refresh();
+                      });
+                    }}
+                  >
+                    {row.active ? "Retire" : "Reactivate"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isPending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        await deleteChecklistDefault({ id: row.id });
+                        router.refresh();
+                      });
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ))}
+              {rows.length === 0 && (
+                <p className="text-[13px] text-muted-ink">No default items for this stage.</p>
+              )}
+            </div>
           </div>
         );
       })}

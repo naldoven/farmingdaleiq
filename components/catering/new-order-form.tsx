@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SectionCard } from "@/components/mobile";
 import { createOrder } from "@/app/(app)/catering/actions";
 import { FULFILLMENT_METHODS } from "@/app/(app)/catering/logic";
 
@@ -87,11 +87,8 @@ export function NewOrderForm({ menuItems }: { menuItems: MenuItemOption[] }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>New catering order</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <SectionCard title="Order details">
+      <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <Label htmlFor="guestName">Guest name</Label>
@@ -235,7 +232,7 @@ export function NewOrderForm({ menuItems }: { menuItems: MenuItemOption[] }) {
         >
           {isPending ? "Creating..." : "Create order"}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }

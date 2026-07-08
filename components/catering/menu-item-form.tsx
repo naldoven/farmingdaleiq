@@ -4,11 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SectionCard } from "@/components/mobile";
 import { createMenuItem, updateMenuItem } from "@/app/(app)/catering/actions";
 
 export interface MenuItemFormData {
@@ -74,11 +74,8 @@ export function MenuItemForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">{initial?.id ? "Edit menu item" : "New menu item"}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <SectionCard title={initial?.id ? "Edit menu item" : "New menu item"}>
+      <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <Label htmlFor="mi-name">Name</Label>
@@ -119,7 +116,7 @@ export function MenuItemForm({
         <Button type="button" disabled={isPending || !name.trim()} onClick={submit} className="self-start">
           {isPending ? "Saving..." : initial?.id ? "Save changes" : "Add menu item"}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }

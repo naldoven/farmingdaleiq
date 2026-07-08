@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChecklistSection } from "@/components/catering/checklist-section";
 import { OrderDetailsForm } from "@/components/catering/order-details-form";
 import { OrderItemEditor } from "@/components/catering/order-item-editor";
 import { RescaleButton } from "@/components/catering/rescale-button";
 import { StageSelect } from "@/components/catering/stage-select";
+import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { CHECKLIST_STAGES, ORDER_STAGE_LABELS, type ChecklistStage, type OrderStage } from "@/app/(app)/catering/logic";
@@ -92,62 +91,55 @@ export default async function CateringOrderPage({
       .map((c) => ({ id: c.id, label: c.label, done: c.done }));
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">{order.guest_name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {order.event_date} {order.event_time ?? ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">{ORDER_STAGE_LABELS[order.stage as OrderStage]}</Badge>
-          <StageSelect orderId={order.id} stage={order.stage as OrderStage} />
-        </div>
-      </div>
+    <div className="flex flex-col gap-4">
+      <SectionLabel
+        action={
+          <div className="flex items-center gap-2">
+            <StatusBadge tone="accent">{ORDER_STAGE_LABELS[order.stage as OrderStage]}</StatusBadge>
+            <StageSelect orderId={order.id} stage={order.stage as OrderStage} />
+          </div>
+        }
+      >
+        {order.guest_name}
+      </SectionLabel>
+      <p className="-mt-3 text-[13px] text-muted-ink">
+        {order.event_date} {order.event_time ?? ""}
+      </p>
 
       {contactHistory && (
-        <p className="text-sm text-muted-foreground">
-          Guest history: {contactHistory.orderCount} order(s), ${contactHistory.lifetimeSpend.toFixed(2)}{" "}
-          lifetime spend.
-        </p>
+        <SectionCard>
+          <p className="text-[15px] text-ink">
+            Guest history: {contactHistory.orderCount} order(s), $
+            {contactHistory.lifetimeSpend.toFixed(2)} lifetime spend.
+          </p>
+        </SectionCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Order details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <OrderDetailsForm
-            order={{
-              id: order.id,
-              guestName: order.guest_name,
-              phone: order.phone,
-              email: order.email,
-              eventDate: order.event_date,
-              eventTime: order.event_time,
-              headcount: order.headcount,
-              amount: order.amount,
-              fulfillment: order.fulfillment,
-              deliveryAddress: order.delivery_address,
-              paperGoods: order.paper_goods,
-              notes: order.notes,
-            }}
-          />
-        </CardContent>
-      </Card>
+      <SectionCard title="Order details">
+        <OrderDetailsForm
+          order={{
+            id: order.id,
+            guestName: order.guest_name,
+            phone: order.phone,
+            email: order.email,
+            eventDate: order.event_date,
+            eventTime: order.event_time,
+            headcount: order.headcount,
+            amount: order.amount,
+            fulfillment: order.fulfillment,
+            deliveryAddress: order.delivery_address,
+            paperGoods: order.paper_goods,
+            notes: order.notes,
+          }}
+        />
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Menu items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <OrderItemEditor orderId={order.id} items={itemRows} menuItems={activeMenuItems ?? []} />
-        </CardContent>
-      </Card>
+      <SectionCard title="Menu items">
+        <OrderItemEditor orderId={order.id} items={itemRows} menuItems={activeMenuItems ?? []} />
+      </SectionCard>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium">Stage checklists</h2>
+        <h2 className="text-[19px] font-semibold text-ink">Stage checklists</h2>
         <RescaleButton orderId={order.id} />
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -156,7 +148,7 @@ export default async function CateringOrderPage({
         ))}
       </div>
 
-      <Link href="/catering" className="text-sm text-primary hover:underline">
+      <Link href="/catering" className="text-[13px] font-semibold text-accent hover:underline">
         Back to pipeline
       </Link>
     </div>

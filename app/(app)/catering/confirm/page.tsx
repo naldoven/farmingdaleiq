@@ -1,4 +1,5 @@
 import { StageQueue } from "@/components/catering/stage-queue";
+import { SectionLabel } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 
 /**
@@ -9,8 +10,8 @@ export default async function CateringConfirmPage() {
   await requirePermission("catering.view");
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Confirmation calls</h1>
+    <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <SectionLabel>Confirmation calls</SectionLabel>
       <StageQueue orderStage="confirm" checklistStage="confirm" />
     </div>
   );

@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { ORDER_STAGE_LABELS, currentWeekDates, type OrderStage } from "@/app/(app)/catering/logic";
@@ -32,38 +31,33 @@ export default async function CateringWeekPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">This week</h1>
+    <div className="flex flex-col gap-4">
+      <SectionLabel>This week</SectionLabel>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-7">
         {dates.map((date, i) => (
-          <Card key={date}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                {WEEKDAY_SHORT[i]} {date.slice(5)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+          <SectionCard key={date} title={`${WEEKDAY_SHORT[i]} ${date.slice(5)}`}>
+            <div className="flex flex-col gap-2">
               {(ordersByDate.get(date) ?? []).map((order) => (
                 <Link
                   key={order.id}
                   href={`/catering/orders/${order.id}`}
-                  className="flex flex-col gap-1 rounded-md border border-border p-2 text-xs hover:bg-accent-soft"
+                  className="flex flex-col gap-1 rounded-xl border border-line p-2 text-[13px] hover:bg-secondary/60"
                 >
-                  <span className="font-medium">{order.guest_name}</span>
-                  <span className="text-muted-foreground">
+                  <span className="font-semibold text-ink">{order.guest_name}</span>
+                  <span className="text-muted-ink">
                     {order.event_time ?? "No time set"}
-                    {order.headcount != null ? ` — ${order.headcount} guests` : ""}
+                    {order.headcount != null ? ` · ${order.headcount} guests` : ""}
                   </span>
-                  <Badge variant="outline" className="w-fit">
+                  <StatusBadge tone="neutral" className="w-fit">
                     {ORDER_STAGE_LABELS[order.stage as OrderStage]}
-                  </Badge>
+                  </StatusBadge>
                 </Link>
               ))}
               {(ordersByDate.get(date) ?? []).length === 0 && (
-                <p className="text-xs text-muted-foreground">No orders.</p>
+                <p className="text-[13px] text-muted-ink">No orders.</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </SectionCard>
         ))}
       </div>
     </div>
