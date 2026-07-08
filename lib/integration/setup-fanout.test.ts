@@ -110,6 +110,18 @@ describe("planChecklistRunsForSetup", () => {
     });
     expect(plan.inserts).toHaveLength(1);
   });
+
+  it("does not match a day-part-specific schedule against a null-day-part setup", () => {
+    const plan = planChecklistRunsForSetup({
+      ...base,
+      setupDayPartId: null,
+      schedules: [
+        schedule({ id: "sch-1", template_id: "tpl-1", assign_position_id: "pos-1", day_part_id: "dp-1" }),
+      ],
+      existingRuns: [],
+    });
+    expect(plan.inserts).toHaveLength(0);
+  });
 });
 
 function template(

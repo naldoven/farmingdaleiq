@@ -94,9 +94,9 @@ export function parseSetupDate(dateStr: string): Date {
 function dayPartMatches(scheduleDayPart: string | null, setupDayPart: string | null): boolean {
   // A position-linked schedule/template with no day-part of its own applies
   // to whatever day-part the setup is for. One that names a day-part only
-  // applies when it matches the setup's day-part.
+  // applies when the setup is for that same day-part; a day-part-specific
+  // schedule must never match a null-day-part (day-part-agnostic) setup.
   if (!scheduleDayPart) return true;
-  if (!setupDayPart) return true;
   return scheduleDayPart === setupDayPart;
 }
 
