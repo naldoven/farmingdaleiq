@@ -1,13 +1,18 @@
 import type { EventPayload } from "@/lib/events/bus";
 
 /**
- * Defensive recipient-id extraction from an `app_events.payload`. Every
- * producer (the other P1 streams) owns its own `emitEvent(...)` call sites,
- * and the exact payload shape per event key isn't a formally typed contract
- * yet (P2 wiring is expected to firm this up once every producer has
- * landed — see PLAN.md P2 "Wiring agent"). Until then this looks for the
- * field names a producer is most likely to use and returns every match it
- * finds, deduped.
+ * Recipient-id extraction from an `app_events.payload`.
+ *
+ * The CANONICAL recipient contract (lib/events/bus.ts `RecipientFields`) is
+ * `user_id` (one recipient) and `user_ids` (many) — every producer conforms
+ * to those two names, and this extractor reads BOTH. The remaining aliases
+ * below are kept only as a defensive safety net for producers that predate
+ * the canonical rename; new producers must use `user_id`/`user_ids`.
+ *
+ * Deliberately NOT recognized: `actor_id` (who caused the event) and legacy
+ * actor-shaped keys like `completed_by`/`completedBy`/`assigned_user_id`.
+ * The actor is not a recipient — recording who did something must never
+ * accidentally notify or credit them.
  *
  * Never throws. A payload with no recognizable recipient field (e.g. a
  * store-wide broadcast, or a producer that hasn't landed yet) resolves to
@@ -19,8 +24,10 @@ export function extractRecipientIds(payload: EventPayload): string[] {
   const ids = new Set<string>();
 
   const singularKeys = [
-    "userId",
+    // canonical
     "user_id",
+    // legacy safety net
+    "userId",
     "recipientId",
     "recipient_id",
     "assigneeId",
@@ -31,8 +38,10 @@ export function extractRecipientIds(payload: EventPayload): string[] {
     "issued_to",
   ];
   const pluralKeys = [
-    "userIds",
+    // canonical
     "user_ids",
+    // legacy safety net
+    "userIds",
     "recipientIds",
     "recipient_ids",
     "assigneeIds",
