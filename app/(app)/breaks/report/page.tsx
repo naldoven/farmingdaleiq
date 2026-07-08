@@ -1,9 +1,5 @@
-import Link from "next/link";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { HScroll, SectionCard, StatTile } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { groupBreakComplianceByKey, summarizeBreakCompliance } from "@/lib/breaks/compliance";
 import { createClient } from "@/lib/supabase/server";
@@ -61,99 +57,84 @@ export default async function BreaksReportPage({
   const byDay = groupBreakComplianceByKey(rows, (r) => r.date);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Break compliance report</h1>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/breaks">Back to breaks</Link>
-        </Button>
-      </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <SectionCard title="Date range">
+        <form className="flex flex-wrap items-center gap-2" method="get">
+          <input
+            type="date"
+            name="from"
+            defaultValue={rangeFrom}
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
+          />
+          <span className="text-[13px] text-muted-ink">to</span>
+          <input
+            type="date"
+            name="to"
+            defaultValue={rangeTo}
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
+          />
+          <button
+            type="submit"
+            className="inline-flex h-10 items-center rounded-lg bg-accent px-4 text-[15px] font-semibold text-white"
+          >
+            View
+          </button>
+        </form>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Date range</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-wrap items-center gap-2" method="get">
-            <input
-              type="date"
-              name="from"
-              defaultValue={rangeFrom}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            />
-            <span className="text-sm text-muted-foreground">to</span>
-            <input
-              type="date"
-              name="to"
-              defaultValue={rangeTo}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            />
-            <Button type="submit" variant="secondary">
-              View
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <SectionCard title="Totals" action={<span className="text-[13px] text-muted-ink">{rangeFrom} – {rangeTo}</span>}>
+        <HScroll>
+          <StatTile value={overall.pending} label="Pending" />
+          <StatTile value={overall.authorized} label="Authorized" />
+          <StatTile value={overall.active} label="Active" tone="warning" />
+          <StatTile value={overall.completed} label="Completed" tone="success" />
+          <StatTile value={overall.overdue} label="Overdue" tone={overall.overdue > 0 ? "danger" : "neutral"} />
+          <StatTile value={overall.missed} label="Missed" tone={overall.missed > 0 ? "danger" : "neutral"} />
+          <StatTile value={overall.total} label="Total" />
+        </HScroll>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Totals — {rangeFrom} to {rangeTo}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Badge variant="outline">Pending {overall.pending}</Badge>
-          <Badge variant="secondary">Authorized {overall.authorized}</Badge>
-          <Badge variant="secondary">Active {overall.active}</Badge>
-          <Badge variant="success">Completed {overall.completed}</Badge>
-          <Badge variant="destructive">Overdue {overall.overdue}</Badge>
-          <Badge variant="destructive">Missed {overall.missed}</Badge>
-          <Badge variant="outline">Total {overall.total}</Badge>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>By day</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Pending</TableHead>
-                <TableHead>Authorized</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Completed</TableHead>
-                <TableHead>Overdue</TableHead>
-                <TableHead>Missed</TableHead>
-                <TableHead>Total</TableHead>
+      <SectionCard title="By day">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Pending</TableHead>
+              <TableHead>Authorized</TableHead>
+              <TableHead>Active</TableHead>
+              <TableHead>Completed</TableHead>
+              <TableHead>Overdue</TableHead>
+              <TableHead>Missed</TableHead>
+              <TableHead>Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {byDay.map(({ key, summary }) => (
+              <TableRow key={key}>
+                <TableCell>{key}</TableCell>
+                <TableCell>{summary.pending}</TableCell>
+                <TableCell>{summary.authorized}</TableCell>
+                <TableCell>{summary.active}</TableCell>
+                <TableCell>{summary.completed}</TableCell>
+                <TableCell className={summary.overdue > 0 ? "text-danger" : undefined}>
+                  {summary.overdue}
+                </TableCell>
+                <TableCell className={summary.missed > 0 ? "text-danger" : undefined}>
+                  {summary.missed}
+                </TableCell>
+                <TableCell>{summary.total}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {byDay.map(({ key, summary }) => (
-                <TableRow key={key}>
-                  <TableCell>{key}</TableCell>
-                  <TableCell>{summary.pending}</TableCell>
-                  <TableCell>{summary.authorized}</TableCell>
-                  <TableCell>{summary.active}</TableCell>
-                  <TableCell>{summary.completed}</TableCell>
-                  <TableCell>{summary.overdue}</TableCell>
-                  <TableCell>{summary.missed}</TableCell>
-                  <TableCell>{summary.total}</TableCell>
-                </TableRow>
-              ))}
-              {byDay.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
-                    No breaks in this date range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            ))}
+            {byDay.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-muted-ink">
+                  No breaks in this date range.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </SectionCard>
     </div>
   );
 }

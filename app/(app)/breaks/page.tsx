@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { BreakBoard } from "@/components/breaks/break-board";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HScroll, SectionCard, StatTile } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt, entitledMinutesForKind } from "@/lib/breaks/entitlement";
 import { createClient } from "@/lib/supabase/server";
@@ -87,63 +86,70 @@ export default async function BreaksPage({
     };
   });
 
+  const CLOSED_STATUSES = new Set(["completed", "missed"]);
+  const remainingCount = breakRows.filter((b) => !CLOSED_STATUSES.has(b.status)).length;
+  const completedCount = breakRows.filter((b) => b.status === "completed").length;
+  const overdueCount = breakRows.filter((b) => b.status === "overdue").length;
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Breaks</h1>
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/breaks/report">Compliance report</Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/setups">Setup board</Link>
-          </Button>
-        </div>
+    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Link
+          href="/breaks/report"
+          className="inline-flex shrink-0 items-center rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink hover:bg-secondary"
+        >
+          Compliance report
+        </Link>
+        <Link
+          href="/setups"
+          className="inline-flex shrink-0 items-center rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink hover:bg-secondary"
+        >
+          Setup board
+        </Link>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Day / shift</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-wrap items-center gap-2" method="get">
-            <input
-              type="date"
-              name="date"
-              defaultValue={selectedDate}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            />
-            <select
-              name="dayPartId"
-              defaultValue={selectedDayPartId}
-              className="h-10 rounded-md border border-input bg-card px-3 text-sm shadow-sm"
-            >
-              {(dayParts ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="secondary">
-              View
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <HScroll>
+        <StatTile value={remainingCount} label="Remaining" tone="warning" />
+        <StatTile value={completedCount} label="Completed" tone="success" />
+        <StatTile value={overdueCount} label="Overdue" tone={overdueCount > 0 ? "danger" : "neutral"} />
+      </HScroll>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Break sequence</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BreakBoard
-            setupId={setup?.id ?? null}
-            canManage={canManage}
-            breaks={breakRows}
-            profiles={profiles ?? []}
+      <SectionCard title="Day / shift">
+        <form className="flex flex-wrap items-center gap-2" method="get">
+          <input
+            type="date"
+            name="date"
+            defaultValue={selectedDate}
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
           />
-        </CardContent>
-      </Card>
+          <select
+            name="dayPartId"
+            defaultValue={selectedDayPartId}
+            className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
+          >
+            {(dayParts ?? []).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="inline-flex h-10 items-center rounded-lg bg-accent px-4 text-[15px] font-semibold text-white"
+          >
+            View
+          </button>
+        </form>
+      </SectionCard>
+
+      <SectionCard title="Break sequence" flush>
+        <BreakBoard
+          setupId={setup?.id ?? null}
+          canManage={canManage}
+          breaks={breakRows}
+          profiles={profiles ?? []}
+        />
+      </SectionCard>
     </div>
   );
 }

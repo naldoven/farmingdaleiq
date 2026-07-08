@@ -2,17 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { User } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ListRow, StatusBadge, type ListRowTone, type StatusTone } from "@/components/mobile";
 import {
   authorizeBreak,
   completeBreak,
@@ -42,14 +35,31 @@ export interface ProfileOption {
   name: string;
 }
 
-const STATUS_VARIANT: Record<string, "outline" | "success" | "warning" | "destructive" | "secondary"> = {
-  pending: "outline",
-  authorized: "secondary",
-  active: "secondary",
+const STATUS_TONE: Record<string, StatusTone> = {
+  pending: "neutral",
+  authorized: "info",
+  active: "warning",
   completed: "success",
-  overdue: "destructive",
-  missed: "destructive",
+  overdue: "danger",
+  missed: "danger",
 };
+
+const ICON_TONE: Record<string, ListRowTone> = {
+  pending: "neutral",
+  authorized: "info",
+  active: "warning",
+  completed: "success",
+  overdue: "danger",
+  missed: "danger",
+};
+
+function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function kindLabel(kind: string): string {
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
 
 export function BreakBoard({
   setupId,
@@ -83,7 +93,7 @@ export function BreakBoard({
 
   if (!setupId) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="px-4 py-3 text-[13px] text-muted-ink">
         No setup exists for this date and day-part yet. Create and post one from
         the setup board first.
       </p>
@@ -93,9 +103,9 @@ export function BreakBoard({
   const sorted = [...breaks].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col">
       {canManage && (
-        <div>
+        <div className="border-b border-line px-4 py-3">
           <Button
             variant="outline"
             size="sm"
@@ -107,22 +117,14 @@ export function BreakBoard({
         </div>
       )}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="px-4 pt-3 text-[13px] text-danger">{error}</p>}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>#</TableHead>
-            <TableHead>Person</TableHead>
-            <TableHead>Kind</TableHead>
-            <TableHead>Entitled</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Auth → Start lag</TableHead>
-            <TableHead>Badges</TableHead>
-            {canManage && <TableHead>Actions</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      {sorted.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[13px] text-muted-ink">
+          No breaks generated yet.
+        </p>
+      ) : (
+        <div className="divide-y divide-line">
           {sorted.map((b) => {
             // MED parity-audit fix: real breakDueAt (arrival + rule) instead
             // of null/authorized_at, so the pending-but-due branch of
@@ -130,66 +132,77 @@ export function BreakBoard({
             const dueAt = b.breakDueAt ? new Date(b.breakDueAt) : null;
             const needsBreak = needsBreakBadge(b.status, dueAt, now);
             const lagMinutes = authorizationToStartLagMinutes(b.authorized_at, b.started_at);
+            const personName = b.user_id ? (profileName.get(b.user_id) ?? "Unknown") : "Unassigned";
+
+            const descriptionParts = [
+              `${kindLabel(b.kind)} · ${b.entitledMinutes != null ? `${b.entitledMinutes} min` : "— min"}`,
+            ];
+            if (lagMinutes != null) descriptionParts.push(`Lag ${lagMinutes}m`);
+
             return (
-              <TableRow key={b.id}>
-                <TableCell>{b.sequence ?? "—"}</TableCell>
-                <TableCell>{b.user_id ? profileName.get(b.user_id) ?? "Unknown" : "Unassigned"}</TableCell>
-                <TableCell className="capitalize">{b.kind}</TableCell>
-                <TableCell>
-                  {b.entitledMinutes != null ? `${b.entitledMinutes} min` : "—"}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={STATUS_VARIANT[b.status] ?? "outline"} className="capitalize">
-                    {b.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>{lagMinutes != null ? `${lagMinutes} min` : "—"}</TableCell>
-                <TableCell>
-                  {needsBreak && <Badge variant="warning">Needs Break</Badge>}
-                </TableCell>
-                {canManage && (
-                  <TableCell className="flex flex-wrap gap-1">
-                    {b.status === "pending" && (
-                      <Button
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => run(() => authorizeBreak({ id: b.id }))}
-                      >
-                        Authorize
-                      </Button>
+              <ListRow
+                key={b.id}
+                icon={User}
+                iconTone={ICON_TONE[b.status] ?? "neutral"}
+                title={
+                  <>
+                    {b.sequence != null && (
+                      <span className="mr-1.5 text-muted-ink">#{b.sequence}</span>
                     )}
-                    {(b.status === "authorized" || b.status === "overdue") && (
-                      <Button
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => run(() => startBreak({ id: b.id }))}
-                      >
-                        Start
-                      </Button>
+                    {personName}
+                  </>
+                }
+                description={descriptionParts.join(" · ")}
+                trailing={
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      {needsBreak && (
+                        <StatusBadge tone="danger" dot>
+                          Needs Break
+                        </StatusBadge>
+                      )}
+                      <StatusBadge tone={STATUS_TONE[b.status] ?? "neutral"}>
+                        {statusLabel(b.status)}
+                      </StatusBadge>
+                    </div>
+                    {canManage && (
+                      <div className="flex gap-1.5">
+                        {b.status === "pending" && (
+                          <Button
+                            size="sm"
+                            disabled={isPending}
+                            onClick={() => run(() => authorizeBreak({ id: b.id }))}
+                          >
+                            Authorize
+                          </Button>
+                        )}
+                        {(b.status === "authorized" || b.status === "overdue") && (
+                          <Button
+                            size="sm"
+                            disabled={isPending}
+                            onClick={() => run(() => startBreak({ id: b.id }))}
+                          >
+                            Start
+                          </Button>
+                        )}
+                        {b.status === "active" && (
+                          <Button
+                            size="sm"
+                            disabled={isPending}
+                            onClick={() => run(() => completeBreak({ id: b.id }))}
+                          >
+                            Complete
+                          </Button>
+                        )}
+                      </div>
                     )}
-                    {b.status === "active" && (
-                      <Button
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() => run(() => completeBreak({ id: b.id }))}
-                      >
-                        Complete
-                      </Button>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
+                  </div>
+                }
+              />
             );
           })}
-          {sorted.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={canManage ? 8 : 7} className="text-center text-muted-foreground">
-                No breaks generated yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+        </div>
+      )}
     </div>
   );
 }
