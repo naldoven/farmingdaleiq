@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addWorkOrderCommentSchema,
   approveRequestSchema,
+  assignWorkOrderSchema,
   completeWorkOrderSchema,
   submitMaintenanceRequestSchema,
 } from "./validation";
@@ -72,6 +73,32 @@ describe("completeWorkOrderSchema", () => {
       workOrderId: "00000000-0000-0000-0000-000000000000",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("assignWorkOrderSchema", () => {
+  it("allows a bare reassignment with no Discord fields", () => {
+    const result = assignWorkOrderSchema.safeParse({
+      workOrderId: "00000000-0000-0000-0000-000000000000",
+      assignedUserId: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.notifyDiscord).toBeUndefined();
+    }
+  });
+
+  it("accepts opting a work order into per-instance Discord notify with a channel", () => {
+    const result = assignWorkOrderSchema.safeParse({
+      workOrderId: "00000000-0000-0000-0000-000000000000",
+      notifyDiscord: true,
+      discordChannelId: "00000000-0000-4000-8000-000000000002",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.notifyDiscord).toBe(true);
+      expect(result.data.discordChannelId).toBe("00000000-0000-4000-8000-000000000002");
+    }
   });
 });
 
