@@ -36,7 +36,7 @@ export function TabItem({ icon: Icon, label, active, href, onClick }: TabItemPro
     </>
   );
   const cls = cn(
-    "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[64px] transition-colors",
+    "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[64px] touch-manipulation select-none transition-colors",
     active ? "text-accent" : "text-[#94A3B8]",
   );
 

@@ -203,9 +203,11 @@
   display: none;
 }
 
-/* iOS safe-area helper for the fixed bottom tab bar */
+/* iOS safe-area helper for the fixed bottom tab bar. max() keeps a comfortable
+   minimum on devices without a home indicator, and clears the indicator on
+   those that have one so the tab tap targets never sit under the home-swipe zone. */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 10px);
 }
 .h-safe-bottom {
   height: env(safe-area-inset-bottom, 0px);
