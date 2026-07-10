@@ -10,8 +10,9 @@
 -- All 9 sister-store phone numbers were verified against Google/Yelp/
 -- chick-fil-a.com on 2026-07-10; personal-cell entries (Antonia, Omar, Dave
 -- Parkes) kept as captured.
--- FLAG: Autunes Repair number "(191) 740-2803" is as captured but 191 is not
--- a valid US area code -- correct in-app when the real number is known.
+-- Autunes Repair phone corrected by Naldo 2026-07-10 (screenshot had an
+-- invalid "(191)" number); see 20260710010000_fix_autunes_phone.sql for DBs
+-- that ran the original version of this seed.
 -- Ansul Systems, Locksmith, Oil Removal, Pest Control had no detail sheet:
 -- seeded name + category only.
 --
@@ -49,7 +50,7 @@ from (
     ('Snow Removal', 'Building Maintenance', 'Brandon Shoman', '(631) 560-2722', null, 'Shoman Facility Maintenance'),
     ('Suffolk Laundry (towels)', 'Building Maintenance', 'Suffolk Laundry', '(631) 283-6824', null, 'Weekly'),
     -- Equipment ---------------------------------------------------------------
-    ('Autunes Repair', 'Equipment', 'Autunes Repair', '(191) 740-2803', null, 'Bun Toaster & Egg Station (FLAG: 191 is not a valid US area code -- verify)'),
+    ('Autunes Repair', 'Equipment', 'Autunes Repair', '(917) 402-8032', null, 'Bun Toaster & Egg Station'),
     ('Eagle', 'Equipment', null, '(516) 378-8500', null, null),
     ('Ecolab', 'Equipment', null, '(800) 529-5458', null, null),
     ('Ecolab Prep N Print Support', 'Equipment', 'Print', '(877) 603-1187', null, null),
