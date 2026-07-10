@@ -20,6 +20,10 @@ const PUBLIC_PATHS = [
   // Crawler-facing metadata (app/robots.ts). Must be reachable without auth or
   // a crawler just gets a 307 to /login and never sees the Disallow rules.
   "/robots.txt",
+  // Machine-to-machine webhooks (app/api/inbound/*). They carry their own
+  // Bearer-secret auth and fail closed; a session redirect here would bounce
+  // the Gmail Apps Script POST to /login and silently drop catering orders.
+  "/api/inbound",
 ];
 
 function isPublicPath(pathname: string) {
