@@ -24,6 +24,13 @@ const PUBLIC_PATHS = [
   // Bearer-secret auth and fail closed; a session redirect here would bounce
   // the Gmail Apps Script POST to /login and silently drop catering orders.
   "/api/inbound",
+  // Scheduled routes (vercel.json crons). Vercel Cron sends only
+  // `Authorization: Bearer $CRON_SECRET` -- no Supabase session -- so the
+  // session redirect was bouncing every invocation to /login before the
+  // handler's own fail-closed secret check could run.
+  "/api/cron",
+  "/api/jobs",
+  "/api/tasks/sync",
 ];
 
 function isPublicPath(pathname: string) {
