@@ -6,7 +6,7 @@ CFA catering order emails become app orders automatically:
 CFA catering system (sends order notifications directly)
   -> dedicated Gmail inbox (Apps Script checks every minute)
   -> POST /api/inbound/catering (secret-protected)
-  -> catering order created at CONFIRM stage (+ checklists, + contact)
+  -> catering order created at NEW stage (+ checklists, + contact)
   -> catering_order_new event -> Discord outbox -> #catering summary card
 ```
 
@@ -95,6 +95,6 @@ channel with that webhook URL, then route the `catering_order_new` event to it.
 ## Testing end to end
 
 Forward any real catering order email to the dedicated inbox (or wait for the
-next real one). Within ~1 minute: order appears in Catering at the Confirm
+next real one). Within ~1 minute: order appears in Catering at the New
 stage, and the summary card posts to #catering. Re-forwarding the same email
 must NOT create a second order.

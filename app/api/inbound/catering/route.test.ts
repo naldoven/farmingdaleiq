@@ -114,7 +114,7 @@ describe("POST /api/inbound/catering auth", () => {
 });
 
 describe("POST /api/inbound/catering happy path", () => {
-  it("creates the order at confirm stage with items, checklists, and event", async () => {
+  it("creates the order at the new stage with items, checklists, and event", async () => {
     fakeAdmin = createFakeAdmin({
       catering_orders: [
         { data: null }, // duplicate check: none
@@ -161,7 +161,7 @@ describe("POST /api/inbound/catering happy path", () => {
       event_time: "11:00",
       headcount: 125,
       amount: 1472.2,
-      stage: "confirm",
+      stage: "new",
       fulfillment: "pickup",
       source: "email:04093",
       contact_id: "contact-1",
@@ -218,7 +218,7 @@ describe("POST /api/inbound/catering happy path", () => {
     const orderInsert = inserts.find((i) => i.table === "catering_orders")?.values as Record<string, unknown>;
     expect(orderInsert.guest_name).toBe("Unparsed catering email");
     expect(orderInsert.source).toBe("email:msg-9");
-    expect(orderInsert.stage).toBe("confirm");
+    expect(orderInsert.stage).toBe("new");
     expect(String(orderInsert.notes)).toContain("NEEDS REVIEW");
     expect(String(orderInsert.notes)).toContain("no order here");
 
