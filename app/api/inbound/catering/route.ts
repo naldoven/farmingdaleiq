@@ -12,7 +12,7 @@ import { normalizePhone, planChecklistMaterialization } from "@/app/(app)/cateri
  * Inbound bridge for CFA catering order emails. A Google Apps Script in the
  * store's Gmail (docs/CATERING-EMAIL-INGEST.md) POSTs each "Incoming Catering
  * Order" email here as { subject, body, messageId }. The route parses it,
- * creates the order at the CONFIRM stage with its per-stage checklists, and
+ * creates the order at the NEW stage with its per-stage checklists, and
  * emits `catering_order_new` so the existing Discord outbox posts the summary
  * card to whatever channel Settings > Discord routes that event to.
  *
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
       event_time: parsed.eventTime,
       headcount: parsed.headcount,
       amount: parsed.amount,
-      stage: "confirm",
+      stage: "new",
       fulfillment: parsed.fulfillment,
       delivery_address: null,
       paper_goods: parsed.paperGoods,
