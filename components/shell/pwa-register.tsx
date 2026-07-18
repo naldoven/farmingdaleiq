@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Download, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
 
 /** Chrome/Android's install prompt event. Not in lib.dom.d.ts yet. */
 interface BeforeInstallPromptEvent extends Event {
@@ -37,26 +38,35 @@ function isIOSSafari() {
  * install event at all).
  */
 export function PwaRegister() {
+  const hydrated = useHydrated();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
     null,
   );
-  // Both of these are lazy-initialized (computed once during render, not in
-  // an effect) since they only depend on static browser facts (UA string,
-  // display-mode media query, localStorage) that don't change over a page's
-  // lifetime, and this component only ever renders on the client.
-  const [showIOSInstructions] = useState(() => !isStandalone() && isIOSSafari());
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(DISMISSED_KEY) === "1";
-  });
+  const [dismissedByUser, setDismissedByUser] = useState(false);
 
+  // Browser facts (UA string, display-mode media query, localStorage) don't
+  // exist during SSR, and reading them during the first render made it diverge
+  // from the server render on iOS Safari (React #418). They're gated behind
+  // `hydrated`, which is false on the server and the first client render and
+  // only flips true after hydration, so the first render is always
+  // "hidden / not dismissed" and matches SSR exactly.
+  const persistedDismissed =
+    hydrated &&
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(DISMISSED_KEY) === "1";
+  const dismissed = dismissedByUser || persistedDismissed;
+  const showIOSInstructions = hydrated && !isStandalone() && isIOSSafari();
+
+  // Register the service worker once on mount.
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch((err) => {
         console.error("Service worker registration failed", err);
       });
     }
+  }, []);
 
+  useEffect(() => {
     if (isStandalone() || dismissed) return;
 
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -73,7 +83,7 @@ export function PwaRegister() {
 
   const dismiss = () => {
     window.localStorage.setItem(DISMISSED_KEY, "1");
-    setDismissed(true);
+    setDismissedByUser(true);
     setDeferredPrompt(null);
   };
 
