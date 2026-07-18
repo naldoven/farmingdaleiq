@@ -19,6 +19,8 @@ import { CourseFeedbackForm } from "@/app/(app)/training/course-feedback-form";
  * "My Progress", and "Courses" content kept as sibling sections. Visual/
  * layout only -- same queries, actions, and permission checks as before.
  */
+export const metadata = { title: "Training" };
+
 export default async function TrainingPage() {
   await requirePermission("training.view");
   const canManage = await hasPermission("training.manage");

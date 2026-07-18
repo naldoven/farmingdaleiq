@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bell, BellRing } from "lucide-react";
 
 import { SectionCard } from "@/components/mobile";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
 import { cn } from "@/lib/utils";
 import { saveMyPushSubscription } from "@/app/(app)/notifications/actions";
 
@@ -31,15 +32,21 @@ export function PushOptIn() {
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const [dismissed, setDismissed] = useState(false);
+  // Hydration gate (F-SET-5): feature-detection and Notification.permission
+  // only exist on the client, so reading them during the first render made it
+  // diverge from the server render (React #418). Until hydrated, this renders
+  // nothing (matching SSR); the real support/permission checks run only after.
+  const hydrated = useHydrated();
 
   const supported =
+    hydrated &&
     typeof window !== "undefined" &&
     "Notification" in window &&
     "serviceWorker" in navigator &&
     "PushManager" in window;
 
-  if (!vapidPublicKey || !supported || dismissed) return null;
-  if (typeof window !== "undefined" && Notification.permission !== "default") return null;
+  if (!vapidPublicKey || !hydrated || !supported || dismissed) return null;
+  if (Notification.permission !== "default") return null;
 
   const enable = async () => {
     setStatus("working");

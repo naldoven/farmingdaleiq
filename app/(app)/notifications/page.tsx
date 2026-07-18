@@ -16,6 +16,8 @@ import { PushOptIn } from "@/components/notifications/push-opt-in";
  * same server actions (markRead / markAllRead) as before — visual/layout
  * only.
  */
+export const metadata = { title: "Notifications" };
+
 export default async function NotificationsPage() {
   await requirePermission("notifications.view");
 

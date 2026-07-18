@@ -19,6 +19,8 @@ import { createClient } from "@/lib/supabase/server";
  * cancel) check tasks.manage and are enforced for real in the server actions
  * regardless of what this page renders.
  */
+export const metadata = { title: "Tasks" };
+
 export default async function TasksPage() {
   await requirePermission("tasks.complete");
   const canManage = await hasPermission("tasks.manage");

@@ -36,6 +36,8 @@ import { requirePermission } from "@/lib/auth/permissions";
  * repeating the old placeholder (PLAN.md hard boundary: this stream doesn't
  * build editors for tables it doesn't own).
  */
+export const metadata = { title: "Settings" };
+
 export default async function SettingsPage() {
   await requirePermission("settings.manage");
 

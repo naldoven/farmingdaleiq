@@ -16,6 +16,8 @@ function todayIso(): string {
  * (date + day-part) at a time, same framing as /setups, since breaks are
  * generated per posted setup.
  */
+export const metadata = { title: "Breaks" };
+
 export default async function BreaksPage({
   searchParams,
 }: {

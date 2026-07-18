@@ -24,6 +24,8 @@ import { computeAverage } from "@/app/(app)/ratings/logic";
  * StatusBadge in place of the old shadcn Card/Badge shell. Same queries,
  * RateCell rating flow, and permission checks as before.
  */
+export const metadata = { title: "Ratings" };
+
 export default async function RatingsPage() {
   await requirePermission("ratings.view");
   const canRate = await hasPermission("ratings.rate");

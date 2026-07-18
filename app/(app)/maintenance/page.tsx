@@ -24,6 +24,8 @@ const REQUEST_STATUS_TONE: Record<string, StatusTone> = {
  * each tab's list content lives inside a white SectionCard of ListRows with
  * StatusBadge status, and work order creation is a round accent "+".
  */
+export const metadata = { title: "Maintenance" };
+
 export default async function MaintenancePage() {
   await requirePermission("maintenance.request");
   const canTriage = await hasPermission("maintenance.triage");

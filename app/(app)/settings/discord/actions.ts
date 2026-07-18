@@ -26,6 +26,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { ZodError } from "zod";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
@@ -47,6 +48,16 @@ import {
 function toActionError(error: unknown): string {
   if (error instanceof PermissionError) {
     return "You don't have permission to do this.";
+  }
+  // ZodError extends Error, so this must precede the generic Error branch.
+  // Otherwise `error.message` is a raw JSON array of issues (F-SET-1). Join the
+  // human-readable issue messages into one friendly line instead.
+  if (error instanceof ZodError) {
+    const message = error.issues
+      .map((issue) => issue.message)
+      .filter(Boolean)
+      .join("; ");
+    return message || "Please check the form and try again.";
   }
   if (error instanceof Error) {
     return error.message;
@@ -119,8 +130,13 @@ export async function deleteChannel(input: DeleteChannelInput): Promise<ActionRe
 
     // Unlink any routes pointing at this channel first (discord_event_routes.channel_id
     // has no ON DELETE CASCADE in the P0 migration) so the delete doesn't
-    // fail on a foreign key violation.
-    await admin.from("discord_event_routes").update({ channel_id: null }).eq("channel_id", parsed.id);
+    // fail on a foreign key violation. Also disable them (F-SET-2): an unlinked
+    // route has nowhere to deliver, and leaving `enabled = true` would silently
+    // reactivate it the moment a new channel is assigned.
+    await admin
+      .from("discord_event_routes")
+      .update({ channel_id: null, enabled: false })
+      .eq("channel_id", parsed.id);
 
     const { error } = await admin.from("discord_channels").delete().eq("id", parsed.id);
 

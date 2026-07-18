@@ -28,6 +28,8 @@ function ManageTemplatesLink() {
  * that used to be a `?filter=mine` server round-trip is now an instant client
  * FilterChip over the same fetched rows, same permission gate.
  */
+export const metadata = { title: "Checklists" };
+
 export default async function ChecklistsPage() {
   await requirePermission("checklists.complete");
   const canManageTemplates = await hasPermission("checklists.manage_templates");
