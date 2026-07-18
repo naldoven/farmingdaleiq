@@ -6,6 +6,7 @@ vi.mock("@/lib/events/bus", () => ({
 }));
 
 import { emitEvent } from "@/lib/events/bus";
+import { extractRecipientIds } from "@/lib/notify/recipients";
 import type { Database } from "@/lib/db/types";
 import {
   followUpSourceAnswerId,
@@ -208,7 +209,14 @@ function fakeSupabase(opts: {
                 return {
                   single() {
                     const id = `task-${nextId++}`;
-                    const created = { id, kind: row.kind, ref: row.ref };
+                    // Mirror the real `.select("id, kind, ref, assigned_user_id")`
+                    // so the N2 recipient wiring can be exercised.
+                    const created = {
+                      id,
+                      kind: row.kind,
+                      ref: row.ref,
+                      assigned_user_id: row.assigned_user_id ?? null,
+                    };
                     captured.push({ ...row, id });
                     return Promise.resolve({ data: created, error: null });
                   },
@@ -294,6 +302,70 @@ describe("processTaskEvents", () => {
       assigned_user_id: "user-7",
       due_at: "2026-07-11T15:00:00.000Z",
     });
+  });
+
+  it("emits task_assigned carrying the assignee so the notify extractor resolves them (N2)", async () => {
+    const events: AppEventRow[] = [
+      {
+        id: "evt-fu",
+        event_key: "follow_up_assigned",
+        payload: { sourceAnswerId: "ans-1", runId: "run-1" },
+        created_at: CREATED_AT,
+      },
+    ];
+    const captured: Array<Record<string, unknown>> = [];
+    const supabase = fakeSupabase({
+      events,
+      existingRefs: [],
+      captured,
+      followUps: [
+        {
+          id: "fu-1",
+          source_answer_id: "ans-1",
+          description: "Follow up on a flagged checklist answer.",
+          assigned_to: "user-7",
+          due_at: "2026-07-11T15:00:00.000Z",
+          checklist_answers: { checklist_questions: { prompt: "Recheck cold holding" } },
+        },
+      ],
+    });
+
+    await processTaskEvents(supabase);
+
+    // Before N2 the emitted payload had no user_id, so extractRecipientIds
+    // resolved [] and the assignee was never notified.
+    const call = (emitEvent as unknown as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0] === "task_assigned",
+    );
+    expect(call).toBeDefined();
+    const payload = call![1] as Record<string, unknown>;
+    expect(payload.user_id).toBe("user-7");
+    expect(extractRecipientIds(payload)).toEqual(["user-7"]);
+  });
+
+  it("emits a pool (unassigned) system task with no recipient, resolving to no one (N2)", async () => {
+    const events: AppEventRow[] = [
+      {
+        id: "evt-reward",
+        event_key: "reward_claim",
+        payload: { claim_id: "claim-1", user_id: "user-9", reward_name: "Free sandwich" },
+        created_at: CREATED_AT,
+      },
+    ];
+    const captured: Array<Record<string, unknown>> = [];
+    const supabase = fakeSupabase({ events, existingRefs: [], captured });
+
+    await processTaskEvents(supabase);
+
+    const call = (emitEvent as unknown as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0] === "task_assigned",
+    );
+    expect(call).toBeDefined();
+    const payload = call![1] as Record<string, unknown>;
+    // reward_fulfillment is a pool task: no assignee, so no recipient. The
+    // claimant (user-9) is recorded in ref, NOT as a notification recipient.
+    expect(payload.user_id).toBeUndefined();
+    expect(extractRecipientIds(payload)).toEqual([]);
   });
 
   it("is idempotent: skips an event that already produced a task", async () => {

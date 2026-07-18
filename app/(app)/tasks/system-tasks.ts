@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { emitEvent } from "@/lib/events/bus";
+import { buildTaskAssignedEvent } from "@/app/(app)/tasks/events";
 import type { Database, Json } from "@/lib/db/types";
 
 /**
@@ -328,7 +329,7 @@ export async function processTaskEvents(
     const { data: taskRow, error: insertError } = await supabase
       .from("tasks")
       .insert(insert)
-      .select("id, kind, ref")
+      .select("id, kind, ref, assigned_user_id")
       .single();
 
     if (insertError || !taskRow) {
@@ -340,11 +341,21 @@ export async function processTaskEvents(
     created += 1;
 
     try {
-      await emitEvent("task_assigned", {
-        task_id: taskRow.id,
-        kind: taskRow.kind,
-        ref: taskRow.ref,
-      });
+      // N2 fix: carry the assignee so extractRecipientIds can resolve them.
+      // The previous payload had no user_id/assigned_user_id, so a system task
+      // created here (e.g. a follow_up with a real assignee) notified nobody.
+      // buildTaskAssignedEvent sets `user_id` = the assignee (the recipient
+      // key the notify drain reads); a pool task (assigned_user_id null) still
+      // correctly resolves to "no one".
+      await emitEvent(
+        "task_assigned",
+        buildTaskAssignedEvent({
+          taskId: taskRow.id,
+          assignedUserId: taskRow.assigned_user_id ?? null,
+          kind: taskRow.kind,
+          ref: taskRow.ref,
+        }),
+      );
     } catch {
       // emitEvent (lib/events/bus.ts, frozen) writes through the per-request
       // cookie-bound client; this consumer typically runs from an
