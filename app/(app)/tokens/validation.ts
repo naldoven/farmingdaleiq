@@ -11,6 +11,10 @@ export const giftTokensSchema = z.object({
   toUserId: z.string().uuid(),
   amount: z.coerce.number().int("Enter a whole number").positive("Enter a positive amount").max(100000),
   note: z.string().trim().max(280).optional().or(z.literal("")),
+  // TOK1: client-generated idempotency key (crypto.randomUUID) minted per
+  // submit attempt so a retry/double-submit dedupes at the ledger. Optional so
+  // a caller that omits it keeps the pre-idempotency behavior.
+  requestId: z.string().uuid().optional(),
 });
 
 export type GiftTokensInput = z.infer<typeof giftTokensSchema>;

@@ -97,7 +97,7 @@ export async function claimReward(
       .maybeSingle();
 
     const result = await redeemReward(
-      { userId: user.id, rewardId: parsed.rewardId, createdBy: user.id },
+      { userId: user.id, rewardId: parsed.rewardId, createdBy: user.id, requestId: parsed.requestId },
       supabase
     );
 

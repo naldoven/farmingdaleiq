@@ -58,8 +58,12 @@ export function GiftForm({
           return;
         }
         setError(null);
+        // TOK1: one idempotency key per submit attempt. Captured in this
+        // closure so a framework retry of the same action call reuses it and
+        // gift_tokens() dedupes rather than sending twice.
+        const requestId = crypto.randomUUID();
         startTransition(async () => {
-          const result = await sendGift({ toUserId, amount: amountNumber, note });
+          const result = await sendGift({ toUserId, amount: amountNumber, note, requestId });
           if (!result.ok) {
             setError(result.error);
             return;

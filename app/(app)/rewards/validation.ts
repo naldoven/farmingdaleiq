@@ -34,6 +34,10 @@ export type UpdateRewardInput = z.input<typeof updateRewardSchema>;
 
 export const claimRewardSchema = z.object({
   rewardId: z.string().uuid(),
+  // TOK1: client-generated idempotency key (crypto.randomUUID) minted per claim
+  // attempt so a retry/double-submit returns the first claim instead of debiting
+  // the balance and creating a second claim. Optional for back-compat.
+  requestId: z.string().uuid().optional(),
 });
 
 export type ClaimRewardInput = z.infer<typeof claimRewardSchema>;
