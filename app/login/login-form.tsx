@@ -8,6 +8,7 @@ import { AuthAlert } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useHydrated } from "@/lib/hooks/use-hydrated";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -23,10 +24,17 @@ export function LoginForm({ next }: { next: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Hydration gate (F-AUTH-1): the submit button renders disabled on the server
+  // and on the first client render, and only enables once hydrated, so a click
+  // or Enter before React attaches the onSubmit handler can't trigger a native
+  // submit. Combined with method="post" below, a plaintext password can never
+  // reach the URL/address bar/history/access logs via a pre-hydration submit.
+  const hydrated = useHydrated();
 
   return (
     <form
       className="flex flex-col gap-4"
+      method="post"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -91,7 +99,11 @@ export function LoginForm({ next }: { next: string }) {
 
       {error ? <AuthAlert>{error}</AuthAlert> : null}
 
-      <Button type="submit" className="h-11 w-full rounded-lg text-[15px]" disabled={isPending}>
+      <Button
+        type="submit"
+        className="h-11 w-full rounded-lg text-[15px]"
+        disabled={!hydrated || isPending}
+      >
         {isPending ? "Signing in..." : "Sign in"}
       </Button>
     </form>

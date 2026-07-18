@@ -1,4 +1,5 @@
 import { ActionPill, ListRow, SectionLabel } from "@/components/mobile";
+import { SignOutRow } from "@/components/shell/sign-out-row";
 import { hasPermission } from "@/lib/auth/permissions";
 
 import { ASSIGN_ACTIONS, SEND_ACTIONS, VIEW_ITEMS, visibleActions } from "./menu-items";
@@ -11,6 +12,8 @@ import { ASSIGN_ACTIONS, SEND_ACTIONS, VIEW_ITEMS, visibleActions } from "./menu
  * Accountability pages already use to decide whether to show their forms, and
  * every destination is an existing route.
  */
+export const metadata = { title: "Menu" };
+
 export default async function MenuPage() {
   const [canRecognize, canIssueInfraction, canBroadcast] = await Promise.all([
     hasPermission("tokens.award"),
@@ -77,6 +80,11 @@ export default async function MenuPage() {
             />
           ))}
         </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <SectionLabel>Account</SectionLabel>
+        <SignOutRow />
       </section>
     </div>
   );
