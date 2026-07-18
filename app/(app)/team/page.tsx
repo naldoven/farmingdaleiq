@@ -21,6 +21,7 @@ import {
 import { TeamFilters } from "@/components/team/team-filters";
 import { fetchMyInfractions } from "@/app/(app)/accountability/queries";
 import {
+  formatCentsAsUsd,
   rollupByCategory,
   type WasteCategoryForRollup,
   type WasteEntryForRollup,
@@ -239,8 +240,8 @@ export default async function TeamPage({
   // primary/secondary -- supabase/migrations/20260707000900_waste.sql), so
   // this shows the two highest-cost real categories instead of inventing a
   // primary/secondary flag.
-  let wasteTotal: number | null = null;
-  let wasteBreakdown: { categoryName: string; totalCost: number | null }[] = [];
+  let wasteTotalCents: number | null = null;
+  let wasteBreakdown: { categoryName: string; totalCostCents: number | null }[] = [];
   if (canViewWasteRollup) {
     const dayStart = new Date(`${today}T00:00:00.000Z`);
     const dayEnd = new Date(dayStart);
@@ -276,10 +277,10 @@ export default async function TeamPage({
       }));
 
       const categoryRows = rollupByCategory(rollupEntries, rollupItems, rollupCategories);
-      wasteTotal = categoryRows.reduce((sum, row) => sum + (row.totalCost ?? 0), 0);
+      wasteTotalCents = categoryRows.reduce((sum, row) => sum + (row.totalCostCents ?? 0), 0);
       wasteBreakdown = categoryRows
         .slice(0, 2)
-        .map((row) => ({ categoryName: row.categoryName, totalCost: row.totalCost }));
+        .map((row) => ({ categoryName: row.categoryName, totalCostCents: row.totalCostCents }));
     }
   }
 
@@ -431,19 +432,19 @@ export default async function TeamPage({
 
       {canViewWasteRollup && (
         <SectionCard title="Waste" expandHref="/waste">
-          {wasteTotal === null ? (
+          {wasteTotalCents === null ? (
             <p className="text-[13px] text-muted-ink">No waste logged today.</p>
           ) : (
             <div className="flex flex-col gap-3">
               <div>
                 <p className="text-[13px] text-muted-ink">Today&apos;s total</p>
-                <p className="text-[30px] font-bold text-danger">${wasteTotal.toFixed(2)}</p>
+                <p className="text-[30px] font-bold text-danger">{formatCentsAsUsd(wasteTotalCents)}</p>
               </div>
               <HScroll>
                 {wasteBreakdown.map((row) => (
                   <StatTile
                     key={row.categoryName}
-                    value={row.totalCost != null ? `$${row.totalCost.toFixed(2)}` : "—"}
+                    value={formatCentsAsUsd(row.totalCostCents)}
                     label={row.categoryName}
                     tone="danger"
                   />

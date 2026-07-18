@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  entryCostCents,
   filterEntriesByPeriod,
+  formatCentsAsUsd,
   periodStart,
   rollupByCategory,
   rollupByItem,
@@ -94,17 +96,17 @@ describe("rollupByItem", () => {
         unit: "lb",
         totalQuantity: 5,
         entryCount: 2,
-        totalCost: 10,
+        totalCostCents: 1000,
       },
     ]);
   });
 
-  it("leaves totalCost null when the item has no unit cost", () => {
+  it("leaves totalCostCents null when the item has no unit cost", () => {
     const entries: WasteEntryForRollup[] = [
       { id: "e1", itemId: "i2", quantity: 6, loggedAt: daysAgo(1) },
     ];
     const rollup = rollupByItem(entries, items);
-    expect(rollup[0].totalCost).toBeNull();
+    expect(rollup[0].totalCostCents).toBeNull();
     expect(rollup[0].totalQuantity).toBe(6);
   });
 
@@ -145,7 +147,7 @@ describe("rollupByCategory", () => {
     const rollup = rollupByCategory(entries, items, categories);
     const meat = rollup.find((r) => r.categoryId === "c1")!;
     expect(meat.entryCount).toBe(2);
-    expect(meat.totalCost).toBe(9);
+    expect(meat.totalCostCents).toBe(900);
   });
 
   it("groups items with no category under 'Uncategorized'", () => {
@@ -154,7 +156,7 @@ describe("rollupByCategory", () => {
     ];
     const rollup = rollupByCategory(entries, items, categories);
     expect(rollup).toEqual([
-      { categoryId: null, categoryName: "Uncategorized", entryCount: 1, totalCost: null },
+      { categoryId: null, categoryName: "Uncategorized", entryCount: 1, totalCostCents: null },
     ]);
   });
 
@@ -166,5 +168,70 @@ describe("rollupByCategory", () => {
     ];
     const rollup = rollupByCategory(entries, items, categories);
     expect(rollup.map((r) => r.categoryName)).toEqual(["Meat", "Produce", "Uncategorized"]);
+  });
+});
+
+describe("entryCostCents (money is computed once, in integer cents)", () => {
+  it("returns null when the item has no unit cost (unknown, not zero)", () => {
+    expect(entryCostCents(5, null)).toBeNull();
+  });
+
+  it("rounds 1.5 x $1.15 up to 173 cents, not the 172 a naive float gives", () => {
+    // (1.5 * 1.15) === 1.7249999999999999 in binary float, so
+    // (1.5 * 1.15).toFixed(2) is "1.72". Snapping the unit cost to whole
+    // cents first (115) makes Math.round(1.5 * 115) === 173 -> $1.73.
+    expect(entryCostCents(1.5, 1.15)).toBe(173);
+  });
+
+  it("stays exact for a 0.1 + 0.2 style set once summed as integers", () => {
+    // Float: 0.1*0.2 + 0.2*0.2 === 0.06000000000000001. In cents it is exact.
+    const a = entryCostCents(0.1, 0.2)!;
+    const b = entryCostCents(0.2, 0.2)!;
+    expect(a).toBe(2);
+    expect(b).toBe(4);
+    expect(a + b).toBe(6);
+  });
+
+  it("treats a zero unit cost as 0 cents, never NaN or null", () => {
+    expect(entryCostCents(10, 0)).toBe(0);
+  });
+});
+
+describe("formatCentsAsUsd", () => {
+  it("formats integer cents as dollars with two decimals", () => {
+    expect(formatCentsAsUsd(173)).toBe("$1.73");
+    expect(formatCentsAsUsd(0)).toBe("$0.00");
+    expect(formatCentsAsUsd(5)).toBe("$0.05");
+    expect(formatCentsAsUsd(100000)).toBe("$1000.00");
+  });
+
+  it("uses one shared placeholder for a null (no-cost) value", () => {
+    expect(formatCentsAsUsd(null)).toBe("—");
+  });
+});
+
+describe("rollupByItem and rollupByCategory agree to the cent", () => {
+  const categories: WasteCategoryForRollup[] = [{ id: "c1", name: "Meat" }];
+  const items: WasteItemForRollup[] = [
+    { id: "i1", name: "A", categoryId: "c1", unit: "lb", unitCost: 1.15 },
+    { id: "i2", name: "B", categoryId: "c1", unit: "each", unitCost: 0.33 },
+  ];
+  // Fractional quantities against odd unit costs: exactly the set where naive
+  // per-item rounding vs round-of-sum can drift a cent between the two tables.
+  const entries: WasteEntryForRollup[] = [
+    { id: "e1", itemId: "i1", quantity: 1.5, loggedAt: daysAgo(1) },
+    { id: "e2", itemId: "i1", quantity: 0.5, loggedAt: daysAgo(1) },
+    { id: "e3", itemId: "i2", quantity: 3, loggedAt: daysAgo(1) },
+  ];
+
+  it("produces the same grand total from both rollups", () => {
+    const byItem = rollupByItem(entries, items);
+    const byCategory = rollupByCategory(entries, items, categories);
+    const itemTotal = byItem.reduce((sum, r) => sum + (r.totalCostCents ?? 0), 0);
+    const categoryTotal = byCategory.reduce((sum, r) => sum + (r.totalCostCents ?? 0), 0);
+    // i1: round(1.5*115)=173 + round(0.5*115)=58 = 231; i2: round(3*33)=99.
+    expect(itemTotal).toBe(330);
+    expect(categoryTotal).toBe(330);
+    expect(itemTotal).toBe(categoryTotal);
   });
 });

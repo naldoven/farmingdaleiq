@@ -46,12 +46,28 @@ export interface GiftTokensInput {
   toUserId: string;
   amount: number;
   note?: string;
+  /**
+   * TOK1: a client-generated id (crypto.randomUUID) minted per submit attempt.
+   * Threaded into gift_tokens() and stored on both ledger rows' ref jsonb so a
+   * retry / double-submit with the same id is a no-op that returns the FIRST
+   * transfer's result instead of moving tokens twice. Optional so existing
+   * (non-idempotent) callers keep working.
+   */
+  requestId?: string;
 }
 
 export interface RedeemTokensInput {
   userId: string;
   rewardId: string;
   createdBy: string;
+  /**
+   * TOK1: a client-generated id (crypto.randomUUID) minted per claim attempt.
+   * Threaded into redeem_reward() and stored on the redeem row's ref jsonb so a
+   * retry / double-submit with the same id returns the FIRST claim's result
+   * instead of debiting the balance and creating a second claim + fulfillment
+   * task. Optional so existing callers keep working.
+   */
+  requestId?: string;
 }
 
 export interface TokenTransactionResult {
@@ -239,6 +255,7 @@ export async function giftTokens(
       p_to_user_id: input.toUserId,
       p_amount: input.amount,
       p_note: input.note ?? null,
+      p_request_id: input.requestId ?? null,
     })
     .single();
 
@@ -274,7 +291,7 @@ export async function redeemReward(
   const supabase = client ?? (await createClient());
 
   const { data, error } = await supabase
-    .rpc("redeem_reward", { p_reward_id: input.rewardId })
+    .rpc("redeem_reward", { p_reward_id: input.rewardId, p_request_id: input.requestId ?? null })
     .single();
 
   if (error || !data) {

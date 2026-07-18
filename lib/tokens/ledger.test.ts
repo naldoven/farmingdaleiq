@@ -248,6 +248,28 @@ describe("giftTokens", () => {
     expect(result.credit).toEqual({ transactionId: "tx-credit" });
   });
 
+  it("threads p_request_id through to the RPC (null when omitted, the id when given)", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const client = makeFakeClient({
+      onRpc: (_fn, args) => {
+        seen.push(args);
+        return {
+          data: { debit_transaction_id: "tx-debit", credit_transaction_id: "tx-credit", balance_after: 40 },
+          error: null,
+        };
+      },
+    });
+
+    await giftTokens({ fromUserId: "user-1", toUserId: "user-2", amount: 10 }, client);
+    await giftTokens(
+      { fromUserId: "user-1", toUserId: "user-2", amount: 10, requestId: "gift-req-1" },
+      client
+    );
+
+    expect(seen[0]).toMatchObject({ p_request_id: null });
+    expect(seen[1]).toMatchObject({ p_request_id: "gift-req-1" });
+  });
+
   it("throws when the RPC rejects (e.g. insufficient balance)", async () => {
     const client = makeFakeClient({
       onRpc: () => ({ data: null, error: { message: "Insufficient balance" } }),
@@ -264,7 +286,9 @@ describe("redeemReward", () => {
     const client = makeFakeClient({
       onRpc: (fn, args) => {
         expect(fn).toBe("redeem_reward");
-        expect(args).toEqual({ p_reward_id: "reward-1" });
+        // p_request_id is always threaded (null when the caller omits it) so the
+        // SECURITY DEFINER function can dedupe a double-submit.
+        expect(args).toEqual({ p_reward_id: "reward-1", p_request_id: null });
         return {
           data: { transaction_id: "tx-1", claim_id: "claim-1", balance_after: 5, cost: 25 },
           error: null,
@@ -278,6 +302,23 @@ describe("redeemReward", () => {
     );
 
     expect(result).toEqual({ transactionId: "tx-1", balanceAfter: 5, claimId: "claim-1", cost: 25 });
+  });
+
+  it("forwards a caller-supplied requestId to the RPC as p_request_id", async () => {
+    const client = makeFakeClient({
+      onRpc: (_fn, args) => {
+        expect(args).toEqual({ p_reward_id: "reward-1", p_request_id: "req-abc" });
+        return {
+          data: { transaction_id: "tx-1", claim_id: "claim-1", balance_after: 5, cost: 25 },
+          error: null,
+        };
+      },
+    });
+
+    await redeemReward(
+      { userId: "user-1", rewardId: "reward-1", createdBy: "user-1", requestId: "req-abc" },
+      client
+    );
   });
 
   it("throws when the RPC rejects (e.g. insufficient balance or out of stock)", async () => {
@@ -393,5 +434,170 @@ describe("redeem concurrency (double-claim cannot overspend)", () => {
 
     expect(successes).toBe(1);
     expect(successes * cost).toBeLessThanOrEqual(startingBalance);
+  });
+});
+
+/**
+ * TOK1: models the request-id idempotency guard the NEW gift_tokens() /
+ * redeem_reward() migration (20260718000300_tokens_request_id_idempotency.sql)
+ * adds -- "if a row already carries this request_id, return the ORIGINAL result
+ * and write nothing." The advisory lock (proven above) serializes same-user
+ * calls, so under real concurrency the second call runs after the first commits
+ * and sees the recorded request_id; the unique partial index on
+ * (ref->>'request_id', kind) is the DB backstop. Vitest can't run true
+ * concurrent Postgres, so this simulates the guard's decision logic the same
+ * way makeConcurrencySimulator above documents the advisory lock.
+ */
+function makeIdempotentGiftSimulator(senderStart: number) {
+  let senderBalance = senderStart;
+  let recipientBalance = 0;
+  let transfers = 0;
+  const processed = new Map<string, { debitId: string; creditId: string; senderBalanceAfter: number }>();
+  let seq = 0;
+
+  async function gift(amount: number, requestId: string | null) {
+    await Promise.resolve(); // matches the RPC round trip / serialized lock section
+    if (amount <= 0) {
+      return { status: "rejected" as const, reason: "Amount must be positive" };
+    }
+    if (requestId != null && processed.has(requestId)) {
+      // Duplicate submit: return the first result unchanged, move nothing.
+      return { status: "duplicate" as const, ...processed.get(requestId)! };
+    }
+    if (senderBalance < amount) {
+      return { status: "rejected" as const, reason: "Insufficient balance" };
+    }
+    senderBalance -= amount;
+    recipientBalance += amount;
+    transfers += 1;
+    seq += 1;
+    const result = {
+      debitId: `debit-${seq}`,
+      creditId: `credit-${seq}`,
+      senderBalanceAfter: senderBalance,
+    };
+    if (requestId != null) processed.set(requestId, result);
+    return { status: "ok" as const, ...result };
+  }
+
+  return {
+    gift,
+    transfers: () => transfers,
+    senderBalance: () => senderBalance,
+    recipientBalance: () => recipientBalance,
+  };
+}
+
+describe("gift idempotency (same request id = one logical transfer)", () => {
+  it("a duplicate submit with the same request id moves the balance exactly once and returns the original result", async () => {
+    const sim = makeIdempotentGiftSimulator(10);
+
+    const first = await sim.gift(2, "req-A");
+    const second = await sim.gift(2, "req-A");
+
+    expect(first.status).toBe("ok");
+    expect(second.status).toBe("duplicate");
+    // Same debit/credit ids and the same post-gift balance both times.
+    expect(second).toMatchObject({
+      debitId: (first as { debitId: string }).debitId,
+      creditId: (first as { creditId: string }).creditId,
+      senderBalanceAfter: 8,
+    });
+    expect(sim.transfers()).toBe(1);
+    expect(sim.senderBalance()).toBe(8);
+    expect(sim.recipientBalance()).toBe(2);
+  });
+
+  it("different request ids are two distinct transfers", async () => {
+    const sim = makeIdempotentGiftSimulator(10);
+
+    await sim.gift(2, "req-A");
+    await sim.gift(2, "req-B");
+
+    expect(sim.transfers()).toBe(2);
+    expect(sim.senderBalance()).toBe(6);
+    expect(sim.recipientBalance()).toBe(4);
+  });
+
+  it("still rejects an over-balance gift (idempotency doesn't loosen the balance cap)", async () => {
+    const sim = makeIdempotentGiftSimulator(1);
+    const result = await sim.gift(5, "req-A");
+    expect(result.status).toBe("rejected");
+    expect(sim.transfers()).toBe(0);
+  });
+
+  it("still rejects a zero or negative gift", async () => {
+    const sim = makeIdempotentGiftSimulator(10);
+    expect((await sim.gift(0, "req-A")).status).toBe("rejected");
+    expect((await sim.gift(-3, "req-B")).status).toBe("rejected");
+    expect(sim.transfers()).toBe(0);
+  });
+});
+
+function makeIdempotentRedeemSimulator(startBalance: number) {
+  let balance = startBalance;
+  let claims = 0;
+  const processed = new Map<string, { txId: string; claimId: string; cost: number; balanceAfter: number }>();
+  let seq = 0;
+
+  async function redeem(cost: number, requestId: string | null) {
+    await Promise.resolve();
+    if (cost <= 0) {
+      return { status: "rejected" as const, reason: "Cost must be positive" };
+    }
+    if (requestId != null && processed.has(requestId)) {
+      return { status: "duplicate" as const, ...processed.get(requestId)! };
+    }
+    if (balance < cost) {
+      return { status: "rejected" as const, reason: "Insufficient balance" };
+    }
+    balance -= cost;
+    claims += 1;
+    seq += 1;
+    const result = { txId: `tx-${seq}`, claimId: `claim-${seq}`, cost, balanceAfter: balance };
+    if (requestId != null) processed.set(requestId, result);
+    return { status: "ok" as const, ...result };
+  }
+
+  return { redeem, claims: () => claims, balance: () => balance };
+}
+
+describe("reward-claim idempotency (same request id = one claim)", () => {
+  it("a duplicate claim with the same request id debits once, creates one claim, and returns the original", async () => {
+    const sim = makeIdempotentRedeemSimulator(30);
+
+    const first = await sim.redeem(25, "claim-req-A");
+    const second = await sim.redeem(25, "claim-req-A");
+
+    expect(first.status).toBe("ok");
+    expect(second.status).toBe("duplicate");
+    expect(second).toMatchObject({
+      claimId: (first as { claimId: string }).claimId,
+      balanceAfter: 5,
+    });
+    expect(sim.claims()).toBe(1);
+    expect(sim.balance()).toBe(5);
+  });
+
+  it("different request ids create two claims and debit twice", async () => {
+    const sim = makeIdempotentRedeemSimulator(60);
+    await sim.redeem(25, "claim-req-A");
+    await sim.redeem(25, "claim-req-B");
+    expect(sim.claims()).toBe(2);
+    expect(sim.balance()).toBe(10);
+  });
+
+  it("still rejects an over-balance claim", async () => {
+    const sim = makeIdempotentRedeemSimulator(10);
+    const result = await sim.redeem(25, "claim-req-A");
+    expect(result.status).toBe("rejected");
+    expect(sim.claims()).toBe(0);
+    expect(sim.balance()).toBe(10);
+  });
+
+  it("still rejects a zero or negative cost", async () => {
+    const sim = makeIdempotentRedeemSimulator(30);
+    expect((await sim.redeem(0, "claim-req-A")).status).toBe("rejected");
+    expect(sim.claims()).toBe(0);
   });
 });

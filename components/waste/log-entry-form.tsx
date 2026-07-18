@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { logWasteEntry } from "@/app/(app)/waste/actions";
+import { WASTE_QUANTITY_MAX } from "@/app/(app)/waste/constants";
 
 export interface LogFormItemOption {
   id: string;
@@ -111,6 +112,7 @@ export function LogEntryForm({
           id="waste-log-quantity"
           type="number"
           min="0"
+          max={WASTE_QUANTITY_MAX}
           step="0.01"
           inputMode="decimal"
           required

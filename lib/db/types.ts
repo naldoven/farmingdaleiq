@@ -2900,6 +2900,7 @@ export type Database = {
           kind: string
           notify_discord: boolean
           ref: Json | null
+          request_id: string | null
           setup_id: string | null
           start_time: string | null
           status: string
@@ -2923,6 +2924,7 @@ export type Database = {
           kind?: string
           notify_discord?: boolean
           ref?: Json | null
+          request_id?: string | null
           setup_id?: string | null
           start_time?: string | null
           status?: string
@@ -2946,6 +2948,7 @@ export type Database = {
           kind?: string
           notify_discord?: boolean
           ref?: Json | null
+          request_id?: string | null
           setup_id?: string | null
           start_time?: string | null
           status?: string
@@ -3638,7 +3641,7 @@ export type Database = {
       current_store_id: { Args: never; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
       redeem_reward: {
-        Args: { p_reward_id: string }
+        Args: { p_reward_id: string; p_request_id?: string | null }
         Returns: {
           transaction_id: string
           claim_id: string
@@ -3651,7 +3654,12 @@ export type Database = {
         Returns: { transaction_id: string; balance_after: number }[]
       }
       gift_tokens: {
-        Args: { p_to_user_id: string; p_amount: number; p_note?: string | null }
+        Args: {
+          p_to_user_id: string
+          p_amount: number
+          p_note?: string | null
+          p_request_id?: string | null
+        }
         Returns: {
           debit_transaction_id: string
           credit_transaction_id: string

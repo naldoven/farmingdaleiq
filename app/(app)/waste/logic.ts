@@ -39,6 +39,42 @@ const PERIOD_DAYS: Record<Exclude<PeriodKey, "all">, number> = {
 };
 
 /**
+ * Cost of ONE waste entry, in integer cents. Unit cost is a dollar amount
+ * (waste_items.unit_cost) that often has no exact binary-float representation
+ * (e.g. 1.15 is stored as 1.15000000000000001), so a naive
+ * `(quantity * unitCost).toFixed(2)` rounds the wrong way: 1.5 * 1.15 evaluates
+ * to 1.7249999999999999 and prints "$1.72" when the true money value is $1.73.
+ *
+ * Snapping the unit cost to whole cents FIRST (Math.round(unitCost * 100)),
+ * THEN multiplying by quantity and rounding once, gives Math.round(1.5 * 115) =
+ * 173 -> $1.73. Everything downstream sums these integer cents (associative and
+ * exact), so the by-item and by-category rollups can never disagree by a cent,
+ * and a 0.1 + 0.2 style set never drifts. Returns null when the item has no
+ * unit cost (cost unknown), which is distinct from a real 0.
+ */
+export function entryCostCents(quantity: number, unitCost: number | null): number | null {
+  if (unitCost == null) return null;
+  const unitCostCents = Math.round(unitCost * 100);
+  return Math.round(quantity * unitCostCents);
+}
+
+/**
+ * Single money-formatting convention for the whole Waste module. Takes integer
+ * cents and renders "$X.XX" using integer arithmetic (never divides back into a
+ * float), so it round-trips exactly. A null value (no unit cost set) renders as
+ * the shared "no cost" placeholder rather than a misleading "$0.00" -- the one
+ * convention both waste-reports.tsx and waste-log-grid.tsx now use.
+ */
+export function formatCentsAsUsd(cents: number | null): string {
+  if (cents == null) return "—";
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100);
+  const remainder = abs % 100;
+  return `${sign}$${dollars}.${remainder.toString().padStart(2, "0")}`;
+}
+
+/**
  * Start of the rolling window for `period`, relative to `now`. Returns null
  * for "all" (no lower bound).
  */
@@ -75,8 +111,13 @@ export interface ItemRollupRow {
   unit: WasteUnit;
   totalQuantity: number;
   entryCount: number;
-  /** Sum of quantity * unit_cost across entries; null when no cost is set for the item. */
-  totalCost: number | null;
+  /**
+   * Sum of each entry's cost in INTEGER CENTS (see entryCostCents); null when
+   * no cost is set for the item. Kept as cents, not dollars, so callers sum and
+   * compare without reintroducing float drift; format at the edge with
+   * formatCentsAsUsd.
+   */
+  totalCostCents: number | null;
 }
 
 /**
@@ -107,14 +148,14 @@ export function rollupByItem(
     const item = itemById.get(entry.itemId);
     if (!item) continue; // orphaned/unknown item id: skip rather than crash the report
 
-    const cost = item.unitCost != null ? entry.quantity * item.unitCost : null;
+    const costCents = entryCostCents(entry.quantity, item.unitCost);
     const existing = rows.get(item.id);
 
     if (existing) {
       existing.totalQuantity += entry.quantity;
       existing.entryCount += 1;
-      if (cost != null) {
-        existing.totalCost = (existing.totalCost ?? 0) + cost;
+      if (costCents != null) {
+        existing.totalCostCents = (existing.totalCostCents ?? 0) + costCents;
       }
     } else {
       rows.set(item.id, {
@@ -123,7 +164,7 @@ export function rollupByItem(
         unit: item.unit,
         totalQuantity: entry.quantity,
         entryCount: 1,
-        totalCost: cost,
+        totalCostCents: costCents,
       });
     }
   }
@@ -136,15 +177,18 @@ export interface CategoryRollupRow {
   categoryName: string;
   entryCount: number;
   /**
-   * Sum of quantity * unit_cost across every entry in the category. Total
-   * *quantity* is intentionally not summed here: items in the same category
-   * can use different units (each/lb/oz), so a raw quantity sum would be
-   * meaningless. Cost is the common unit across items.
+   * Sum of each entry's cost in INTEGER CENTS across the category (see
+   * entryCostCents). Uses the identical per-entry cents computation as
+   * rollupByItem, so summing the item rows and summing the category rows for
+   * the same entries always yields the same grand total. Total *quantity* is
+   * intentionally not summed here: items in the same category can use different
+   * units (each/lb/oz), so a raw quantity sum would be meaningless. Cost is the
+   * common unit across items.
    *
-   * Same not-snapshotted-per-entry limitation as rollupByItem's totalCost
+   * Same not-snapshotted-per-entry limitation as rollupByItem's totalCostCents
    * above (see that doc comment).
    */
-  totalCost: number | null;
+  totalCostCents: number | null;
 }
 
 const UNCATEGORIZED_KEY = "__uncategorized__";
@@ -163,13 +207,13 @@ export function rollupByCategory(
     if (!item) continue;
 
     const key = item.categoryId ?? UNCATEGORIZED_KEY;
-    const cost = item.unitCost != null ? entry.quantity * item.unitCost : null;
+    const costCents = entryCostCents(entry.quantity, item.unitCost);
     const existing = rows.get(key);
 
     if (existing) {
       existing.entryCount += 1;
-      if (cost != null) {
-        existing.totalCost = (existing.totalCost ?? 0) + cost;
+      if (costCents != null) {
+        existing.totalCostCents = (existing.totalCostCents ?? 0) + costCents;
       }
     } else {
       rows.set(key, {
@@ -178,10 +222,10 @@ export function rollupByCategory(
           ? (categoryNameById.get(item.categoryId) ?? "Category")
           : "Uncategorized",
         entryCount: 1,
-        totalCost: cost,
+        totalCostCents: costCents,
       });
     }
   }
 
-  return [...rows.values()].sort((a, b) => (b.totalCost ?? 0) - (a.totalCost ?? 0));
+  return [...rows.values()].sort((a, b) => (b.totalCostCents ?? 0) - (a.totalCostCents ?? 0));
 }

@@ -7,6 +7,7 @@ import { ChevronDown, Heart, Trash2 } from "lucide-react";
 import { SearchBar } from "@/components/mobile";
 import { logWasteEntry } from "@/app/(app)/waste/actions";
 import {
+  formatCentsAsUsd,
   rollupByCategory,
   rollupByItem,
   type ItemRollupRow,
@@ -16,10 +17,6 @@ import {
 } from "@/app/(app)/waste/logic";
 
 const ALL_CATEGORIES = "__all__";
-
-function formatCost(cost: number | null | undefined): string {
-  return `$${(cost ?? 0).toFixed(2)}`;
-}
 
 /**
  * KitchenIQ-style waste grid (docs/DESIGN-SYSTEM.md): a colored category
@@ -52,16 +49,16 @@ export function WasteLogGrid({
     () => new Map(itemRollup.map((row) => [row.itemId, row])),
     [itemRollup],
   );
-  const overallTotal = useMemo(
-    () => itemRollup.reduce((sum, row) => sum + (row.totalCost ?? 0), 0),
+  const overallTotalCents = useMemo(
+    () => itemRollup.reduce((sum, row) => sum + (row.totalCostCents ?? 0), 0),
     [itemRollup],
   );
 
   const activeCategory = categories.find((category) => category.id === categoryId) ?? null;
   const bannerLabel = activeCategory ? activeCategory.name : "All items";
-  const bannerTotal = activeCategory
-    ? (categoryRollup.find((row) => row.categoryId === categoryId)?.totalCost ?? 0)
-    : overallTotal;
+  const bannerTotalCents = activeCategory
+    ? (categoryRollup.find((row) => row.categoryId === categoryId)?.totalCostCents ?? 0)
+    : overallTotalCents;
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredItems = items.filter((item) => {
@@ -80,7 +77,7 @@ export function WasteLogGrid({
           <span className="min-w-0 flex-1 truncate text-[15px] font-bold">
             {bannerLabel}
             <span className="ml-2 text-[13px] font-semibold opacity-90">
-              Total: {formatCost(bannerTotal)}
+              Total: {formatCentsAsUsd(bannerTotalCents)}
             </span>
           </span>
           <ChevronDown className="h-5 w-5 shrink-0 opacity-90" aria-hidden="true" />
@@ -188,7 +185,12 @@ function WasteItemCard({
       </div>
 
       <p className="text-[12px] text-muted-ink">{rollup?.entryCount ?? 0} tracked</p>
-      <p className="text-[13px] font-semibold text-ink">Total: {formatCost(rollup?.totalCost)}</p>
+      {/* No entries yet is a genuine $0.00; entries logged against an item with
+          no unit cost is "—" (unknown), via the shared formatCentsAsUsd null
+          convention -- never the misleading "$0.00" the old formatter showed. */}
+      <p className="text-[13px] font-semibold text-ink">
+        Total: {formatCentsAsUsd(rollup ? rollup.totalCostCents : 0)}
+      </p>
 
       {error && <p className="text-[11px] text-danger">{error}</p>}
     </div>

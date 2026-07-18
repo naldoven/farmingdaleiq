@@ -60,6 +60,10 @@ export function CreateTaskForm({
         setError(null);
         setDone(false);
         const [kind, id] = assignee.split(":");
+        // T2: one idempotency key per submit attempt, captured in this closure so
+        // a framework retry of the same action call dedupes at tasks_request_id_uq
+        // instead of creating a duplicate task.
+        const requestId = crypto.randomUUID();
         startTransition(async () => {
           const result = await createTask({
             title,
@@ -74,6 +78,7 @@ export function CreateTaskForm({
             assignedPositionId: kind === "position" ? id : "",
             tokenValue: Number(tokenValue) || 0,
             notifyDiscord,
+            requestId,
           });
           if (!result.ok) {
             setError(result.error);

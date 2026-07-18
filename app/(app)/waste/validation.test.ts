@@ -46,6 +46,19 @@ describe("logEntrySchema", () => {
     const result = logEntrySchema.parse({ itemId: UUID_A, quantity: "4" });
     expect(result.quantity).toBe(4);
   });
+
+  it("accepts a quantity exactly at the max", () => {
+    const result = logEntrySchema.parse({ itemId: UUID_A, quantity: 10000 });
+    expect(result.quantity).toBe(10000);
+  });
+
+  it("rejects a quantity just over the max", () => {
+    expect(() => logEntrySchema.parse({ itemId: UUID_A, quantity: 10001 })).toThrow();
+  });
+
+  it("rejects an absurd typo quantity (1e21 that renders as $5.84e+21)", () => {
+    expect(() => logEntrySchema.parse({ itemId: UUID_A, quantity: 1e21 })).toThrow();
+  });
 });
 
 describe("idSchema", () => {

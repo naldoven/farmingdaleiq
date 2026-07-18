@@ -93,6 +93,7 @@ export async function sendGift(
         toUserId: parsed.toUserId,
         amount: parsed.amount,
         note: parsed.note ? parsed.note : undefined,
+        requestId: parsed.requestId,
       },
       supabase
     );

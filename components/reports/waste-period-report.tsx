@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import {
   filterEntriesByPeriod,
+  formatCentsAsUsd,
   rollupByCategory,
   rollupByItem,
   type PeriodKey,
@@ -74,7 +75,12 @@ export function WastePeriodReport({
       itemName: cell(r.itemName),
       entryCount: cell(r.entryCount),
       totalQuantity: cell(`${r.totalQuantity} ${r.unit}`, r.totalQuantity),
-      totalCost: cell(r.totalCost != null ? `$${r.totalCost.toFixed(2)}` : "—", r.totalCost),
+      // CSV carries dollars (cents/100) so a spreadsheet reads it as a number;
+      // the display cell is formatted from integer cents.
+      totalCost: cell(
+        formatCentsAsUsd(r.totalCostCents),
+        r.totalCostCents != null ? r.totalCostCents / 100 : "",
+      ),
     },
   }));
 
@@ -88,7 +94,10 @@ export function WastePeriodReport({
     cells: {
       categoryName: cell(r.categoryName),
       entryCount: cell(r.entryCount),
-      totalCost: cell(r.totalCost != null ? `$${r.totalCost.toFixed(2)}` : "—", r.totalCost),
+      totalCost: cell(
+        formatCentsAsUsd(r.totalCostCents),
+        r.totalCostCents != null ? r.totalCostCents / 100 : "",
+      ),
     },
   }));
 

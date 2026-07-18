@@ -55,6 +55,11 @@ export const createTaskSchema = z
     tokenValue: z.number().int().min(0).max(10_000).default(0),
     notifyDiscord: z.boolean().default(false),
     discordChannelId: uuidOrEmpty,
+    // T2: client-generated idempotency key (crypto.randomUUID) minted per submit
+    // attempt. Threaded to tasks.request_id (unique partial index) so a
+    // retry/double-submit is a no-op that returns the first task. Optional so
+    // existing callers/tests that omit it keep the current behavior.
+    requestId: uuidOrEmpty,
   })
   .transform((v) => ({
     title: v.title,
@@ -68,6 +73,7 @@ export const createTaskSchema = z
     tokenValue: v.tokenValue,
     notifyDiscord: v.notifyDiscord,
     discordChannelId: normalizeUuid(v.discordChannelId),
+    requestId: normalizeUuid(v.requestId),
   }));
 
 export type CreateTaskInput = z.input<typeof createTaskSchema>;

@@ -56,8 +56,12 @@ export function RewardCard({ reward, balance, canClaimAtAll }: { reward: RewardC
           disabled={disabled}
           onClick={() => {
             setError(null);
+            // TOK1: one idempotency key per claim attempt, captured in the
+            // closure so a retry of this action call dedupes at redeem_reward()
+            // instead of creating a second claim + fulfillment task.
+            const requestId = crypto.randomUUID();
             startTransition(async () => {
-              const result = await claimReward({ rewardId: reward.id });
+              const result = await claimReward({ rewardId: reward.id, requestId });
               if (!result.ok) {
                 setError(result.error);
                 return;

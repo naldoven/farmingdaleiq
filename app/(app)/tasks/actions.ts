@@ -73,7 +73,14 @@ async function emitBestEffort(key: Parameters<typeof emitEvent>[0], payload: Rec
   }
 }
 
-/** Ad hoc (one-off) task: create for a person, a position, or the pool. */
+/**
+ * Ad hoc (one-off) task: create for a person, a position, or the pool.
+ * Idempotent when the caller supplies a request_id (crypto.randomUUID minted per
+ * submit): the unique partial index tasks_request_id_uq makes a retry collide
+ * (23505), which is caught below and resolved to the first task instead of a
+ * duplicate. Callers that omit request_id keep the prior (non-idempotent)
+ * behavior.
+ */
 export async function createTask(
   input: CreateTaskInput,
 ): Promise<ActionResult<{ id: string }>> {
@@ -98,13 +105,32 @@ export async function createTask(
         token_value: parsed.tokenValue,
         notify_discord: parsed.notifyDiscord,
         discord_channel_id: parsed.discordChannelId,
+        request_id: parsed.requestId,
         created_by: userData.user?.id ?? null,
       })
       .select("id")
       .single();
 
-    if (error || !data) {
-      return { ok: false, error: error?.message ?? "Could not create task." };
+    if (error) {
+      // T2 idempotency: a retry/double-submit carrying the same request_id
+      // collides with the unique partial index tasks_request_id_uq (23505).
+      // Treat it as a no-op and return the task the first submit created, rather
+      // than surfacing a duplicate-key error or creating a second task.
+      if (error.code === "23505" && parsed.requestId) {
+        const { data: existing } = await supabase
+          .from("tasks")
+          .select("id")
+          .eq("request_id", parsed.requestId)
+          .maybeSingle();
+
+        if (existing) {
+          return { ok: true, data: { id: existing.id } };
+        }
+      }
+      return { ok: false, error: error.message };
+    }
+    if (!data) {
+      return { ok: false, error: "Could not create task." };
     }
 
     revalidatePath("/tasks");
