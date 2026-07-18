@@ -251,6 +251,21 @@ export async function signItem(input: SignItemInput): Promise<ActionResult> {
     const supabase = await createClient();
     const { data: userData } = await supabase.auth.getUser();
 
+    // TR2 fix: a person may never countersign their own passport item
+    // (self-approval). The UI hides self-sign, but a direct action call must
+    // be rejected server-side regardless of the caller's training.stamp grant.
+    const { data: signEnrollment } = await supabase
+      .from("passport_enrollments")
+      .select("user_id")
+      .eq("id", parsed.enrollmentId)
+      .maybeSingle();
+    if (!signEnrollment) {
+      return { ok: false, error: "Enrollment not found." };
+    }
+    if (userData.user?.id && signEnrollment.user_id === userData.user.id) {
+      return { ok: false, error: "You can't sign off on your own passport." };
+    }
+
     const { data: existing } = await supabase
       .from("passport_item_progress")
       .select("id")
@@ -306,6 +321,13 @@ export async function stampPassport(input: StampPassportInput): Promise<ActionRe
 
     if (!enrollment) {
       return { ok: false, error: "Enrollment not found." };
+    }
+    // TR2 fix: a person may never stamp their own passport (self-approval).
+    // For a leadership passport this would self-upgrade the actor's role and
+    // fill an org slot, so it must be blocked server-side even for a
+    // training.stamp holder, regardless of what the UI shows.
+    if (userData.user?.id && enrollment.user_id === userData.user.id) {
+      return { ok: false, error: "You can't stamp your own passport." };
     }
     if (enrollment.stamped_at) {
       return { ok: true, data: undefined }; // already stamped; safe no-op
