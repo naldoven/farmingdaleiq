@@ -218,94 +218,85 @@ export async function processAppEvents(
 
   const scannedEvents = (events ?? []) as AppEventRow[];
 
+  // N1 fix: dead-letter poisoned rows instead of wedging the whole pipeline.
+  //
+  // Each event, and each recipient within an event, is processed inside its
+  // own try/catch. A permanently-failing row (the classic case: a recipient
+  // user_id that violates notifications_user_id_fkey) is logged and SKIPPED,
+  // and the loop moves on. Because the loop can no longer throw, the cursor
+  // advance below always runs and the batch never re-scans the same poison
+  // row forever. Before this, one bad recipient re-threw on every run, the
+  // cursor never advanced, and the entire notify/push/Discord drain was stuck
+  // for 7+ days. Idempotency is unchanged (createNotificationIfNew still
+  // dedupes per source event id), so re-runs of a good batch stay safe.
+  //
+  // ⚠️ DEPLOY DECISION (product owner, BEFORE first prod run): this consumer's
+  // cursor has been parked for 7+ days, so ~2000 backlogged events will drain
+  // to real staff (in-app + push + Discord) on the very first successful run.
+  // The owner must decide flush-all vs. fast-forward the cursor to "now"
+  // BEFORE deploy. This fix deliberately does NOT auto-purge or mass-send
+  // beyond the normal drain, and does NOT change the cursor-advance semantics
+  // beyond letting the batch complete.
   for (const evt of scannedEvents) {
     result.scanned += 1;
     const key = evt.event_key as EventKey;
     const payload = (evt.payload && typeof evt.payload === "object" ? evt.payload : {}) as EventPayload;
-    let recipients = extractRecipientIds(payload);
 
-    // Store-wide broadcast fan-out: if a broadcast-to-all key carries no
-    // explicit recipient, resolve to every active employee so the
-    // announcement actually reaches the notification center.
-    if (recipients.length === 0 && BROADCAST_ALL_KEYS.has(key)) {
-      recipients = await allActiveRecipientIds(client);
-    }
+    try {
+      let recipients = extractRecipientIds(payload);
 
-    if ((NOTIFIABLE_EVENT_KEYS as string[]).includes(key)) {
-      const content = buildNotificationContent(key, payload);
+      // Store-wide broadcast fan-out: if a broadcast-to-all key carries no
+      // explicit recipient, resolve to every active employee so the
+      // announcement actually reaches the notification center.
+      if (recipients.length === 0 && BROADCAST_ALL_KEYS.has(key)) {
+        recipients = await allActiveRecipientIds(client);
+      }
 
-      for (const userId of recipients) {
-        const created = await createNotificationIfNew(client, {
-          userId,
-          eventKey: key,
-          eventId: evt.id,
-          title: content.title,
-          body: content.body,
-          link: content.link,
-        });
+      if ((NOTIFIABLE_EVENT_KEYS as string[]).includes(key)) {
+        const content = buildNotificationContent(key, payload);
 
-        if (created) {
-          result.notificationsCreated += 1;
-          const pushResult = await fanOutPush(client, userId, content);
-          result.pushSent += pushResult.sent;
-          result.pushFailed += pushResult.failed;
+        for (const userId of recipients) {
+          // Per-recipient isolation: one poisoned recipient (FK violation,
+          // etc.) is logged and skipped so the event's OTHER recipients still
+          // get notified, and it never blocks the batch or stalls the cursor.
+          try {
+            const created = await createNotificationIfNew(client, {
+              userId,
+              eventKey: key,
+              eventId: evt.id,
+              title: content.title,
+              body: content.body,
+              link: content.link,
+            });
+
+            if (created) {
+              result.notificationsCreated += 1;
+              const pushResult = await fanOutPush(client, userId, content);
+              result.pushSent += pushResult.sent;
+              result.pushFailed += pushResult.failed;
+            }
+          } catch (recipientError) {
+            console.error(
+              `processAppEvents: skipping poisoned recipient ${userId} for event ${evt.id} (${key})`,
+              recipientError,
+            );
+          }
         }
       }
-    }
 
-    if ((DISCORD_ROUTABLE_EVENT_KEYS as string[]).includes(key)) {
-      // Per-instance opt-out (ARCHITECTURE.md "Discord integration" > "The
-      // flag": tasks/task_templates/checklist_schedules/work_orders/
-      // pm_schedules each carry a `notify_discord` column). This stream
-      // doesn't own those tables, so it can't read the column directly —
-      // instead, a producer that wants to suppress Discord for one instance
-      // (flag off) includes `notify_discord: false` (canonical) in the
-      // emitEvent payload (see lib/events/bus.ts `DiscordControlFields`;
-      // `notifyDiscord` accepted as a camelCase alias), which this consumer
-      // honors ahead of the global discord_event_routes.enabled toggle.
-      const notifyDiscordOverride = payload.notify_discord ?? payload.notifyDiscord;
-      if (notifyDiscordOverride === false) {
-        continue;
-      }
-
-      const route = await getDiscordRoute(key, client);
-
-      if (route) {
-        // Per-instance channel override: a producer may pin one event to a
-        // specific channel via `discord_channel_id`, which wins over the
-        // global route's channel. The route still gates whether Discord is
-        // enabled for this key at all, so an override can't post to a key
-        // routing has been turned off for.
-        const channelId = payloadChannelOverride(payload) ?? route.channelId;
-
-        const primaryRecipient = recipients[0];
-        let recipientName: string | undefined;
-        let recipientDiscordId: string | null | undefined;
-
-        if (primaryRecipient) {
-          const { data: profile } = await client
-            .from("profiles")
-            .select("name, discord_user_id")
-            .eq("id", primaryRecipient)
-            .maybeSingle();
-          recipientName = profile?.name;
-          recipientDiscordId = profile?.discord_user_id;
-        }
-
-        const message = buildDiscordMessage(key, payload, { recipientName, recipientDiscordId });
-        const { queued } = await enqueueDiscordMessage(
-          { channelId, message, sourceEventId: evt.id },
-          client,
-        );
-        if (queued) result.discordQueued += 1;
-      }
+      await processDiscordForEvent(client, key, evt, payload, recipients, result);
+    } catch (eventError) {
+      // Per-event isolation: any unexpected failure on one event is logged and
+      // skipped (dead-lettered) so a single bad row can never wedge the batch.
+      console.error(`processAppEvents: skipping failed event ${evt.id} (${key})`, eventError);
     }
   }
 
   // Advance the durable cursor only after the whole batch is processed. Rows
   // came back ordered by (created_at, id) ascending, so the last one is the
-  // batch high-water mark. A mid-batch throw above skips this, leaving the
-  // cursor where it was so the batch is safely re-scanned next run.
+  // batch high-water mark. Because the per-event/per-recipient try/catch above
+  // absorbs failures, the loop always reaches here and the cursor advances
+  // past dead-lettered rows instead of re-scanning them forever.
   if (scannedEvents.length > 0) {
     const last = scannedEvents[scannedEvents.length - 1];
     const { error: cursorError } = await client.from("job_cursors").upsert(
@@ -324,4 +315,68 @@ export async function processAppEvents(
   }
 
   return result;
+}
+
+/**
+ * Discord fan-out for one event, extracted so the per-event try/catch in
+ * processAppEvents stays readable. Kept behavior-identical to the inline
+ * version it replaced.
+ */
+async function processDiscordForEvent(
+  client: SupabaseLike,
+  key: EventKey,
+  evt: AppEventRow,
+  payload: EventPayload,
+  recipients: string[],
+  result: ProcessEventsResult,
+): Promise<void> {
+  if (!(DISCORD_ROUTABLE_EVENT_KEYS as string[]).includes(key)) {
+    return;
+  }
+
+  // Per-instance opt-out (ARCHITECTURE.md "Discord integration" > "The
+  // flag": tasks/task_templates/checklist_schedules/work_orders/
+  // pm_schedules each carry a `notify_discord` column). This stream
+  // doesn't own those tables, so it can't read the column directly —
+  // instead, a producer that wants to suppress Discord for one instance
+  // (flag off) includes `notify_discord: false` (canonical) in the
+  // emitEvent payload (see lib/events/bus.ts `DiscordControlFields`;
+  // `notifyDiscord` accepted as a camelCase alias), which this consumer
+  // honors ahead of the global discord_event_routes.enabled toggle.
+  const notifyDiscordOverride = payload.notify_discord ?? payload.notifyDiscord;
+  if (notifyDiscordOverride === false) {
+    return;
+  }
+
+  const route = await getDiscordRoute(key, client);
+
+  if (route) {
+    // Per-instance channel override: a producer may pin one event to a
+    // specific channel via `discord_channel_id`, which wins over the
+    // global route's channel. The route still gates whether Discord is
+    // enabled for this key at all, so an override can't post to a key
+    // routing has been turned off for.
+    const channelId = payloadChannelOverride(payload) ?? route.channelId;
+
+    const primaryRecipient = recipients[0];
+    let recipientName: string | undefined;
+    let recipientDiscordId: string | null | undefined;
+
+    if (primaryRecipient) {
+      const { data: profile } = await client
+        .from("profiles")
+        .select("name, discord_user_id")
+        .eq("id", primaryRecipient)
+        .maybeSingle();
+      recipientName = profile?.name;
+      recipientDiscordId = profile?.discord_user_id;
+    }
+
+    const message = buildDiscordMessage(key, payload, { recipientName, recipientDiscordId });
+    const { queued } = await enqueueDiscordMessage(
+      { channelId, message, sourceEventId: evt.id },
+      client,
+    );
+    if (queued) result.discordQueued += 1;
+  }
 }
