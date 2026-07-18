@@ -19,6 +19,46 @@ import {
 } from "@/app/(app)/people/personal-record";
 
 /**
+ * PPL2: sensitive PII (phone, email, birthdate, hired_on, discord_user_id) is
+ * visible only to the person themselves or a people.manage holder. Any other
+ * signed-in coworker sees only non-sensitive info.
+ */
+export function canSeeProfilePII(isSelf: boolean, canManage: boolean): boolean {
+  return isSelf || canManage;
+}
+
+export type ProfileSectionVariant = "self-edit" | "manager-edit" | "restricted";
+
+/**
+ * Which Profile-section variant to render (PPL2):
+ *  - "self-edit"    : the person, without people.manage → narrow self-service form.
+ *  - "manager-edit" : a people.manage holder → full editable form (sees PII).
+ *  - "restricted"   : anyone else → NO PII form, only a privacy note. This is
+ *    the branch that closes the leak: a non-self, non-manager viewer never gets
+ *    the phone/email/birthdate/hired_on/discord_user_id fields rendered.
+ */
+export function profileSectionVariant(isSelf: boolean, canManage: boolean): ProfileSectionVariant {
+  if (isSelf && !canManage) return "self-edit";
+  if (canManage) return "manager-edit";
+  return "restricted";
+}
+
+/**
+ * PPL1: the roles a viewer may assign — only those at or below their OWN rank
+ * (a lower `rank` number is more senior, so a viewer can never assign a role
+ * senior to their own). A null actor rank or null role rank is excluded so an
+ * unranked actor can't assign a ranked role and an unranked role is never
+ * offered. The DB privilege-guard trigger is the real enforcement; this keeps
+ * the dropdown from offering a choice the trigger would reject.
+ */
+export function assignableRolesForRank<T extends { rank: number | null }>(
+  roles: T[],
+  actorRank: number | null,
+): T[] {
+  return roles.filter((r) => r.rank != null && actorRank != null && r.rank >= actorRank);
+}
+
+/**
  * /people/[id] profile page — ARCHITECTURE.md "/people" page-map row.
  * Contact fields, role, birthdate, hired_on, discord_user_id, avatar_url,
  * active toggle, plus a read-only cross-module "Personal record" summary
@@ -76,10 +116,25 @@ export default async function ProfilePage({
     data: { user: authUser },
   } = await supabase.auth.getUser();
   const isSelf = authUser?.id === profile.id;
-  const [canViewAccountability, canViewTokens] = await Promise.all([
+  // PPL2: sensitive PII (phone, email, birthdate, hired_on, discord_user_id)
+  // is visible only to the person themselves or to a people.manage holder.
+  // Any other signed-in coworker sees only non-sensitive info (name, role,
+  // avatar, active status).
+  const canSeePII = canSeeProfilePII(isSelf, canManage);
+  const profileVariant = profileSectionVariant(isSelf, canManage);
+  const [canViewAccountability, canViewTokens, { data: viewerProfile }] = await Promise.all([
     hasPermission("accountability.manage"),
     hasPermission("tokens.manage"),
+    supabase.from("profiles").select("role_id").eq("id", authUser?.id ?? "").maybeSingle(),
   ]);
+
+  // PPL1: the viewer may only assign roles at or below their OWN rank (a lower
+  // `rank` number is more senior). The DB privilege-guard trigger is the real
+  // enforcement; this filters the dropdown so the UI never offers a role the
+  // trigger would reject.
+  const actorRank =
+    viewerProfile?.role_id != null ? roleRankById.get(viewerProfile.role_id) ?? null : null;
+  const assignableRoles = assignableRolesForRank(roles ?? [], actorRank);
 
   const [
     { data: assignedTasks },
@@ -144,7 +199,7 @@ export default async function ProfilePage({
         <AvatarInitials name={profile.name} size="lg" />
         <div>
           <p className="text-[22px] font-bold text-ink">{profile.name}</p>
-          <p className="text-[13px] text-muted-ink">{profile.email}</p>
+          {canSeePII && <p className="text-[13px] text-muted-ink">{profile.email}</p>}
         </div>
         <div className="flex flex-wrap items-center justify-center gap-1.5">
           <StatusBadge tone={profile.active ? "success" : "neutral"} dot>
@@ -196,18 +251,19 @@ export default async function ProfilePage({
           profileId={profile.id}
           initialRoleId={profile.role_id}
           roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))}
-          canEdit={canManage}
+          assignableRoles={assignableRoles.map((r) => ({ id: r.id, name: r.name }))}
+          canEdit={canManage && !isSelf}
         />
       </SectionCard>
 
       <SectionCard title="Profile">
-        {isSelf && !canManage ? (
+        {profileVariant === "self-edit" ? (
           <SelfProfileEditForm
             initialPhone={profile.phone}
             initialBirthdate={profile.birthdate}
             initialAvatarUrl={profile.avatar_url}
           />
-        ) : (
+        ) : profileVariant === "manager-edit" ? (
           <ProfileEditForm
             profileId={profile.id}
             initialName={profile.name}
@@ -219,6 +275,14 @@ export default async function ProfilePage({
             initialActive={profile.active}
             canEdit={canManage}
           />
+        ) : (
+          // PPL2: a non-self, non-manager viewer never receives the sensitive
+          // fields. Name, role, avatar, and active status are already shown
+          // above; the contact PII is deliberately withheld here.
+          <p className="text-[13px] text-muted-ink">
+            Contact details (phone, email, birthday, hire date, Discord ID) are
+            visible only to the person and to managers.
+          </p>
         )}
       </SectionCard>
     </div>
