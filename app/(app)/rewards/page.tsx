@@ -18,6 +18,8 @@ import { getBalance } from "@/lib/tokens/ledger";
  * KitchenIQ mobile design system (docs/DESIGN-SYSTEM.md) -- data, actions,
  * and permission checks unchanged.
  */
+export const metadata = { title: "Rewards" };
+
 export default async function RewardsPage() {
   const supabase = await createClient();
   const {

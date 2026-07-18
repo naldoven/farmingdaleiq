@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server";
  * deactivate, enforced both here (hiding the controls) and server-side in
  * app/(app)/vendors/actions.ts + RLS.
  */
+export const metadata = { title: "Vendors" };
+
 export default async function VendorsPage() {
   await requirePermission("vendors.view");
   const canManage = await hasPermission("vendors.manage");

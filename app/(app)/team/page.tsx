@@ -77,6 +77,8 @@ function AssignLink({ href, label }: { href: string; label: string }) {
  * view_own, waste.manage/reports.view, breaks.view) so this dashboard never
  * shows a role more than its own pages would.
  */
+export const metadata = { title: "Team" };
+
 export default async function TeamPage({
   searchParams,
 }: {

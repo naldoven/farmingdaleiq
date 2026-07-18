@@ -20,6 +20,8 @@ import { REPORT_TYPES } from "./report-types";
  * the row here and gets a clear LockedSection instead of an empty table
  * once it opens that report.
  */
+export const metadata = { title: "Reports" };
+
 export default async function ReportsPage() {
   await requirePermission("reports.view");
 

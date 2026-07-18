@@ -27,6 +27,8 @@ function todayIso(): string {
  * query, permission check, and server action below is unchanged from the
  * pre-redesign page.
  */
+export const metadata = { title: "Setups" };
+
 export default async function SetupsPage({
   searchParams,
 }: {

@@ -35,6 +35,8 @@ function formatDate(value: string | null): string {
  * Table, and the active-points count is a StatTile. Visual/layout only —
  * queries, server actions, and permission gates are unchanged.
  */
+export const metadata = { title: "Accountability" };
+
 export default async function AccountabilityPage() {
   const supabase = await createClient();
   const {

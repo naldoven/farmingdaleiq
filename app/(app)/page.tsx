@@ -187,6 +187,10 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      {/* PWA-F3: the home screen's wordmark lives in the header as a <span>, so
+          the content column had no top-level heading. This gives assistive tech
+          a page-level h1 without changing the visual layout. */}
+      <h1 className="sr-only">Home</h1>
       <HScroll>
         <MetricCard
           className="w-36"

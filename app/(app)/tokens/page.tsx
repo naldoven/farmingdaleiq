@@ -25,6 +25,8 @@ const DEFAULT_EARNING_RULE_KEYS = Object.keys(EARNING_RULE_LABELS);
  * "Token integrity"). Restyled to the KitchenIQ mobile design system
  * (docs/DESIGN-SYSTEM.md) -- data, actions, and permission checks unchanged.
  */
+export const metadata = { title: "Tokens" };
+
 export default async function TokensPage() {
   const supabase = await createClient();
   const {

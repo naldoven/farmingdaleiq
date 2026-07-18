@@ -13,6 +13,8 @@ import { storeLocalDate, type OrderStage } from "@/app/(app)/catering/logic";
  * stage columns, drag/dropdown moves, new-order intake"). A "new order came
  * in" strip highlights today's intake.
  */
+export const metadata = { title: "Catering" };
+
 export default async function CateringPipelinePage() {
   await requirePermission("catering.view");
   const canManage = await hasPermission("catering.manage");

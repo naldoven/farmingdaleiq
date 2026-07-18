@@ -24,6 +24,8 @@ import { createClient } from "@/lib/supabase/server";
  * filtering, and permission checks are unchanged from the previous table
  * layout.
  */
+export const metadata = { title: "People" };
+
 export default async function PeoplePage({
   searchParams,
 }: {
