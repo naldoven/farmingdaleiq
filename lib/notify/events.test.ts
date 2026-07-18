@@ -3,6 +3,37 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { FakeSupabase } from "@/lib/notify/test-support/fake-supabase";
 import { processAppEvents } from "./events";
 
+/**
+ * Wraps a FakeSupabase so that inserting a notification for `poisonUserId`
+ * rejects with an FK-style error (mirrors notifications_user_id_fkey in prod).
+ * Everything else delegates to the real in-memory fake.
+ */
+function poisonNotificationClient(db: FakeSupabase, poisonUserId: string) {
+  return {
+    from(name: string) {
+      const table = db.from(name);
+      if (name !== "notifications") return table;
+      return {
+        select: () => table.select(),
+        insert: (values: Record<string, unknown>) => {
+          if (values.user_id === poisonUserId) {
+            const p = Promise.resolve({
+              data: null,
+              error: {
+                message:
+                  'insert or update on table "notifications" violates foreign key constraint "notifications_user_id_fkey"',
+              },
+            });
+            return { then: p.then.bind(p) };
+          }
+          return table.insert(values);
+        },
+      };
+    },
+    rowsOf: (name: string) => db.rowsOf(name),
+  } as unknown as Parameters<typeof processAppEvents>[1];
+}
+
 const { sendWebPushMock, sendDiscordWebhookMock } = vi.hoisted(() => ({
   sendWebPushMock: vi.fn(),
   sendDiscordWebhookMock: vi.fn(),
@@ -259,6 +290,69 @@ describe("processAppEvents", () => {
 
     expect(result.discordQueued).toBe(1);
     expect(db.rowsOf("discord_outbox")[0]).toMatchObject({ channel_id: "chan-override" });
+  });
+
+  it("dead-letters a poisoned recipient: good events still process and the cursor advances past it (N1)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = new FakeSupabase({
+      app_events: [
+        { id: "evt-good", event_key: "task_assigned", created_at: "2026-07-07T10:00:00.000Z", payload: { user_id: "u-good", title: "A" } },
+        { id: "evt-poison", event_key: "task_assigned", created_at: "2026-07-07T10:01:00.000Z", payload: { user_id: "u-poison", title: "B" } },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+    const client = poisonNotificationClient(db, "u-poison");
+
+    const result = await processAppEvents(200, client);
+
+    // The good event created its notification; the poison one was skipped, not
+    // rethrown. Before the fix the whole batch threw and nothing was created.
+    expect(result.scanned).toBe(2);
+    expect(result.notificationsCreated).toBe(1);
+    expect(db.rowsOf("notifications").map((n) => n.user_id)).toEqual(["u-good"]);
+
+    // The cursor advanced PAST the poison row (batch high-water mark), so it is
+    // dead-lettered rather than re-scanned forever.
+    expect(db.rowsOf("job_cursors")[0]).toMatchObject({
+      job_name: "process-events",
+      last_event_id: "evt-poison",
+    });
+
+    // A second run finds nothing new — the poison event is not retried.
+    const second = await processAppEvents(200, client);
+    expect(second.scanned).toBe(0);
+
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("isolates a poisoned recipient WITHIN one event so the other recipients still get notified (N1)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = new FakeSupabase({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "broadcast",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { user_ids: ["u-good", "u-poison"], title: "All hands" },
+        },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+    const client = poisonNotificationClient(db, "u-poison");
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.notificationsCreated).toBe(1);
+    expect(db.rowsOf("notifications").map((n) => n.user_id)).toEqual(["u-good"]);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it("honors the canonical notify_discord: false opt-out", async () => {

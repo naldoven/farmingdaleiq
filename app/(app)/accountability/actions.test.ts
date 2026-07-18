@@ -201,61 +201,74 @@ describe("issueInfraction", () => {
     },
   );
 
-  it("issues a fresh infraction and reports newly triggered ladder thresholds", async () => {
-    perRequestClient = createFakeClient(
-      {
-        infraction_types: [{ data: { id: TYPE_ID, points: 15, active: true }, error: null }],
-        accountability_settings: [{ data: settingsRow(), error: null }],
-        infractions: [
-          { data: { id: "new-infraction-id" }, error: null }, // insert().select("id").single()
-        ],
-      },
-      (t) => perRequestTableCalls.push(t),
-    );
+  it(
+    "issues a fresh infraction (insert runs on the service-role client so an " +
+      "issue-only actor's RETURNING read isn't blocked by RLS) and reports " +
+      "newly triggered ladder thresholds",
+    async () => {
+      // ACC1: the per-request client is intentionally given NO `infractions`
+      // response. If issueInfraction regresses to inserting on `supabase`
+      // instead of `admin`, this test fails loudly (no response queued) — which
+      // mirrors production, where an issue-only actor (accountability.issue but
+      // NOT accountability.manage) has no SELECT policy on `infractions`, so the
+      // insert's RETURNING read fails under RLS and the whole write rolls back.
+      perRequestClient = createFakeClient(
+        {
+          infraction_types: [{ data: { id: TYPE_ID, points: 15, active: true }, error: null }],
+          accountability_settings: [{ data: settingsRow(), error: null }],
+        },
+        (t) => perRequestTableCalls.push(t),
+      );
 
-    serviceRoleClient = createFakeClient(
-      {
-        infractions: [
-          { data: [], error: null }, // duplicate check: no prior row
-          { data: [{ points: 15, expires_at: null }], error: null }, // active points = 15
-        ],
-        disciplinary_action_types: [
-          {
-            data: [
-              { id: "coaching", threshold_points: 10 },
-              { id: "written", threshold_points: 20 },
-            ],
-            error: null,
-          },
-        ],
-        disciplinary_actions: [
-          { data: [], error: null }, // no existing actions -> nothing suppressed
-          { data: null, error: null }, // insert for the "coaching" rung
-        ],
-      },
-      (t) => serviceRoleTableCalls.push(t),
-    );
+      serviceRoleClient = createFakeClient(
+        {
+          infractions: [
+            { data: [], error: null }, // duplicate check: no prior row
+            { data: { id: "new-infraction-id" }, error: null }, // insert().select("id").single()
+            { data: [{ points: 15, expires_at: null }], error: null }, // active points = 15
+          ],
+          disciplinary_action_types: [
+            {
+              data: [
+                { id: "coaching", threshold_points: 10 },
+                { id: "written", threshold_points: 20 },
+              ],
+              error: null,
+            },
+          ],
+          disciplinary_actions: [
+            { data: [], error: null }, // no existing actions -> nothing suppressed
+            { data: null, error: null }, // insert for the "coaching" rung
+          ],
+        },
+        (t) => serviceRoleTableCalls.push(t),
+      );
 
-    const result = await issueInfraction({
-      userId: RECIPIENT_ID,
-      typeId: TYPE_ID,
-      note: "Left the line unattended.",
-    });
+      const result = await issueInfraction({
+        userId: RECIPIENT_ID,
+        typeId: TYPE_ID,
+        note: "Left the line unattended.",
+      });
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data.infractionId).toBe("new-infraction-id");
-      expect(result.data.triggeredActionTypeIds).toEqual(["coaching"]);
-    }
-    expect(emitEventMock).toHaveBeenCalledWith("infraction_issued", {
-      infractionId: "new-infraction-id",
-      userId: RECIPIENT_ID,
-    });
-    expect(emitEventMock).toHaveBeenCalledWith("disciplinary_triggered", {
-      userId: RECIPIENT_ID,
-      typeId: "coaching",
-    });
-  });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.infractionId).toBe("new-infraction-id");
+        expect(result.data.triggeredActionTypeIds).toEqual(["coaching"]);
+      }
+      // The infraction write ran on the service-role client, never the
+      // per-request one — that's the fix for the dead issue path.
+      expect(serviceRoleTableCalls).toContain("infractions");
+      expect(perRequestTableCalls).not.toContain("infractions");
+      expect(emitEventMock).toHaveBeenCalledWith("infraction_issued", {
+        infractionId: "new-infraction-id",
+        userId: RECIPIENT_ID,
+      });
+      expect(emitEventMock).toHaveBeenCalledWith("disciplinary_triggered", {
+        userId: RECIPIENT_ID,
+        typeId: "coaching",
+      });
+    },
+  );
 
   describe("canonical event payload contract", () => {
     it("emits infraction_issued/disciplinary_triggered payloads whose recipient key the real notify extractor resolves", () => {

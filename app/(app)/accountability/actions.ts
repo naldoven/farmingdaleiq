@@ -192,7 +192,17 @@ export async function issueInfraction(
       infractionId = duplicate.id;
     } else {
       const expiresAt = computeExpiresAt(now, periodSettings);
-      const { data: inserted, error: insertError } = await supabase
+      // ACC1 fix: insert on the service-role `admin` client, not the
+      // per-request `supabase` client. The insert uses `.select("id")`
+      // (RETURNING), and the only SELECT policy on `infractions` requires
+      // accountability.manage. An issue-only actor (Team Leader / Shift
+      // Supervisor holds accountability.issue but NOT accountability.manage)
+      // therefore failed the RETURNING read under RLS, rolling back the whole
+      // insert — issuing an infraction was dead for exactly the two roles that
+      // do it. requirePermission("accountability.issue") + the self-issuance
+      // block above already authorize this write; `admin` is the same client
+      // the dedup/threshold reads below already use for the same reason.
+      const { data: inserted, error: insertError } = await admin
         .from("infractions")
         .insert({
           user_id: parsed.userId,

@@ -23,8 +23,19 @@ export interface RoleOption {
 export interface RoleAssignFormProps {
   profileId: string;
   initialRoleId: string | null;
+  /** Full role list, used only to resolve the current role's display name. */
   roles: RoleOption[];
-  /** false when the viewer lacks people.manage — renders read-only. */
+  /**
+   * The only roles offered in the dropdown: roles at or below the actor's own
+   * rank (PPL1). The page filters these so a people.manage holder can never
+   * assign a role more senior than their own, even via a crafted request — the
+   * DB privilege-guard trigger is the real backstop, this just keeps the UI honest.
+   */
+  assignableRoles: RoleOption[];
+  /**
+   * false when the viewer lacks people.manage OR is viewing their OWN profile
+   * (PPL1: a user may never change their own role). Renders read-only.
+   */
   canEdit: boolean;
 }
 
@@ -38,6 +49,7 @@ export function RoleAssignForm({
   profileId,
   initialRoleId,
   roles,
+  assignableRoles,
   canEdit,
 }: RoleAssignFormProps) {
   const router = useRouter();
@@ -76,7 +88,7 @@ export function RoleAssignForm({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NO_ROLE_VALUE}>No role</SelectItem>
-          {roles.map((role) => (
+          {assignableRoles.map((role) => (
             <SelectItem key={role.id} value={role.id}>
               {role.name}
             </SelectItem>
