@@ -254,6 +254,12 @@ export async function completeRun(input: { runId: string }): Promise<ActionResul
           manuallyFlagged: a.flagged,
           correctiveActionNote: a.corrective_action_note,
           comment: a.comment,
+          // C2 fix: carry the saved photo_url through to validateSubmission.
+          // saveAnswers persists photo_url, but omitting it here made
+          // validateSubmission see photoUrl=undefined for every answer, so any
+          // `photo_required` question could NEVER be completed (the photo it
+          // required was always treated as missing).
+          photoUrl: a.photo_url,
         },
       ]),
     );
