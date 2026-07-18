@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { WASTE_UNITS, type WasteUnit } from "./constants";
+import { WASTE_QUANTITY_MAX, WASTE_UNITS, type WasteUnit } from "./constants";
 
 /**
  * Input validation for the Waste server actions (app/(app)/waste/actions.ts).
@@ -10,7 +10,7 @@ import { WASTE_UNITS, type WasteUnit } from "./constants";
  * they are re-exported here for server/action code.
  */
 
-export { WASTE_UNITS };
+export { WASTE_UNITS, WASTE_QUANTITY_MAX };
 export type { WasteUnit };
 
 export const idSchema = z.object({
@@ -20,7 +20,10 @@ export type IdInput = z.infer<typeof idSchema>;
 
 export const logEntrySchema = z.object({
   itemId: z.string().uuid(),
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
+  quantity: z.coerce
+    .number()
+    .positive("Quantity must be greater than 0")
+    .max(WASTE_QUANTITY_MAX, `Quantity can't exceed ${WASTE_QUANTITY_MAX}`),
   dayPartId: z.string().uuid().nullable().optional(),
   note: z.string().trim().max(500).optional().or(z.literal("")),
 });

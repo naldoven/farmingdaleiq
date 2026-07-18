@@ -15,6 +15,7 @@ import {
 import {
   PERIOD_KEYS,
   filterEntriesByPeriod,
+  formatCentsAsUsd,
   rollupByCategory,
   rollupByItem,
   type PeriodKey,
@@ -29,11 +30,6 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
   quarter: "This quarter",
   all: "All time",
 };
-
-function formatCost(cost: number | null): string {
-  if (cost == null) return "—";
-  return `$${cost.toFixed(2)}`;
-}
 
 /**
  * Waste rollups by item and by category, over a selectable period
@@ -102,7 +98,7 @@ export function WasteReports({
                   <TableCell>
                     {row.totalQuantity} {row.unit}
                   </TableCell>
-                  <TableCell>{formatCost(row.totalCost)}</TableCell>
+                  <TableCell>{formatCentsAsUsd(row.totalCostCents)}</TableCell>
                 </TableRow>
               ))}
               {itemRollup.length === 0 && (
@@ -135,7 +131,7 @@ export function WasteReports({
                 <TableRow key={row.categoryId ?? "uncategorized"}>
                   <TableCell className="font-medium">{row.categoryName}</TableCell>
                   <TableCell>{row.entryCount}</TableCell>
-                  <TableCell>{formatCost(row.totalCost)}</TableCell>
+                  <TableCell>{formatCentsAsUsd(row.totalCostCents)}</TableCell>
                 </TableRow>
               ))}
               {categoryRollup.length === 0 && (
