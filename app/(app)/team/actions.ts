@@ -19,7 +19,7 @@ import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { awardTokens, DuplicateTokenAwardError } from "@/lib/tokens/ledger";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/team/action-types";
@@ -126,6 +126,21 @@ export async function createRecognition(
       Date.now()
     );
 
+    // FEED-RECOGNITION: award via the service-role client, not the per-request
+    // one. awardTokens does `.insert(...).select("id").single()`, and the
+    // RETURNING read is re-checked by the token_transactions SELECT policy. A
+    // non-manager award-holder (Team Leader / Shift Supervisor) can insert a
+    // credit but can't SELECT a row that credits SOMEONE ELSE, so the
+    // per-request client's read-back failed and Postgres rolled the whole
+    // award back -- the recognition silently produced no feed post. The
+    // requirePermission("tokens.award") gate above already authorizes the
+    // credit; the service-role path is exactly how the event consumer calls
+    // awardTokens (see lib/tokens/ledger.ts). Same class as the fixed ACC1
+    // infraction-insert bug. Only the ledger write bypasses RLS; the feed_posts
+    // insert below stays on the per-request client (its RLS policy already
+    // permits a tokens.award holder).
+    const admin = createServiceRoleClient();
+
     let alreadyCredited = false;
     try {
       await awardTokens(
@@ -137,7 +152,7 @@ export async function createRecognition(
           note: parsed.body,
           createdBy: user.id,
         },
-        supabase
+        admin
       );
     } catch (awardError) {
       // A prior identical submit already credited this recognition. Don't
