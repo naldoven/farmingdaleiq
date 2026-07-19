@@ -12,7 +12,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/checklists/action-types";
@@ -32,16 +33,6 @@ import {
   type TemplateInput,
   type UpdateTemplateInput,
 } from "@/app/(app)/checklists/templates/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 function revalidateTemplates(templateId?: string) {
   revalidatePath("/checklists/templates");

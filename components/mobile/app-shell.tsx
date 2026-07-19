@@ -23,6 +23,12 @@ export interface AppShellProps {
   storeAddress?: string;
   hasUnread?: boolean;
   /**
+   * Permission keys the signed-in user holds, computed server-side and passed
+   * to the sidebar's NavLinks so gated items the user can't reach are hidden
+   * (S4 dead-end fix). Omit to show every nav item.
+   */
+  navPermissions?: readonly string[];
+  /**
    * Layout override. "responsive" (default) shows the sidebar at md+ and the
    * mobile chrome below md via CSS. "mobile" / "desktop" force one and are used
    * by tests to assert the correct nav per breakpoint.
@@ -42,6 +48,7 @@ export function AppShell({
   storeName = "Farmingdale",
   storeAddress = "1991 Broadhollow Rd",
   hasUnread = false,
+  navPermissions,
   layout = "responsive",
 }: AppShellProps) {
   const pathname = usePathname() ?? "/";
@@ -52,7 +59,12 @@ export function AppShell({
 
   return (
     <div className="flex min-h-svh bg-canvas">
-      {showSidebar && <Sidebar user={{ name: user.name, roleName: user.roleName }} />}
+      {showSidebar && (
+        <Sidebar
+          user={{ name: user.name, roleName: user.roleName }}
+          allowedPermissions={navPermissions}
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {showMobile && (

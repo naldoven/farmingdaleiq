@@ -50,7 +50,8 @@
 import { revalidatePath } from "next/cache";
 
 import { emitEvent } from "@/lib/events/bus";
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/accountability/action-types";
 import {
@@ -73,16 +74,6 @@ import {
   type UpsertDisciplinaryActionTypeInput,
   type UpsertInfractionTypeInput,
 } from "@/app/(app)/accountability/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 function revalidateAccountability() {
   revalidatePath("/accountability");

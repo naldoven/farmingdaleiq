@@ -21,7 +21,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/training/action-types";
@@ -54,16 +55,6 @@ import {
   type SubmitCourseFeedbackInput,
   type UpsertItemProgressInput,
 } from "@/app/(app)/training/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 async function emitBestEffort(key: Parameters<typeof emitEvent>[0], payload: Record<string, unknown>) {
   try {

@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  NAV_GROUPS,
   avatarColor,
   initialsFromName,
+  navPermissionKeys,
   resolveHeader,
+  visibleNavGroups,
 } from "./page-map";
+
+function allItems(groups: ReturnType<typeof visibleNavGroups>) {
+  return groups.flatMap((g) => g.items.map((i) => i.href));
+}
 
 describe("resolveHeader", () => {
   it("uses the home variant only for the root route", () => {
@@ -87,5 +94,82 @@ describe("avatarColor", () => {
     expect(a).toEqual(b);
     expect(a).toHaveProperty("bg");
     expect(a).toHaveProperty("fg");
+  });
+});
+
+describe("navPermissionKeys", () => {
+  it("returns the distinct set of permission keys used to gate nav items", () => {
+    const keys = navPermissionKeys();
+    expect(new Set(keys).size).toBe(keys.length); // no duplicates
+    // A sampling of gates that mirror the destination pages' requirePermission.
+    expect(keys).toContain("reports.view");
+    expect(keys).toContain("settings.manage");
+    expect(keys).toContain("checklists.manage_templates");
+    expect(keys).toContain("catering.view");
+    // Ungated items contribute no key.
+    expect(keys).not.toContain("");
+  });
+});
+
+describe("visibleNavGroups (S4 nav gating)", () => {
+  it("shows every item when no permission set is provided (err toward showing)", () => {
+    const hrefs = allItems(visibleNavGroups(null));
+    const total = NAV_GROUPS.flatMap((g) => g.items).length;
+    expect(hrefs).toHaveLength(total);
+    expect(hrefs).toContain("/reports");
+    expect(hrefs).toContain("/settings");
+  });
+
+  it("keeps ungated items and drops gated items the user lacks", () => {
+    // A base "Team Member": has the view/complete keys, lacks admin keys.
+    const base = new Set([
+      "people.view",
+      "checklists.complete",
+      "tasks.complete",
+      "setups.view",
+      "breaks.view",
+      "ratings.view",
+      "training.view",
+      "waste.log",
+      "vendors.view",
+      "maintenance.request",
+      "catering.view",
+      "notifications.view",
+    ]);
+    const hrefs = allItems(visibleNavGroups(base));
+
+    // Ungated items always show.
+    expect(hrefs).toContain("/"); // Home
+    expect(hrefs).toContain("/menu");
+    expect(hrefs).toContain("/team");
+    expect(hrefs).toContain("/tokens");
+    expect(hrefs).toContain("/accountability");
+
+    // Gated items the user CAN reach show.
+    expect(hrefs).toContain("/checklists");
+    expect(hrefs).toContain("/catering");
+    expect(hrefs).toContain("/training/grid");
+
+    // Dead-end admin items the user CANNOT reach are hidden.
+    expect(hrefs).not.toContain("/reports");
+    expect(hrefs).not.toContain("/settings");
+    expect(hrefs).not.toContain("/settings/discord");
+    expect(hrefs).not.toContain("/checklists/templates");
+    expect(hrefs).not.toContain("/setups/templates");
+  });
+
+  it("drops a group entirely when all its items are gated away", () => {
+    // No keys at all: the Reports group (single gated item) disappears.
+    const groups = visibleNavGroups(new Set<string>());
+    expect(groups.some((g) => g.label === "Reports")).toBe(false);
+    // Home (ungated) survives.
+    expect(groups.some((g) => g.label === "Home")).toBe(true);
+  });
+
+  it("shows an admin every gated item when they hold every key", () => {
+    const all = new Set(navPermissionKeys());
+    const hrefs = allItems(visibleNavGroups(all));
+    const total = NAV_GROUPS.flatMap((g) => g.items).length;
+    expect(hrefs).toHaveLength(total);
   });
 });

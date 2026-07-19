@@ -28,7 +28,10 @@ export interface RecognitionSubjectOption {
 export function RecognitionForm({ subjects }: { subjects: RecognitionSubjectOption[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [subjectUserId, setSubjectUserId] = useState(subjects[0]?.id ?? "");
+  // Default to no one picked (S3): defaulting to the first coworker meant a
+  // rushed submit recognized whoever sorted first. Empty forces a choice; the
+  // guard below and the uuid() server schema both reject an empty value.
+  const [subjectUserId, setSubjectUserId] = useState("");
   const [amount, setAmount] = useState("10");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);

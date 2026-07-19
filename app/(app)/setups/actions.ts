@@ -19,7 +19,8 @@
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { rankCandidatesForPosition } from "@/lib/setups/auto-place";
 import { createPositionRatingLookup, loadPositionSuitability } from "@/lib/integration/position-ratings";
 import { materializeSetupFanout } from "@/lib/integration/setup-fanout";
@@ -36,16 +37,6 @@ import {
   selectTopPerformerSchema,
   suggestAssigneesSchema,
 } from "@/app/(app)/setups/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 function revalidateBoard() {
   revalidatePath("/setups");

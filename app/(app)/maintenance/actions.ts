@@ -21,7 +21,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { emitEvent } from "@/lib/events/bus";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/db/types";
@@ -51,16 +52,6 @@ import {
   type SubmitMaintenanceRequestInput,
   type UpdateWorkOrderStatusInput,
 } from "@/app/(app)/maintenance/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 function revalidateMaintenance(workOrderId?: string) {
   revalidatePath("/maintenance");

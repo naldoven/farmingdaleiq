@@ -8,7 +8,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/people/org-chart/action-types";
 import { buildVacantSlotRows } from "@/app/(app)/people/org-chart/logic";
@@ -24,16 +25,6 @@ import {
   type DeleteSlotInput,
   type DeleteTierInput,
 } from "@/app/(app)/people/org-chart/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /** Creates a tier and immediately provisions its goal_count vacant slots, so
  * a pipeline stamp (stampPassport in app/(app)/training/actions.ts) has a

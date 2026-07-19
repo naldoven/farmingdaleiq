@@ -26,9 +26,9 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { ZodError } from "zod";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { enqueueDiscordMessage, deliverPendingOutbox } from "@/lib/discord/outbox";
 import type { ActionResult } from "@/app/(app)/settings/discord/action-types";
@@ -44,26 +44,6 @@ import {
   type SetEventRouteInput,
   type UpdateChannelInput,
 } from "@/app/(app)/settings/discord/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  // ZodError extends Error, so this must precede the generic Error branch.
-  // Otherwise `error.message` is a raw JSON array of issues (F-SET-1). Join the
-  // human-readable issue messages into one friendly line instead.
-  if (error instanceof ZodError) {
-    const message = error.issues
-      .map((issue) => issue.message)
-      .filter(Boolean)
-      .join("; ");
-    return message || "Please check the form and try again.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 export async function createChannel(input: CreateChannelInput): Promise<ActionResult> {
   try {

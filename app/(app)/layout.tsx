@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/mobile/app-shell";
+import { hasPermission } from "@/lib/auth/permissions";
+import { navPermissionKeys } from "@/lib/nav/page-map";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AuthenticatedLayout({
@@ -54,8 +56,20 @@ export default async function AuthenticatedLayout({
     .eq("user_id", user.id)
     .is("read_at", null);
 
+  // Nav gating (S4): resolve which permission-gated nav items this user can
+  // actually reach, using the same has_permission() helper each destination
+  // page's requirePermission() calls, so the sidebar never shows a dead-end
+  // link that would throw on click. hasPermission fails closed on error.
+  const navKeys = navPermissionKeys();
+  const navGrants = await Promise.all(navKeys.map((key) => hasPermission(key)));
+  const navPermissions = navKeys.filter((_, i) => navGrants[i]);
+
   return (
-    <AppShell user={currentUser} hasUnread={Boolean(unreadCount)}>
+    <AppShell
+      user={currentUser}
+      hasUnread={Boolean(unreadCount)}
+      navPermissions={navPermissions}
+    >
       {children}
     </AppShell>
   );
