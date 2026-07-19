@@ -1,7 +1,7 @@
 import { HScroll, ListRow, SectionCard, SectionLabel, StatTile } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { computeAnalytics } from "@/app/(app)/catering/logic";
+import { computeAnalytics, filterRevenueOrders } from "@/app/(app)/catering/logic";
 
 /**
  * /catering/analytics — ARCHITECTURE.md page map: "Catering volume, revenue,
@@ -13,15 +13,14 @@ export default async function CateringAnalyticsPage() {
 
   const supabase = await createClient();
   const [{ data: orders }, { data: contacts }] = await Promise.all([
-    // Excludes stage "new": an order that hasn't even had its confirmation
-    // call yet isn't real revenue (parity audit Catering finding:
-    // "Analytics/history include every order regardless of stage --
-    // unconfirmed New orders count in revenue").
-    supabase.from("catering_orders").select("id, contact_id, amount, event_date").neq("stage", "new"),
+    // Excludes stage "new" (unconfirmed, not real revenue yet) and "cancelled"
+    // (CAT1) via the shared NON_REVENUE_STAGES filter, so analytics agrees with
+    // /catering/history and the order-detail guest-history box.
+    supabase.from("catering_orders").select("id, contact_id, amount, event_date, stage"),
     supabase.from("catering_contacts").select("id, name"),
   ]);
 
-  const analytics = computeAnalytics(orders ?? [], contacts ?? []);
+  const analytics = computeAnalytics(filterRevenueOrders(orders ?? []), contacts ?? []);
 
   return (
     <div className="flex flex-col gap-4">

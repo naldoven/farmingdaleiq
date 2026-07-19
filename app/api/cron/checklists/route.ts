@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { isScheduleDueOn, storeLocalNow } from "@/app/(app)/checklists/logic";
+import { buildChecklistMissedPayload } from "@/app/api/cron/checklists/discord-payload";
 
 /**
  * Scheduled job for Checklists (ARCHITECTURE.md "Technical architecture":
@@ -67,7 +68,7 @@ async function run(request: NextRequest) {
     await Promise.all([
       supabase
         .from("checklist_schedules")
-        .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, assign_team_id, due_time, alert_on_incomplete"),
+        .select("id, template_id, frequency, days_of_week, day_of_month, day_part_id, assign_position_id, assign_team_id, due_time, alert_on_incomplete, notify_discord, discord_channel_id"),
       supabase.from("checklist_templates").select("id, active"),
     ]);
 
@@ -135,6 +136,15 @@ async function run(request: NextRequest) {
     (schedules ?? []).filter((s) => s.alert_on_incomplete && s.due_time).map((s) => s.id),
   );
   const dueTimeBySchedule = new Map((schedules ?? []).map((s) => [s.id, s.due_time]));
+  // N5: per-schedule Discord controls, forwarded onto the checklist_missed
+  // event so a leader can mute (or re-channel) the missed-alert post for one
+  // schedule. See app/api/cron/checklists/discord-payload.ts.
+  const discordControlsBySchedule = new Map(
+    (schedules ?? []).map((s) => [
+      s.id,
+      { notify_discord: s.notify_discord, discord_channel_id: s.discord_channel_id },
+    ]),
+  );
 
   const { data: openRuns, error: openRunsError } = await supabase
     .from("checklist_runs")
@@ -165,7 +175,14 @@ async function run(request: NextRequest) {
     }
     if (!missedRows || missedRows.length === 0) continue;
     missedCount += 1;
-    await emitEventSafely("checklist_missed", { runId: openRun.id, scheduleId: openRun.schedule_id });
+    await emitEventSafely(
+      "checklist_missed",
+      buildChecklistMissedPayload({
+        runId: openRun.id,
+        scheduleId: openRun.schedule_id,
+        controls: discordControlsBySchedule.get(openRun.schedule_id),
+      }),
+    );
   }
 
   return NextResponse.json({ ok: true, materialized: materializedCount, missed: missedCount });

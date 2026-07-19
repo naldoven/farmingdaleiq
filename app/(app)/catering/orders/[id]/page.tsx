@@ -1,15 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CancelOrderButton } from "@/components/catering/cancel-order-button";
 import { ChecklistSection } from "@/components/catering/checklist-section";
 import { OrderDetailsForm } from "@/components/catering/order-details-form";
 import { OrderItemEditor } from "@/components/catering/order-item-editor";
 import { RescaleButton } from "@/components/catering/rescale-button";
 import { StageSelect } from "@/components/catering/stage-select";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
-import { requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { CHECKLIST_STAGES, ORDER_STAGE_LABELS, type ChecklistStage, type OrderStage } from "@/app/(app)/catering/logic";
+import {
+  CANCELLED_STAGE,
+  CHECKLIST_STAGES,
+  ORDER_STAGE_LABELS,
+  filterRevenueOrders,
+  type ChecklistStage,
+  type OrderStage,
+} from "@/app/(app)/catering/logic";
 
 /**
  * /catering/orders/[id] — ARCHITECTURE.md page map: "Order detail: items,
@@ -23,6 +31,7 @@ export default async function CateringOrderPage({
   params: Promise<{ id: string }>;
 }) {
   await requirePermission("catering.view");
+  const canManage = await hasPermission("catering.manage");
   const { id } = await params;
 
   const supabase = await createClient();
@@ -77,11 +86,16 @@ export default async function CateringOrderPage({
   if (order.contact_id) {
     const { data: contactOrders } = await supabase
       .from("catering_orders")
-      .select("amount")
+      .select("amount, stage")
       .eq("contact_id", order.contact_id);
+    // CAT4: apply the same NON_REVENUE_STAGES exclusion the analytics/history
+    // rollups use, so a guest's order count and lifetime spend match across
+    // every screen instead of this box counting unconfirmed "new" and
+    // "cancelled" orders the other screens drop.
+    const countable = filterRevenueOrders(contactOrders ?? []);
     contactHistory = {
-      orderCount: (contactOrders ?? []).length,
-      lifetimeSpend: (contactOrders ?? []).reduce((sum, o) => sum + (o.amount ?? 0), 0),
+      orderCount: countable.length,
+      lifetimeSpend: countable.reduce((sum, o) => sum + (o.amount ?? 0), 0),
     };
   }
 
@@ -95,8 +109,13 @@ export default async function CateringOrderPage({
       <SectionLabel
         action={
           <div className="flex items-center gap-2">
-            <StatusBadge tone="accent">{ORDER_STAGE_LABELS[order.stage as OrderStage]}</StatusBadge>
+            <StatusBadge tone={order.stage === CANCELLED_STAGE ? "neutral" : "accent"}>
+              {ORDER_STAGE_LABELS[order.stage as OrderStage]}
+            </StatusBadge>
             <StageSelect orderId={order.id} stage={order.stage as OrderStage} />
+            {canManage && order.stage !== CANCELLED_STAGE && (
+              <CancelOrderButton orderId={order.id} />
+            )}
           </div>
         }
       >

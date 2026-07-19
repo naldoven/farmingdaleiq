@@ -249,6 +249,17 @@ export async function issueInfraction(
       existingActions ?? [],
     );
 
+    // ACC2: findNewlyTriggeredThresholds is a read-then-insert with no lock, so
+    // two infractions issued concurrently could both see the same rung as
+    // "newly crossed" and each try to open a pending disciplinary_action for it
+    // (a duplicate write-up). The new partial unique index
+    // disciplinary_actions_pending_uq (user_id, type_id) where status='pending'
+    // (supabase/migrations/20260718000600_disciplinary_actions_pending_uq.sql)
+    // makes the loser of that race collide with 23505; we swallow it as a no-op
+    // (the rung is already open) rather than erroring, and we don't re-emit the
+    // disciplinary_triggered event for a rung we didn't actually open, so the
+    // notification/Discord fan-out isn't duplicated either.
+    const openedRungIds: string[] = [];
     for (const rung of triggered) {
       const { error: triggerError } = await admin.from("disciplinary_actions").insert({
         user_id: parsed.userId,
@@ -256,7 +267,14 @@ export async function issueInfraction(
         status: "pending",
         triggered_at: now.toISOString(),
       });
-      if (triggerError) return { ok: false, error: triggerError.message };
+      if (triggerError) {
+        if (triggerError.code === "23505") {
+          // A concurrent issue already opened this exact pending rung — no-op.
+          continue;
+        }
+        return { ok: false, error: triggerError.message };
+      }
+      openedRungIds.push(rung.id);
       await emitEventSafely("disciplinary_triggered", {
         userId: parsed.userId,
         typeId: rung.id,
@@ -266,7 +284,7 @@ export async function issueInfraction(
     revalidateAccountability();
     return {
       ok: true,
-      data: { infractionId, triggeredActionTypeIds: triggered.map((t) => t.id) },
+      data: { infractionId, triggeredActionTypeIds: openedRungIds },
     };
   } catch (error) {
     return { ok: false, error: toActionError(error) };

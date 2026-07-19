@@ -22,6 +22,32 @@ export interface TaskRowView {
   dueAt: string | null;
   status: string;
   tokenValue: number;
+  /** T3: who owns this task (person name or position name), or null when it
+   * sits unassigned in the pool. Rendered in the manager "all" view so a
+   * leader can see each task's owner at a glance. */
+  assigneeLabel: string | null;
+}
+
+/**
+ * T3: resolves the human-readable owner of a task row from its assignee ids.
+ * A person assignment wins over a position assignment (the two are mutually
+ * exclusive on write, but prefer the person defensively); an unassigned pool
+ * task resolves to null. Pure so app/(app)/tasks/page.tsx's row mapping is
+ * unit-testable without a database.
+ */
+export function resolveAssigneeLabel(input: {
+  assignedUserId: string | null;
+  assignedPositionId: string | null;
+  userNameById: Map<string, string>;
+  positionNameById: Map<string, string>;
+}): string | null {
+  if (input.assignedUserId) {
+    return input.userNameById.get(input.assignedUserId) ?? "Unknown person";
+  }
+  if (input.assignedPositionId) {
+    return input.positionNameById.get(input.assignedPositionId) ?? "Unknown position";
+  }
+  return null;
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -75,8 +101,9 @@ function formatDue(dueAt: string | null): string {
 }
 
 /** The gray subtitle line: kind, day-part, due time (red when overdue), and
- * token value. */
-function TaskMeta({ task }: { task: TaskRowView }) {
+ * token value. In the manager "all" view it also names the task's owner
+ * (T3) so a leader can see who each task is assigned to. */
+function TaskMeta({ task, showAssignee }: { task: TaskRowView; showAssignee?: boolean }) {
   const overdue = task.status === "overdue";
   return (
     <>
@@ -85,6 +112,7 @@ function TaskMeta({ task }: { task: TaskRowView }) {
         {formatDue(task.dueAt)}
       </span>{" "}
       · {task.tokenValue} {task.tokenValue === 1 ? "token" : "tokens"}
+      {showAssignee && <> · {task.assigneeLabel ?? "Unassigned"}</>}
     </>
   );
 }
@@ -121,7 +149,7 @@ export function TaskList({
             icon={KIND_ICONS[t.kind] ?? ClipboardList}
             iconTone={rowTone(t.status)}
             title={t.title}
-            description={<TaskMeta task={t} />}
+            description={<TaskMeta task={t} showAssignee={mode === "all"} />}
             trailing={
               <StatusBadge tone={badgeTone(t.status)} dot>
                 {STATUS_LABELS[t.status] ?? t.status}

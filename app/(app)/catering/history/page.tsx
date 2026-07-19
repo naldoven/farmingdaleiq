@@ -9,6 +9,7 @@ import {
   HISTORY_PERIODS,
   ORDER_STAGE_LABELS,
   computeContactRollups,
+  filterRevenueOrders,
   periodRange,
   type HistoryPeriod,
   type OrderStage,
@@ -44,14 +45,14 @@ export default async function CateringHistoryPage({
       .order("due_on"),
   ]);
 
-  // Excludes stage "new" from the Contacts rollup (order count/lifetime
-  // spend/last event): an unconfirmed order isn't real spend yet (parity
-  // audit Catering finding: "Analytics/history include every order
-  // regardless of stage -- unconfirmed New orders count in revenue"). The
-  // guest-name lookup below still uses the unfiltered allOrders list, and
-  // the Order history list further down intentionally lists every stage
-  // (including "new") since it displays each row's own stage already.
-  const rollups = computeContactRollups((allOrders ?? []).filter((o) => o.stage !== "new"));
+  // Excludes stage "new" (unconfirmed, not real spend yet) and "cancelled"
+  // (CAT1) from the Contacts rollup (order count/lifetime spend/last event)
+  // via the shared NON_REVENUE_STAGES filter, so these numbers match
+  // /catering/analytics and the order-detail guest-history box. The guest-name
+  // lookup below still uses the unfiltered allOrders list, and the Order
+  // history list further down intentionally lists every stage (it displays
+  // each row's own stage already).
+  const rollups = computeContactRollups(filterRevenueOrders(allOrders ?? []));
 
   let periodOrdersQuery = supabase
     .from("catering_orders")

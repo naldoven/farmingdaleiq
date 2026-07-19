@@ -6,6 +6,7 @@
     { "path": "/api/jobs/process-events", "schedule": "*/5 * * * *" },
     { "path": "/api/jobs/discord-outbox", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/checklists", "schedule": "*/15 * * * *" },
+    { "path": "/api/tasks/events", "schedule": "*/5 * * * *" },
     { "path": "/api/tasks/sync", "schedule": "0 4 * * *" },
     { "path": "/api/cron/training", "schedule": "0 5 * * *" },
     { "path": "/api/cron/maintenance", "schedule": "0 5 * * *" },
