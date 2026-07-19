@@ -13,7 +13,7 @@ import { RateCell } from "@/components/training/rate-cell";
 import { ResolveRerateButton } from "@/components/training/resolve-rerate-button";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { computeAverage } from "@/app/(app)/ratings/logic";
+import { computeAverage, rateableColumns } from "@/app/(app)/ratings/logic";
 
 /**
  * /ratings — skills matrix (people x positions, color-coded), rate/re-rate
@@ -35,15 +35,20 @@ export default async function RatingsPage() {
   const [
     { data: profiles },
     { data: positions },
+    { data: groups },
     { data: ratings },
     { data: rubrics },
     { data: rerates },
   ] = await Promise.all([
     supabase.from("profiles").select("id, name").eq("active", true).order("name"),
-    supabase.from("positions").select("id, name, sort").order("sort"),
+    // RAT1: only real skill stations. Onboarding-roadmap items (is_rateable
+    // false, backfilled in 20260718010200_positions_is_rateable.sql) are not
+    // rateable and must not pollute the matrix.
+    supabase.from("positions").select("id, name, sort, group_id, is_rateable").eq("is_rateable", true).order("sort"),
+    supabase.from("position_groups").select("id, name"),
     supabase
       .from("position_ratings")
-      .select("id, user_id, position_id, stars, rated_at")
+      .select("id, user_id, position_id, stars, comment, rated_at")
       .eq("is_current", true),
     supabase.from("rating_rubrics").select("position_id, category_1, category_2, category_3, category_4"),
     supabase
@@ -54,20 +59,32 @@ export default async function RatingsPage() {
   ]);
 
   const people = profiles ?? [];
-  const positionList = positions ?? [];
+  const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]));
+
+  // RAT1: build the matrix columns from rateable positions, tagging any
+  // duplicated station name so its position_group label disambiguates it.
+  const columns = rateableColumns(
+    (positions ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      is_rateable: p.is_rateable,
+      groupName: p.group_id ? groupNameById.get(p.group_id) ?? null : null,
+    })),
+  );
+
   const ratingByPair = new Map(
     (ratings ?? []).map((r) => [`${r.user_id}:${r.position_id}`, r]),
   );
   const rubricByPosition = new Map((rubrics ?? []).map((r) => [r.position_id, r]));
   const nameById = new Map(people.map((p) => [p.id, p.name]));
-  const positionNameById = new Map(positionList.map((p) => [p.id, p.name]));
+  const positionNameById = new Map(columns.map((c) => [c.id, c.name]));
 
   const storeAverageByPosition = new Map<string, number | null>();
-  for (const position of positionList) {
+  for (const column of columns) {
     const values = (ratings ?? [])
-      .filter((r) => r.position_id === position.id)
+      .filter((r) => r.position_id === column.id)
       .map((r) => r.stars);
-    storeAverageByPosition.set(position.id, computeAverage(values));
+    storeAverageByPosition.set(column.id, computeAverage(values));
   }
 
   return (
@@ -99,17 +116,20 @@ export default async function RatingsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="sticky left-0 bg-card">Name</TableHead>
-                {positionList.map((position) => (
-                  <TableHead key={position.id} className="whitespace-nowrap text-center">
-                    {position.name}
+                {columns.map((column) => (
+                  <TableHead key={column.id} className="whitespace-nowrap text-center">
+                    <span className="block">{column.name}</span>
+                    {column.showGroup && column.groupName && (
+                      <span className="block text-[11px] font-normal text-muted-ink">{column.groupName}</span>
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
               {people.map((person) => {
-                const personRatings = positionList
-                  .map((p) => ratingByPair.get(`${person.id}:${p.id}`)?.stars ?? null)
+                const personRatings = columns
+                  .map((c) => ratingByPair.get(`${person.id}:${c.id}`)?.stars ?? null)
                   .filter((v): v is number => v !== null);
                 const overall = computeAverage(personRatings);
 
@@ -121,18 +141,19 @@ export default async function RatingsPage() {
                         {overall !== null && <StatusBadge tone="neutral">avg {overall.toFixed(1)}</StatusBadge>}
                       </span>
                     </TableCell>
-                    {positionList.map((position) => {
-                      const rating = ratingByPair.get(`${person.id}:${position.id}`);
-                      const rubric = rubricByPosition.get(position.id) ?? null;
+                    {columns.map((column) => {
+                      const rating = ratingByPair.get(`${person.id}:${column.id}`);
+                      const rubric = rubricByPosition.get(column.id) ?? null;
                       return (
-                        <TableCell key={position.id} className="text-center">
+                        <TableCell key={column.id} className="text-center">
                           <RateCell
                             userId={person.id}
-                            positionId={position.id}
+                            positionId={column.id}
                             personName={person.name}
-                            positionName={position.name}
+                            positionName={column.name}
                             stars={rating?.stars ?? null}
-                            storeAverage={storeAverageByPosition.get(position.id) ?? null}
+                            comment={rating?.comment ?? null}
+                            storeAverage={storeAverageByPosition.get(column.id) ?? null}
                             rubric={rubric}
                             canRate={canRate}
                           />
@@ -144,7 +165,7 @@ export default async function RatingsPage() {
               })}
               {people.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={positionList.length + 1} className="text-center text-muted-ink">
+                  <TableCell colSpan={columns.length + 1} className="text-center text-muted-ink">
                     No active people yet.
                   </TableCell>
                 </TableRow>

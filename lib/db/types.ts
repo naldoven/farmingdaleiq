@@ -2120,18 +2120,21 @@ export type Database = {
         Row: {
           group_id: string | null
           id: string
+          is_rateable: boolean
           name: string
           sort: number
         }
         Insert: {
           group_id?: string | null
           id?: string
+          is_rateable?: boolean
           name: string
           sort?: number
         }
         Update: {
           group_id?: string | null
           id?: string
+          is_rateable?: boolean
           name?: string
           sort?: number
         }
@@ -3673,6 +3676,14 @@ export type Database = {
       adjust_tokens: {
         Args: { p_user_id: string; p_delta: number; p_note?: string | null }
         Returns: { transaction_id: string; balance_after: number }[]
+      }
+      delete_position: {
+        Args: { p_position_id: string }
+        Returns: undefined
+      }
+      delete_position_group: {
+        Args: { p_group_id: string }
+        Returns: undefined
       }
     }
     Enums: {

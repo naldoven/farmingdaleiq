@@ -58,3 +58,56 @@ export function rerateDueDate(ratedAt: string | Date): Date {
   due.setDate(due.getDate() + RERATE_INTERVAL_DAYS);
   return due;
 }
+
+export interface MatrixPositionInput {
+  id: string;
+  name: string;
+  /** false = onboarding-roadmap item, not a rateable skill station (RAT1). */
+  is_rateable?: boolean | null;
+  /** position_group name, for disambiguating duplicated station names. */
+  groupName?: string | null;
+}
+
+export interface MatrixColumn {
+  id: string;
+  name: string;
+  groupName: string | null;
+  /** true when another rateable column shares this name — show the group. */
+  showGroup: boolean;
+}
+
+/**
+ * RAT1: the skills-matrix columns. Keeps only real skill stations (drops
+ * onboarding-roadmap items flagged is_rateable=false) and marks any station
+ * whose name still appears more than once so the UI can disambiguate it with
+ * its position_group label. A missing is_rateable (older row / undefined)
+ * counts as rateable so nothing real is hidden by accident.
+ */
+export function rateableColumns(positions: MatrixPositionInput[]): MatrixColumn[] {
+  const rateable = positions.filter((p) => p.is_rateable !== false);
+  const nameCounts = new Map<string, number>();
+  for (const p of rateable) {
+    nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1);
+  }
+  return rateable.map((p) => ({
+    id: p.id,
+    name: p.name,
+    groupName: p.groupName ?? null,
+    showGroup: (nameCounts.get(p.name) ?? 0) > 1,
+  }));
+}
+
+/**
+ * RAT4: tooltip text for a rating cell. Includes the prior comment (when there
+ * is one) so a leader can read the note left with the last rating without
+ * opening the dialog.
+ */
+export function ratingCellTitle(
+  personName: string,
+  positionName: string,
+  comment?: string | null,
+): string {
+  const base = `${personName} — ${positionName}`;
+  const trimmed = comment?.trim();
+  return trimmed ? `${base}\n“${trimmed}”` : base;
+}
