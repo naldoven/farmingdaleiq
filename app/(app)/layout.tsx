@@ -18,9 +18,13 @@ export default async function AuthenticatedLayout({
     redirect("/login");
   }
 
+  // PPL2b: email moved to the locked profiles_private table. The shell only
+  // needs the signed-in user's own email for the account footer, and the auth
+  // session already carries it (user.email), so there is no need to read it
+  // back from the database here.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("name, email, role_id")
+    .select("name, role_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -36,7 +40,7 @@ export default async function AuthenticatedLayout({
 
   const currentUser = {
     name: profile?.name ?? user.email ?? "Unknown",
-    email: profile?.email ?? user.email ?? "",
+    email: user.email ?? "",
     roleName,
   };
 

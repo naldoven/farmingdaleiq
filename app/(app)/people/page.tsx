@@ -6,7 +6,7 @@ import { RosterRow } from "@/components/people/roster-row";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBadges } from "@/lib/setups/badges";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
  * /people roster -- ARCHITECTURE.md page map: "Roster, profiles, roles &
@@ -40,16 +40,31 @@ export default async function PeoplePage({
 
   const supabase = await createClient();
 
-  const [{ data: profiles }, { data: roles }] = await Promise.all([
+  // PPL2b: email/birthdate/hired_on moved to the locked profiles_private table.
+  // The roster needs birthdate/hired_on to derive the New/Minor/Birthday badges
+  // (which it shows every store member) and email to power the search box, but
+  // it never renders those raw values — only names, roles, and computed badges
+  // leave the server. Read them past RLS with the service-role client so the
+  // badges/search keep working for non-managers without re-exposing the raw
+  // PII over PostgREST.
+  const admin = createServiceRoleClient();
+  const [{ data: profiles }, { data: roles }, { data: privateRows }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, name, email, role_id, active, birthdate, hired_on")
+      .select("id, name, role_id, active")
       .order("name"),
     supabase.from("roles").select("id, name, rank").order("rank"),
+    admin.from("profiles_private").select("profile_id, email, birthdate, hired_on"),
   ]);
 
   const roleNameById = new Map((roles ?? []).map((r) => [r.id, r.name]));
   const roleRankById = new Map((roles ?? []).map((r) => [r.id, r.rank]));
+  const privateByUser = new Map(
+    (privateRows ?? []).map((row) => [
+      row.profile_id,
+      { email: row.email, birthdate: row.birthdate, hiredOn: row.hired_on },
+    ]),
+  );
 
   // P2 wiring: real cross-module badges on the roster. Break status is a
   // live-shift signal (a person is only "Needs Break" relative to a posted
@@ -66,9 +81,10 @@ export default async function PeoplePage({
     if (statusFilter === "inactive" && p.active) return false;
     if (q) {
       const needle = q.toLowerCase();
+      const email = privateByUser.get(p.id)?.email ?? "";
       if (
         !p.name.toLowerCase().includes(needle) &&
-        !p.email.toLowerCase().includes(needle)
+        !email.toLowerCase().includes(needle)
       ) {
         return false;
       }
@@ -140,8 +156,8 @@ export default async function PeoplePage({
                 active={profile.active}
                 badges={computeBadges(
                   {
-                    hiredOn: profile.hired_on,
-                    birthdate: profile.birthdate,
+                    hiredOn: privateByUser.get(profile.id)?.hiredOn ?? null,
+                    birthdate: privateByUser.get(profile.id)?.birthdate ?? null,
                     roleRank: profile.role_id ? (roleRankById.get(profile.role_id) ?? null) : null,
                     isTrainee: traineeUserIds.has(profile.id),
                   },

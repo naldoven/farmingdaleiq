@@ -8,7 +8,7 @@ import { RoleAssignForm } from "@/components/people/role-assign-form";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBadges } from "@/lib/setups/badges";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getBalance } from "@/lib/tokens/ledger";
 import {
   countCompletedTasks,
@@ -78,17 +78,35 @@ export default async function ProfilePage({
   const { id } = await params;
 
   const supabase = await createClient();
-
-  const [{ data: profile }, { data: roles }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select(
-        "id, name, email, phone, discord_user_id, birthdate, hired_on, avatar_url, active, role_id, created_at",
-      )
-      .eq("id", id)
-      .maybeSingle(),
-    supabase.from("roles").select("id, name, rank").order("rank"),
-  ]);
+  // PPL2b: PII (phone, email, birthdate, hired_on, discord_user_id) now lives
+  // on profiles_private, readable only by the person or a people.manage holder.
+  const [{ data: profile }, { data: roles }, { data: privateInfo }, { data: badgeDates }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, name, avatar_url, active, role_id, created_at")
+        .eq("id", id)
+        .maybeSingle(),
+      supabase.from("roles").select("id, name, rank").order("rank"),
+      // Contact PII for the edit forms + email line. RLS returns this row only
+      // to the person themselves or a people.manage holder; any other viewer
+      // gets null, so the sensitive fields are never even fetched for them.
+      supabase
+        .from("profiles_private")
+        .select("phone, email, birthdate, hired_on, discord_user_id")
+        .eq("profile_id", id)
+        .maybeSingle(),
+      // Highlight-badge dates only (Minor/Birthday/New) read past RLS via the
+      // service-role client, so this drill-in shows the same derived badges the
+      // roster already shows every store member — without exposing the raw
+      // dates to a non-manager (the values never leave the server; only the
+      // computed badges below are rendered).
+      createServiceRoleClient()
+        .from("profiles_private")
+        .select("birthdate, hired_on")
+        .eq("profile_id", id)
+        .maybeSingle(),
+    ]);
 
   if (!profile) {
     notFound();
@@ -98,8 +116,8 @@ export default async function ProfilePage({
   const traineeUserIds = await loadTraineeUserIds(supabase, [profile.id]);
   const badges = computeBadges(
     {
-      hiredOn: profile.hired_on,
-      birthdate: profile.birthdate,
+      hiredOn: badgeDates?.hired_on ?? null,
+      birthdate: badgeDates?.birthdate ?? null,
       roleRank: profile.role_id ? roleRankById.get(profile.role_id) ?? null : null,
       isTrainee: traineeUserIds.has(profile.id),
     },
@@ -199,7 +217,9 @@ export default async function ProfilePage({
         <AvatarInitials name={profile.name} size="lg" />
         <div>
           <p className="text-[22px] font-bold text-ink">{profile.name}</p>
-          {canSeePII && <p className="text-[13px] text-muted-ink">{profile.email}</p>}
+          {canSeePII && privateInfo?.email && (
+            <p className="text-[13px] text-muted-ink">{privateInfo.email}</p>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-center gap-1.5">
           <StatusBadge tone={profile.active ? "success" : "neutral"} dot>
@@ -259,18 +279,18 @@ export default async function ProfilePage({
       <SectionCard title="Profile">
         {profileVariant === "self-edit" ? (
           <SelfProfileEditForm
-            initialPhone={profile.phone}
-            initialBirthdate={profile.birthdate}
+            initialPhone={privateInfo?.phone ?? null}
+            initialBirthdate={privateInfo?.birthdate ?? null}
             initialAvatarUrl={profile.avatar_url}
           />
         ) : profileVariant === "manager-edit" ? (
           <ProfileEditForm
             profileId={profile.id}
             initialName={profile.name}
-            initialPhone={profile.phone}
-            initialDiscordUserId={profile.discord_user_id}
-            initialBirthdate={profile.birthdate}
-            initialHiredOn={profile.hired_on}
+            initialPhone={privateInfo?.phone ?? null}
+            initialDiscordUserId={privateInfo?.discord_user_id ?? null}
+            initialBirthdate={privateInfo?.birthdate ?? null}
+            initialHiredOn={privateInfo?.hired_on ?? null}
             initialAvatarUrl={profile.avatar_url}
             initialActive={profile.active}
             canEdit={canManage}

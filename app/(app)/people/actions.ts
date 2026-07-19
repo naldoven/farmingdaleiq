@@ -79,14 +79,11 @@ export async function updateProfile(
     const parsed = updateProfileSchema.parse(input);
     const supabase = await createClient();
 
+    // Non-PII stays on profiles (the store-member-readable table).
     const { error } = await supabase
       .from("profiles")
       .update({
         name: parsed.name,
-        phone: parsed.phone ? parsed.phone : null,
-        discord_user_id: parsed.discordUserId ? parsed.discordUserId : null,
-        birthdate: parsed.birthdate ? parsed.birthdate : null,
-        hired_on: parsed.hiredOn ? parsed.hiredOn : null,
         avatar_url: parsed.avatarUrl ? parsed.avatarUrl : null,
         active: parsed.active,
       })
@@ -94,6 +91,23 @@ export async function updateProfile(
 
     if (error) {
       return { ok: false, error: error.message };
+    }
+
+    // PII lives on the locked profiles_private table (PPL2b). RLS +
+    // profile_private_guard re-check people.manage for the discord/email/
+    // hired_on fields; a manager holds it, so this write is allowed.
+    const { error: privateError } = await supabase
+      .from("profiles_private")
+      .update({
+        phone: parsed.phone ? parsed.phone : null,
+        discord_user_id: parsed.discordUserId ? parsed.discordUserId : null,
+        birthdate: parsed.birthdate ? parsed.birthdate : null,
+        hired_on: parsed.hiredOn ? parsed.hiredOn : null,
+      })
+      .eq("profile_id", parsed.id);
+
+    if (privateError) {
+      return { ok: false, error: privateError.message };
     }
 
     revalidatePath("/people");
@@ -131,17 +145,31 @@ export async function updateOwnProfile(
 
     const parsed = selfUpdateProfileSchema.parse(input);
 
+    // avatar_url is non-PII and stays on profiles; phone/birthdate are the
+    // genuinely self-editable PII fields, on profiles_private (PPL2b). Both
+    // writes target only the caller's own row, so neither can touch anyone
+    // else regardless of the caller's role.
     const { error } = await supabase
       .from("profiles")
       .update({
-        phone: parsed.phone ? parsed.phone : null,
-        birthdate: parsed.birthdate ? parsed.birthdate : null,
         avatar_url: parsed.avatarUrl ? parsed.avatarUrl : null,
       })
       .eq("id", user.id);
 
     if (error) {
       return { ok: false, error: error.message };
+    }
+
+    const { error: privateError } = await supabase
+      .from("profiles_private")
+      .update({
+        phone: parsed.phone ? parsed.phone : null,
+        birthdate: parsed.birthdate ? parsed.birthdate : null,
+      })
+      .eq("profile_id", user.id);
+
+    if (privateError) {
+      return { ok: false, error: privateError.message };
     }
 
     revalidatePath("/people");
@@ -236,22 +264,32 @@ export async function inviteUser(
 
     const userId = data.user.id;
 
-    // The trigger has already inserted a bare profiles row for userId at
-    // this point (handle_new_auth_user fires synchronously on auth.users
-    // insert). Fill in the real name/role/phone through the normal
-    // per-request client so RLS's people.manage check applies here too.
+    // The trigger has already inserted a bare profiles row AND a
+    // profiles_private row (with the invited email) for userId at this point
+    // (handle_new_auth_user fires synchronously on auth.users insert). Fill in
+    // the real name/role on profiles and the phone on profiles_private through
+    // the normal per-request client so RLS's people.manage check applies here
+    // too.
     const supabase = await createClient();
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
         name: parsed.name,
         role_id: parsed.roleId,
-        phone: parsed.phone ? parsed.phone : null,
       })
       .eq("id", userId);
 
     if (updateError) {
       return { ok: false, error: updateError.message };
+    }
+
+    const { error: phoneError } = await supabase
+      .from("profiles_private")
+      .update({ phone: parsed.phone ? parsed.phone : null })
+      .eq("profile_id", userId);
+
+    if (phoneError) {
+      return { ok: false, error: phoneError.message };
     }
 
     revalidatePath("/people");

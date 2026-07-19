@@ -363,13 +363,19 @@ async function processDiscordForEvent(
     let recipientDiscordId: string | null | undefined;
 
     if (primaryRecipient) {
-      const { data: profile } = await client
-        .from("profiles")
-        .select("name, discord_user_id")
-        .eq("id", primaryRecipient)
-        .maybeSingle();
+      // PPL2b: discord_user_id moved to the locked profiles_private table; name
+      // stays on profiles. This consumer always runs on the service-role client
+      // (see processAppEvents), so both reads bypass RLS.
+      const [{ data: profile }, { data: contact }] = await Promise.all([
+        client.from("profiles").select("name").eq("id", primaryRecipient).maybeSingle(),
+        client
+          .from("profiles_private")
+          .select("discord_user_id")
+          .eq("profile_id", primaryRecipient)
+          .maybeSingle(),
+      ]);
       recipientName = profile?.name;
-      recipientDiscordId = profile?.discord_user_id;
+      recipientDiscordId = contact?.discord_user_id;
     }
 
     const message = buildDiscordMessage(key, payload, { recipientName, recipientDiscordId });
