@@ -8,7 +8,7 @@ import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt } from "@/lib/breaks/entitlement";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
 import { loadPositionSuitability, type PositionSuitability } from "@/lib/integration/position-ratings";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -71,11 +71,31 @@ export default async function SetupsPage({
         .eq("setup_id", setup.id)
     : { data: [] };
 
-  const { data: activeProfiles } = await supabase
+  const { data: activeProfilesBase } = await supabase
     .from("profiles")
-    .select("id, name, role_id, birthdate, hired_on, active")
+    .select("id, name, role_id, active")
     .eq("active", true)
     .order("name");
+
+  // PPL2b: birthdate/hired_on moved to the locked profiles_private table. The
+  // board derives Minor/Birthday/New badges from them for every assigned
+  // teammate (shown to any shift lead with setups.view, not just managers), so
+  // read them past RLS with the service-role client and merge them back into
+  // the board's profile rows. The raw dates stay server-side inputs to badge
+  // computation.
+  const admin = createServiceRoleClient();
+  const { data: activeProfilePrivate } = await admin
+    .from("profiles_private")
+    .select("profile_id, birthdate, hired_on")
+    .in("profile_id", (activeProfilesBase ?? []).map((p) => p.id));
+  const privateByUser = new Map(
+    (activeProfilePrivate ?? []).map((row) => [row.profile_id, row]),
+  );
+  const activeProfiles = (activeProfilesBase ?? []).map((p) => ({
+    ...p,
+    birthdate: privateByUser.get(p.id)?.birthdate ?? null,
+    hired_on: privateByUser.get(p.id)?.hired_on ?? null,
+  }));
 
   // P2 wiring (S3 -> S4): real Trainee badge on the board.
   const traineeUserIds = await loadTraineeUserIds(

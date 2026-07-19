@@ -2149,42 +2149,27 @@ export type Database = {
         Row: {
           active: boolean
           avatar_url: string | null
-          birthdate: string | null
           created_at: string
-          discord_user_id: string | null
-          email: string
-          hired_on: string | null
           id: string
           name: string
-          phone: string | null
           role_id: string | null
           store_id: string
         }
         Insert: {
           active?: boolean
           avatar_url?: string | null
-          birthdate?: string | null
           created_at?: string
-          discord_user_id?: string | null
-          email: string
-          hired_on?: string | null
           id: string
           name: string
-          phone?: string | null
           role_id?: string | null
           store_id: string
         }
         Update: {
           active?: boolean
           avatar_url?: string | null
-          birthdate?: string | null
           created_at?: string
-          discord_user_id?: string | null
-          email?: string
-          hired_on?: string | null
           id?: string
           name?: string
-          phone?: string | null
           role_id?: string | null
           store_id?: string
         }
@@ -2201,6 +2186,44 @@ export type Database = {
             columns: ["store_id"]
             isOneToOne: false
             referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles_private: {
+        Row: {
+          birthdate: string | null
+          created_at: string
+          discord_user_id: string | null
+          email: string
+          hired_on: string | null
+          phone: string | null
+          profile_id: string
+        }
+        Insert: {
+          birthdate?: string | null
+          created_at?: string
+          discord_user_id?: string | null
+          email: string
+          hired_on?: string | null
+          phone?: string | null
+          profile_id: string
+        }
+        Update: {
+          birthdate?: string | null
+          created_at?: string
+          discord_user_id?: string | null
+          email?: string
+          hired_on?: string | null
+          phone?: string | null
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_private_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

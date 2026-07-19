@@ -18,7 +18,7 @@ import {
   canTransition,
   type BreakStatus,
 } from "@/lib/breaks/entitlement";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/breaks/action-types";
 import {
   authorizeBreakSchema,
@@ -96,11 +96,19 @@ export async function generateBreaksForSetup(
       return { ok: true, data: { inserted: 0 } };
     }
 
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, birthdate")
-      .in("id", userIds);
-    const birthdateByUser = new Map((profiles ?? []).map((p) => [p.id, p.birthdate]));
+    // PPL2b: birthdate moved to the locked profiles_private table. The break
+    // plan needs each assignee's birthdate to apply minor break rules (a
+    // labor-compliance input), and breaks.manage is not people.manage, so read
+    // it past RLS with the service-role client. The value only feeds the plan;
+    // it is never returned to the client.
+    const admin = createServiceRoleClient();
+    const { data: privateRows } = await admin
+      .from("profiles_private")
+      .select("profile_id, birthdate")
+      .in("profile_id", userIds);
+    const birthdateByUser = new Map(
+      (privateRows ?? []).map((p) => [p.profile_id, p.birthdate]),
+    );
 
     const { data: rules } = await supabase.from("break_rules").select("*");
 

@@ -133,9 +133,15 @@ describe("PermissionError path (fail closed, never touch the database)", () => {
 });
 
 describe("updateOwnProfile self-escalation attempt", () => {
-  it("only ever updates phone/birthdate/avatar_url, scoped to the caller's own id", async () => {
-    const updateResult = makeQueryResult({ error: null });
-    const fromMock = vi.fn(() => updateResult);
+  it("writes avatar_url to profiles and phone/birthdate to profiles_private, scoped to the caller's own id", async () => {
+    // PPL2b: PII (phone/birthdate) now lives on the locked profiles_private
+    // table, keyed by profile_id; only avatar_url stays on profiles. Both
+    // writes must target the caller's own row.
+    const profilesResult = makeQueryResult({ error: null });
+    const privateResult = makeQueryResult({ error: null });
+    const fromMock = vi.fn((table: string) =>
+      table === "profiles" ? profilesResult : privateResult,
+    );
 
     mockCreateClient.mockResolvedValue({
       auth: { getUser: vi.fn(async () => ({ data: { user: { id: CALLER_ID } } })) },
@@ -156,17 +162,25 @@ describe("updateOwnProfile self-escalation attempt", () => {
     const result = await updateOwnProfile(maliciousInput);
 
     expect(result.ok).toBe(true);
+
+    // Non-PII (avatar_url) on profiles, own id only.
     expect(fromMock).toHaveBeenCalledWith("profiles");
-    expect(updateResult.update).toHaveBeenCalledTimes(1);
-    expect(updateResult.update).toHaveBeenCalledWith({
-      phone: "555-0100",
-      birthdate: "1990-01-01",
+    expect(profilesResult.update).toHaveBeenCalledWith({
       avatar_url: "https://example.com/me.png",
     });
-    // Never role_id/active/discord_user_id/name/email, and never anyone
-    // else's id — always the authenticated caller's own id.
-    expect(updateResult.eq).toHaveBeenCalledWith("id", CALLER_ID);
-    expect(updateResult.eq).not.toHaveBeenCalledWith("id", PROFILE_ID);
+    expect(profilesResult.eq).toHaveBeenCalledWith("id", CALLER_ID);
+
+    // PII (phone/birthdate) on profiles_private, keyed by profile_id, own id
+    // only. Never role_id/active/discord_user_id/name/email, and never anyone
+    // else's id.
+    expect(fromMock).toHaveBeenCalledWith("profiles_private");
+    expect(privateResult.update).toHaveBeenCalledWith({
+      phone: "555-0100",
+      birthdate: "1990-01-01",
+    });
+    expect(privateResult.eq).toHaveBeenCalledWith("profile_id", CALLER_ID);
+    expect(privateResult.eq).not.toHaveBeenCalledWith("profile_id", PROFILE_ID);
+    expect(profilesResult.eq).not.toHaveBeenCalledWith("id", PROFILE_ID);
   });
 
   it("rejects when nobody is signed in, without writing anything", async () => {
@@ -180,6 +194,87 @@ describe("updateOwnProfile self-escalation attempt", () => {
 
     expect(result).toEqual({ ok: false, error: "You must be signed in." });
     expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("PPL2b: PII writes are routed to profiles_private", () => {
+  it("updateProfile writes non-PII to profiles and phone/discord/birthdate/hired_on to profiles_private", async () => {
+    mockRequirePermission.mockResolvedValue(undefined);
+    const profilesResult = makeQueryResult({ error: null });
+    const privateResult = makeQueryResult({ error: null });
+    const fromMock = vi.fn((table: string) =>
+      table === "profiles" ? profilesResult : privateResult,
+    );
+    mockCreateClient.mockResolvedValue({ from: fromMock } as never);
+
+    const result = await updateProfile({
+      id: PROFILE_ID,
+      name: "Jamie Rivera",
+      phone: "555-0100",
+      discordUserId: "424242",
+      birthdate: "2010-05-01",
+      hiredOn: "2024-01-01",
+      avatarUrl: "",
+      active: true,
+    });
+
+    expect(result.ok).toBe(true);
+    // Non-PII on profiles.
+    expect(profilesResult.update).toHaveBeenCalledWith({
+      name: "Jamie Rivera",
+      avatar_url: null,
+      active: true,
+    });
+    expect(profilesResult.eq).toHaveBeenCalledWith("id", PROFILE_ID);
+    // PII on profiles_private, keyed by profile_id — never on profiles.
+    expect(fromMock).toHaveBeenCalledWith("profiles_private");
+    expect(privateResult.update).toHaveBeenCalledWith({
+      phone: "555-0100",
+      discord_user_id: "424242",
+      birthdate: "2010-05-01",
+      hired_on: "2024-01-01",
+    });
+    expect(privateResult.eq).toHaveBeenCalledWith("profile_id", PROFILE_ID);
+  });
+
+  it("inviteUser writes name/role to profiles and phone to profiles_private", async () => {
+    mockRequirePermission.mockResolvedValue(undefined);
+    const adminClient = {
+      auth: {
+        admin: {
+          inviteUserByEmail: vi.fn(async () => ({
+            data: { user: { id: PROFILE_ID } },
+            error: null,
+          })),
+        },
+      },
+    };
+    mockCreateServiceRoleClient.mockReturnValue(adminClient as never);
+
+    const profilesResult = makeQueryResult({ error: null });
+    const privateResult = makeQueryResult({ error: null });
+    const fromMock = vi.fn((table: string) =>
+      table === "profiles" ? profilesResult : privateResult,
+    );
+    mockCreateClient.mockResolvedValue({ from: fromMock } as never);
+
+    const result = await inviteUser({
+      name: "Alex Chen",
+      email: "alex@example.com",
+      roleId: null,
+      phone: "555-0100",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(profilesResult.update).toHaveBeenCalledWith({
+      name: "Alex Chen",
+      role_id: null,
+    });
+    expect(profilesResult.eq).toHaveBeenCalledWith("id", PROFILE_ID);
+    // Phone is PII → profiles_private only.
+    expect(fromMock).toHaveBeenCalledWith("profiles_private");
+    expect(privateResult.update).toHaveBeenCalledWith({ phone: "555-0100" });
+    expect(privateResult.eq).toHaveBeenCalledWith("profile_id", PROFILE_ID);
   });
 });
 
