@@ -59,6 +59,35 @@ function revalidateMaintenance(workOrderId?: string) {
 }
 
 /**
+ * Resolves the maintenance requester for a work order so `work_order_status`
+ * events can notify them as the order moves through its lifecycle
+ * (ARCHITECTURE.md "Requests": the submitter "is notified as its status
+ * changes"). Returns the canonical `{ user_id }` recipient fragment the notify
+ * drain reads (lib/notify/recipients.ts), or `{}` when the work order was
+ * created directly (no `request_id`) and so has no distinct requester to notify.
+ *
+ * N4: without this, every `work_order_status` emit carried no recipient at all,
+ * so despite the key being in NOTIFIABLE_EVENT_KEYS the drain resolved zero
+ * recipients and the requester was never notified of in_progress / on_hold /
+ * cancelled / complete transitions. The lookup runs on the per-request client;
+ * maintenance_requests is readable by any signed-in user
+ * (maintenance_requests_select_authenticated), so the assignee-self-service
+ * path resolves the requester too, not just triage leaders.
+ */
+async function workOrderRequesterPayload(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  requestId: string | null,
+): Promise<{ user_id?: string }> {
+  if (!requestId) return {};
+  const { data } = await supabase
+    .from("maintenance_requests")
+    .select("submitted_by")
+    .eq("id", requestId)
+    .maybeSingle();
+  return requesterRecipientPayload(data?.submitted_by ?? null);
+}
+
+/**
  * Any team member can submit a request (ARCHITECTURE.md "Requests": "any
  * team member submits a maintenance request"). maintenance.request is a base
  * permission key granted to every seeded role.
@@ -392,7 +421,7 @@ export async function updateWorkOrderStatus(
     const supabase = await createClient();
     const { data: workOrder, error: fetchError } = await supabase
       .from("work_orders")
-      .select("id, status, assigned_user_id, notify_discord, discord_channel_id")
+      .select("id, status, assigned_user_id, notify_discord, discord_channel_id, request_id")
       .eq("id", parsed.workOrderId)
       .single();
 
@@ -445,6 +474,8 @@ export async function updateWorkOrderStatus(
       workOrderId: parsed.workOrderId,
       status: nextStatus,
       ...discordFlagPayload(workOrder),
+      // N4: notify the original requester as their work order progresses.
+      ...(await workOrderRequesterPayload(supabase, workOrder.request_id)),
     });
 
     revalidateMaintenance(parsed.workOrderId);
@@ -467,7 +498,7 @@ export async function completeWorkOrder(input: CompleteWorkOrderInput): Promise<
 
     const { data: workOrder, error: fetchError } = await supabase
       .from("work_orders")
-      .select("id, status, assigned_user_id, equipment_id, notify_discord, discord_channel_id")
+      .select("id, status, assigned_user_id, equipment_id, notify_discord, discord_channel_id, request_id")
       .eq("id", parsed.workOrderId)
       .single();
 
@@ -531,6 +562,8 @@ export async function completeWorkOrder(input: CompleteWorkOrderInput): Promise<
       workOrderId: parsed.workOrderId,
       status: "complete",
       ...discordFlagPayload(workOrder),
+      // N4: notify the original requester their work order is complete.
+      ...(await workOrderRequesterPayload(supabase, workOrder.request_id)),
     });
 
     revalidateMaintenance(parsed.workOrderId);
