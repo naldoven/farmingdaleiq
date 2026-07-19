@@ -30,7 +30,12 @@ export interface AdjustRecipientOption {
 export function AdjustTokensForm({ recipients }: { recipients: AdjustRecipientOption[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [userId, setUserId] = useState(recipients[0]?.id ?? "");
+  // S3: default to no one picked. Defaulting to the first employee (often the
+  // owner account, which sorts first) meant a rushed submit adjusted the wrong
+  // person's balance. Empty forces an explicit choice; the guard below and the
+  // adjust_tokens() server path both reject an empty user id. Mirrors the
+  // fixed gift-form picker.
+  const [userId, setUserId] = useState("");
   const [delta, setDelta] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);

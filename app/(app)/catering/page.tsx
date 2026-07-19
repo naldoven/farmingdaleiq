@@ -6,7 +6,7 @@ import type { OrderCardData } from "@/components/catering/order-card";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { storeLocalDate, type OrderStage } from "@/app/(app)/catering/logic";
+import { CANCELLED_STAGE, storeLocalDate, type OrderStage } from "@/app/(app)/catering/logic";
 
 /**
  * /catering pipeline board (ARCHITECTURE.md page map: "Order pipeline board:
@@ -40,6 +40,12 @@ export default async function CateringPipelinePage() {
       .from("catering_orders")
       .select("id, guest_name")
       .gte("created_at", `${today}T00:00:00`)
+      // CAT-STRIP: drop same-day-cancelled orders from the "New orders today"
+      // strip, consistent with CAT1 (the board and revenue rollups already
+      // exclude cancelled). Only `cancelled` is filtered here, NOT the full
+      // NON_REVENUE_STAGES set -- that set also contains `new`, which is exactly
+      // the intake this strip exists to surface.
+      .neq("stage", CANCELLED_STAGE)
       .order("created_at", { ascending: false }),
   ]);
 

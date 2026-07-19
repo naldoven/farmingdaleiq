@@ -42,6 +42,27 @@ const KIND_TONE: Record<FeedPostData["kind"], "success" | "warning" | "accent"> 
 };
 
 /**
+ * FEED-HYDRATION: this is a "use client" component that is also server-rendered,
+ * so `new Date(...).toLocaleString()` produced React #418 -- the server's
+ * default locale/timezone string didn't match the browser's at hydration.
+ * Pinning BOTH the locale and the timeZone makes the formatted string identical
+ * on the server and the client, so there's no mismatch and no layout shift. The
+ * store runs on Eastern time (the same America/New_York default the catering
+ * day-boundary code falls back to), so timestamps read in store time regardless
+ * of where the viewer's browser is.
+ */
+const TIMESTAMP_FORMAT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : TIMESTAMP_FORMAT.format(date);
+}
+
+/**
  * One post in the Team Feed (ARCHITECTURE.md "Team Feed": "A store-wide
  * feed of Recognitions, Top Performer shoutouts, and leader Broadcasts ...
  * Team members can like and comment on posts"). Like/comment are optimistic
@@ -71,7 +92,7 @@ export function PostCard({ post }: { post: FeedPostData }) {
             <p className="truncate text-[15px] font-semibold text-ink">{headline}</p>
             <StatusBadge tone={KIND_TONE[post.kind]}>{KIND_LABELS[post.kind]}</StatusBadge>
           </div>
-          <p className="text-[13px] text-muted-ink">{new Date(post.createdAt).toLocaleString()}</p>
+          <p className="text-[13px] text-muted-ink">{formatTimestamp(post.createdAt)}</p>
         </div>
       </div>
 

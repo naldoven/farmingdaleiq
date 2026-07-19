@@ -45,11 +45,18 @@ export default async function TeamFeedPage() {
   ]);
 
   const postIds = (posts ?? []).map((p) => p.id);
-  const authorIds = new Set(
-    (posts ?? []).flatMap((p) => [p.author_id, p.subject_user_id].filter((id): id is string => Boolean(id)))
-  );
 
-  const [{ data: likes }, { data: comments }, { data: authors }] = await Promise.all([
+  interface CommentRow {
+    id: string;
+    post_id: string;
+    author_id: string | null;
+    body: string;
+    created_at: string;
+  }
+
+  // Likes and comments depend only on postIds, so fetch them together. The
+  // profiles lookup has to wait for comments (see authorIds below).
+  const [{ data: likes }, { data: comments }] = await Promise.all([
     postIds.length
       ? supabase.from("feed_likes").select("post_id, user_id").in("post_id", postIds)
       : Promise.resolve({ data: [] as { post_id: string; user_id: string }[] }),
@@ -59,19 +66,26 @@ export default async function TeamFeedPage() {
           .select("id, post_id, author_id, body, created_at")
           .in("post_id", postIds)
           .order("created_at")
-      : Promise.resolve({ data: [] as { id: string; post_id: string; author_id: string | null; body: string; created_at: string }[] }),
-    authorIds.size
-      ? supabase.from("profiles").select("id, name").in("id", Array.from(authorIds))
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      : Promise.resolve({ data: [] as CommentRow[] }),
   ]);
 
-  interface CommentRow {
-    id: string;
-    post_id: string;
-    author_id: string | null;
-    body: string;
-    created_at: string;
+  // FEED-AUTHOR: the profiles lookup must cover every id a name renders for --
+  // post authors, recognition subjects, AND comment authors. This set was built
+  // from posts only, so a commenter not otherwise in the window was missing and
+  // their name fell back to "Someone". Built after comments resolve so their
+  // author ids are included.
+  const authorIds = new Set<string>();
+  for (const post of posts ?? []) {
+    if (post.author_id) authorIds.add(post.author_id);
+    if (post.subject_user_id) authorIds.add(post.subject_user_id);
   }
+  for (const comment of (comments ?? []) as CommentRow[]) {
+    if (comment.author_id) authorIds.add(comment.author_id);
+  }
+
+  const { data: authors } = authorIds.size
+    ? await supabase.from("profiles").select("id, name").in("id", Array.from(authorIds))
+    : { data: [] as { id: string; name: string }[] };
 
   const nameById = new Map((authors ?? []).map((a) => [a.id, a.name]));
   const likesByPost = new Map<string, string[]>();

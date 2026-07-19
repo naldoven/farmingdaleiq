@@ -27,7 +27,13 @@ vi.mock("@/lib/auth/permissions", () => ({
   PermissionError: class PermissionError extends Error {},
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+// createRecognition now awards through the service-role client (FEED-RECOGNITION),
+// so the action imports createServiceRoleClient too. awardTokens is mocked below
+// and ignores its client argument, so this only needs to be a callable stub.
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(),
+  createServiceRoleClient: vi.fn(),
+}));
 
 vi.mock("@/lib/events/bus", () => ({ emitEvent: vi.fn().mockResolvedValue(undefined) }));
 
