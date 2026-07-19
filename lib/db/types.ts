@@ -3670,6 +3670,10 @@ export type Database = {
         Args: { p_setup_id: string }
         Returns: boolean
       }
+      graduate_trainee: {
+        Args: { p_enrollment_id: string }
+        Returns: { graduated: boolean; audit_created: boolean }[]
+      }
       adjust_tokens: {
         Args: { p_user_id: string; p_delta: number; p_note?: string | null }
         Returns: { transaction_id: string; balance_after: number }[]

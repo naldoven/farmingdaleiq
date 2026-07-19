@@ -79,6 +79,21 @@ export function PassportCard({
   const [newItemType, setNewItemType] = useState<PassportItem["type"]>("check");
   const [enrollTarget, setEnrollTarget] = useState(UNSET);
   const [enrollTrack, setEnrollTrack] = useState("");
+  // TR6: slider/photo items need a value, not just a checkbox. Drafts are keyed
+  // per (enrollment, item) so each row edits independently.
+  const [sliderDrafts, setSliderDrafts] = useState<Record<string, string>>({});
+  const [photoDrafts, setPhotoDrafts] = useState<Record<string, string>>({});
+
+  const saveProgress = (
+    enrollmentId: string,
+    itemId: string,
+    payload: { checked?: boolean; sliderValue?: number; photoUrl?: string },
+  ) =>
+    startTransition(async () => {
+      const result = await upsertItemProgress({ enrollmentId, itemId, ...payload });
+      if (!result.ok) setError(result.error);
+      router.refresh();
+    });
 
   const enrolledUserIds = new Set(enrollments.map((e) => e.userId));
   const enrollable = people.filter((p) => !enrolledUserIds.has(p.id));
@@ -269,12 +284,14 @@ export function PassportCard({
                 <ul className="mt-2 flex flex-col gap-1">
                   {sortedItems.map((item) => {
                     const done = completedItemIds.has(item.id);
+                    const draftKey = `${enrollment.id}:${item.id}`;
+                    const labelClass = done ? "line-through text-muted-foreground" : "";
                     return (
-                      <li key={item.id} className="flex items-center gap-2 text-sm">
+                      <li key={item.id} className="flex flex-wrap items-center gap-2 text-sm">
                         {item.type === "signature" ? (
                           <>
                             <Checkbox checked={done} disabled />
-                            <span className={done ? "line-through text-muted-foreground" : ""}>{item.label}</span>
+                            <span className={labelClass}>{item.label}</span>
                             {!done && canStamp && (
                               <Button
                                 size="sm"
@@ -292,24 +309,83 @@ export function PassportCard({
                               </Button>
                             )}
                           </>
+                        ) : item.type === "slider" ? (
+                          // TR6: a slider item completes at 100. Send the numeric
+                          // sliderValue (not just a checkbox) so the action can
+                          // mark it complete.
+                          <>
+                            <span className={labelClass}>{item.label}</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              className="w-20"
+                              aria-label={`${item.label} progress (0-100)`}
+                              disabled={!canEditProgress || isPending}
+                              value={sliderDrafts[draftKey] ?? (done ? "100" : "")}
+                              onChange={(e) =>
+                                setSliderDrafts((d) => ({ ...d, [draftKey]: e.target.value }))
+                              }
+                            />
+                            {canEditProgress && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isPending}
+                                onClick={() =>
+                                  saveProgress(enrollment.id, item.id, {
+                                    sliderValue: Number(sliderDrafts[draftKey] ?? (done ? "100" : "0")),
+                                  })
+                                }
+                              >
+                                Save
+                              </Button>
+                            )}
+                            {done && <Badge variant="success">100%</Badge>}
+                          </>
+                        ) : item.type === "photo" ? (
+                          // TR6: a photo item completes once a non-blank photo URL
+                          // is recorded. Send photoUrl so the action can mark it
+                          // complete.
+                          <>
+                            <span className={labelClass}>{item.label}</span>
+                            <Input
+                              type="url"
+                              className="w-56"
+                              placeholder="Photo URL"
+                              aria-label={`${item.label} photo URL`}
+                              disabled={!canEditProgress || isPending}
+                              value={photoDrafts[draftKey] ?? ""}
+                              onChange={(e) =>
+                                setPhotoDrafts((d) => ({ ...d, [draftKey]: e.target.value }))
+                              }
+                            />
+                            {canEditProgress && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isPending}
+                                onClick={() =>
+                                  saveProgress(enrollment.id, item.id, {
+                                    photoUrl: photoDrafts[draftKey] ?? "",
+                                  })
+                                }
+                              >
+                                Save
+                              </Button>
+                            )}
+                            {done && <Badge variant="success">Uploaded</Badge>}
+                          </>
                         ) : (
                           <>
                             <Checkbox
                               checked={done}
                               disabled={!canEditProgress || isPending}
                               onCheckedChange={(checked) =>
-                                startTransition(async () => {
-                                  const result = await upsertItemProgress({
-                                    enrollmentId: enrollment.id,
-                                    itemId: item.id,
-                                    checked: checked === true,
-                                  });
-                                  if (!result.ok) setError(result.error);
-                                  router.refresh();
-                                })
+                                saveProgress(enrollment.id, item.id, { checked: checked === true })
                               }
                             />
-                            <span className={done ? "line-through text-muted-foreground" : ""}>{item.label}</span>
+                            <span className={labelClass}>{item.label}</span>
                           </>
                         )}
                       </li>

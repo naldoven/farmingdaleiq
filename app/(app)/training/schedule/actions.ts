@@ -39,7 +39,14 @@ async function emitBestEffort(key: Parameters<typeof emitEvent>[0], payload: Rec
 export async function createSession(input: CreateSessionInput): Promise<ActionResult<{ id: string }>> {
   try {
     await requirePermission("training.manage");
-    const parsed = createSessionSchema.parse(input);
+    // safeParse (not parse) so a validation failure -- notably the TR8
+    // end-after-start rule -- returns the friendly issue message instead of a
+    // raw ZodError JSON blob surfaced through toActionError.
+    const parsedResult = createSessionSchema.safeParse(input);
+    if (!parsedResult.success) {
+      return { ok: false, error: parsedResult.error.issues[0]?.message ?? "Invalid session details." };
+    }
+    const parsed = parsedResult.data;
     const supabase = await createClient();
 
     const { data, error } = await supabase

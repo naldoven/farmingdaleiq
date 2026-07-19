@@ -181,12 +181,19 @@ export async function upsertItemProgress(input: UpsertItemProgressInput): Promis
 
     const { data: enrollment } = await supabase
       .from("passport_enrollments")
-      .select("id, user_id")
+      .select("id, user_id, stamped_at")
       .eq("id", parsed.enrollmentId)
       .maybeSingle();
 
     if (!enrollment) {
       return { ok: false, error: "Enrollment not found." };
+    }
+
+    // TR9: once a passport is stamped it's finalized -- its items must not be
+    // un/re-checked, or the completion record behind the stamp could be edited
+    // out from under it. Reject for everyone (owner, manager, stamper alike).
+    if (enrollment.stamped_at) {
+      return { ok: false, error: "This passport is already stamped; its items are locked." };
     }
 
     const isOwner = currentUserId !== null && enrollment.user_id === currentUserId;
