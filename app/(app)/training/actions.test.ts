@@ -69,7 +69,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => client,
 }));
 
-import { signItem, stampPassport } from "./actions";
+import { signItem, stampPassport, upsertItemProgress } from "./actions";
 
 beforeEach(() => {
   emitEventMock.mockClear();
@@ -120,5 +120,44 @@ describe("stampPassport self-approval (TR2)", () => {
     // Rejected before ever loading the passport / running the stamp side effects.
     expect(client.calls).not.toContain("passports");
     expect(emitEventMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("upsertItemProgress on a stamped passport (TR9)", () => {
+  const ENROLLMENT_UUID = "55555555-5555-4555-8555-555555555555";
+  const ITEM_UUID = "66666666-6666-4666-8666-666666666666";
+
+  it("rejects item-progress writes once the enrollment is stamped", async () => {
+    client = createFakeClient({
+      passport_enrollments: [
+        { data: { id: ENROLLMENT_UUID, user_id: ACTOR_ID, stamped_at: "2026-07-10T12:00:00Z" }, error: null },
+      ],
+    });
+
+    const result = await upsertItemProgress({ enrollmentId: ENROLLMENT_UUID, itemId: ITEM_UUID, checked: true });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/stamped/i);
+    // Rejected before touching the item or writing any progress row.
+    expect(client.calls).not.toContain("passport_items");
+    expect(client.calls).not.toContain("passport_item_progress");
+  });
+
+  it("allows item-progress writes while the enrollment is unstamped", async () => {
+    client = createFakeClient({
+      passport_enrollments: [
+        { data: { id: ENROLLMENT_UUID, user_id: ACTOR_ID, stamped_at: null }, error: null },
+      ],
+      passport_items: [{ data: { type: "check" }, error: null }],
+      passport_item_progress: [
+        { data: null, error: null }, // no existing progress row
+        { data: null, error: null }, // insert
+      ],
+    });
+
+    const result = await upsertItemProgress({ enrollmentId: ENROLLMENT_UUID, itemId: ITEM_UUID, checked: true });
+
+    expect(result.ok).toBe(true);
+    expect(client.calls).toContain("passport_item_progress");
   });
 });

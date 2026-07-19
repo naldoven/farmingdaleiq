@@ -88,7 +88,11 @@ export default async function TraineeSchedulePage() {
                                 </Badge>
                               ))}
                             </span>
-                            {canManage && <DeleteSessionButton id={s.id} />}
+                            {canManage && (
+                              <span className="print:hidden">
+                                <DeleteSessionButton id={s.id} />
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -97,7 +101,9 @@ export default async function TraineeSchedulePage() {
                 })}
               </div>
               {canManage && (
-                <CreateSessionForm enrollmentId={enrollment.id} positions={positions ?? []} trainers={trainers ?? []} />
+                <div className="print:hidden">
+                  <CreateSessionForm enrollmentId={enrollment.id} positions={positions ?? []} trainers={trainers ?? []} />
+                </div>
               )}
             </CardContent>
           </Card>

@@ -8,10 +8,12 @@
  * (safe to call twice). cycleStationProgress is a deliberate click-to-cycle
  * control (PLAN.md's double-submit examples are post/complete/claim/stamp --
  * a manual cycle click is expected to advance state every time, that's the
- * feature), but graduation/audit side effects it can trigger are themselves
- * idempotent: graduating checks trainee_enrollments.status isn't already
- * 'graduated' before flipping it, and the audit row is only inserted if one
- * doesn't already exist for the enrollment.
+ * feature), but the graduation side effect it can trigger is atomic and
+ * idempotent: the status flip and the graduation_audits insert run together
+ * inside the graduate_trainee() SECURITY DEFINER function (TR3), which no-ops
+ * when the trainee is already graduated with an audit and re-creates a missing
+ * audit otherwise, so an interrupt can't leave a trainee graduated with no
+ * audit.
  */
 
 import { revalidatePath } from "next/cache";
@@ -21,7 +23,6 @@ import { createClient } from "@/lib/supabase/server";
 import { emitEvent } from "@/lib/events/bus";
 import type { ActionResult } from "@/app/(app)/training/action-types";
 import { replaceCurrentRating } from "@/app/(app)/ratings/actions";
-import { auditDueDate } from "@/app/(app)/training/graduates/logic";
 import { cycleStation, isRoadmapComplete, type StationState } from "@/app/(app)/training/grid/logic";
 import {
   cycleStationSchema,
@@ -190,6 +191,31 @@ export async function cycleStationProgress(
       return { ok: false, error: updateError.message };
     }
 
+    // TR4: leaving 'scored' (the score-5 -> not_started wrap). The quick
+    // position rating written when this station was scored must stop being
+    // current, or the grid shows a reset station while /ratings and the
+    // 3-star stamp gate still read a stale is_current rating.
+    if (current.status === "scored" && next.status !== "scored") {
+      const { data: station } = await supabase
+        .from("roadmap_stations")
+        .select("position_id")
+        .eq("id", parsed.roadmapStationId)
+        .maybeSingle();
+      const { data: enrollment } = await supabase
+        .from("trainee_enrollments")
+        .select("user_id")
+        .eq("id", parsed.enrollmentId)
+        .maybeSingle();
+      if (station?.position_id && enrollment?.user_id) {
+        await supabase
+          .from("position_ratings")
+          .update({ is_current: false })
+          .eq("user_id", enrollment.user_id)
+          .eq("position_id", station.position_id)
+          .eq("is_current", true);
+      }
+    }
+
     if (next.status === "scored" && next.score !== null) {
       const { data: station } = await supabase
         .from("roadmap_stations")
@@ -249,8 +275,15 @@ export async function cycleStationProgress(
         }
       }
 
-      // Graduation check: every station on this roadmap now scored?
-      if (enrollment && enrollment.status === "active") {
+      // Graduation check: every station on this roadmap now scored? The status
+      // flip + audit insert run atomically inside the graduate_trainee
+      // SECURITY DEFINER function (TR3) so an interrupt can't leave a trainee
+      // graduated with no audit row. The function is idempotent and
+      // self-healing, so calling it on every completed roadmap -- not only the
+      // first time status is still 'active' -- is safe and doubles as the
+      // recovery path for any enrollment that was left graduated-without-audit
+      // by the old non-transactional code.
+      if (enrollment) {
         const [{ data: allStations }, { data: allProgress }] = await Promise.all([
           supabase.from("roadmap_stations").select("id").eq("roadmap_id", enrollment.roadmap_id),
           supabase
@@ -260,26 +293,23 @@ export async function cycleStationProgress(
         ]);
         const scoredCount = (allProgress ?? []).filter((p) => p.status === "scored").length;
         if (isRoadmapComplete((allStations ?? []).length, scoredCount)) {
-          const today = new Date().toISOString().slice(0, 10);
-          const { data: graduatedRows } = await supabase
-            .from("trainee_enrollments")
-            .update({ status: "graduated", graduated_on: today })
-            .eq("id", enrollment.id)
-            .eq("status", "active")
-            .select("id");
-
-          if (graduatedRows && graduatedRows.length > 0) {
-            await emitBestEffort("graduation_ready", { enrollmentId: enrollment.id, userId: enrollment.user_id });
-
-            const { data: existingAudit } = await supabase
-              .from("graduation_audits")
-              .select("id")
-              .eq("enrollment_id", enrollment.id)
-              .maybeSingle();
-            if (!existingAudit) {
-              await supabase.from("graduation_audits").insert({
-                enrollment_id: enrollment.id,
-                due_on: auditDueDate(today).toISOString().slice(0, 10),
+          const { data: gradRows, error: gradError } = await supabase.rpc("graduate_trainee", {
+            p_enrollment_id: enrollment.id,
+          });
+          if (gradError) {
+            // The station score already committed and graduation is now
+            // transactional (all-or-nothing) and retriable, so don't fail the
+            // score; the next station cycle re-runs the idempotent finalize.
+            console.error("training grid: graduate_trainee RPC failed", gradError);
+          } else {
+            const grad = Array.isArray(gradRows) ? gradRows[0] : gradRows;
+            // Only emit on a FRESH graduation. A recovery run (missing audit
+            // re-created on an already-graduated enrollment) reports
+            // graduated=false, so the event never double-fires.
+            if (grad?.graduated) {
+              await emitBestEffort("graduation_ready", {
+                enrollmentId: enrollment.id,
+                userId: enrollment.user_id,
               });
             }
           }
