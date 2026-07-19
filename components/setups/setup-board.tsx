@@ -24,6 +24,7 @@ import {
   selectTopPerformer,
   suggestAssignees,
 } from "@/app/(app)/setups/actions";
+import { isoToLocalInput, localInputToIso } from "@/components/setups/arrival-time";
 import { computeBadges, type BadgeKind } from "@/lib/setups/badges";
 import { GRID_COLUMNS, GRID_ROWS } from "@/lib/setups/layout-grid";
 import type { SuggestedCandidate } from "@/app/(app)/setups/action-types";
@@ -369,7 +370,11 @@ export function SetupBoard({
                       <Input
                         aria-label="Arrival time"
                         type="datetime-local"
-                        defaultValue={assignment.arrival_time ? assignment.arrival_time.slice(0, 16) : ""}
+                        // SETB1: show the stored UTC time back in the leader's
+                        // local wall clock (exact inverse of the save below),
+                        // so the field no longer drifts by the UTC offset each
+                        // save + reload.
+                        defaultValue={isoToLocalInput(assignment.arrival_time)}
                         className="w-48 rounded-full"
                         onBlur={(e) => {
                           const value = e.target.value;
@@ -379,7 +384,7 @@ export function SetupBoard({
                               setupId: setup.id,
                               positionId: assignment.position_id ?? "",
                               userId: assignment.user_id,
-                              arrivalTime: new Date(value).toISOString(),
+                              arrivalTime: localInputToIso(value),
                             }),
                           );
                         }}

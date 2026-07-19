@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/mobile";
 import { quickRate, rubricRate } from "@/app/(app)/ratings/actions";
-import { colorForRating, type RatingColor } from "@/app/(app)/ratings/logic";
+import { colorForRating, ratingCellTitle, type RatingColor } from "@/app/(app)/ratings/logic";
 
 const COLOR_CLASSES: Record<RatingColor, string> = {
   above: "border-info text-info",
@@ -37,6 +37,7 @@ export function RateCell({
   personName,
   positionName,
   stars,
+  comment: priorComment,
   storeAverage,
   rubric,
   canRate,
@@ -46,6 +47,8 @@ export function RateCell({
   personName: string;
   positionName: string;
   stars: number | null;
+  /** RAT4: the comment saved with the current rating, if any. */
+  comment?: string | null;
   storeAverage: number | null;
   rubric: RubricCategories | null;
   canRate: boolean;
@@ -54,7 +57,9 @@ export function RateCell({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
+  // RAT4: preload the prior comment so re-rating shows the note to read/edit,
+  // matching how quickStars preloads the prior stars.
+  const [comment, setComment] = useState(priorComment ?? "");
   const [quickStars, setQuickStars] = useState(stars ?? 0);
   const [cat, setCat] = useState({ c1: 3, c2: 3, c3: 3, c4: 3 });
 
@@ -69,10 +74,18 @@ export function RateCell({
         type="button"
         disabled={!canRate}
         onClick={() => setOpen(true)}
-        className={`flex h-9 w-14 items-center justify-center rounded-md border text-sm font-medium transition-colors ${COLOR_CLASSES[color]} ${canRate ? "hover:bg-muted" : "cursor-default opacity-80"}`}
-        title={`${personName} — ${positionName}`}
+        className={`relative flex h-9 w-14 items-center justify-center rounded-md border text-sm font-medium transition-colors ${COLOR_CLASSES[color]} ${canRate ? "hover:bg-muted" : "cursor-default opacity-80"}`}
+        title={ratingCellTitle(personName, positionName, priorComment)}
       >
         {label}
+        {priorComment?.trim() && (
+          // RAT4: a dot marks that a comment is attached; the text is in the
+          // tooltip (title) above.
+          <span
+            aria-label="Has a comment"
+            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-info"
+          />
+        )}
       </button>
       <DialogContent>
         <DialogHeader>

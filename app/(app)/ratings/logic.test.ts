@@ -6,6 +6,8 @@ import {
   computeAverage,
   isQualified,
   isRerateDue,
+  rateableColumns,
+  ratingCellTitle,
   rerateDueDate,
 } from "./logic";
 
@@ -67,5 +69,55 @@ describe("isRerateDue / rerateDueDate", () => {
     const ratedAt = new Date("2026-07-01T00:00:00Z");
     const due = rerateDueDate(ratedAt);
     expect(due.toISOString().slice(0, 10)).toBe("2026-07-31");
+  });
+});
+
+describe("rateableColumns (RAT1)", () => {
+  it("drops onboarding-roadmap items (is_rateable === false)", () => {
+    const cols = rateableColumns([
+      { id: "p1", name: "Orientation", is_rateable: false, groupName: "FOH" },
+      { id: "p2", name: "Register 1", is_rateable: true, groupName: "Front Counter" },
+    ]);
+    expect(cols.map((c) => c.name)).toEqual(["Register 1"]);
+  });
+
+  it("keeps positions with a missing is_rateable so nothing real is hidden", () => {
+    const cols = rateableColumns([{ id: "p1", name: "Beverage" }]);
+    expect(cols).toHaveLength(1);
+    expect(cols[0].showGroup).toBe(false);
+  });
+
+  it("flags duplicated station names to show their group, uniques stay unlabeled", () => {
+    const cols = rateableColumns([
+      { id: "a", name: "Register 1", is_rateable: true, groupName: "Front Counter" },
+      { id: "b", name: "Register 1", is_rateable: true, groupName: "Drive Thru" },
+      { id: "c", name: "Beverage", is_rateable: true, groupName: "Front Counter" },
+    ]);
+    const byId = new Map(cols.map((c) => [c.id, c]));
+    expect(byId.get("a")?.showGroup).toBe(true);
+    expect(byId.get("b")?.showGroup).toBe(true);
+    expect(byId.get("a")?.groupName).toBe("Front Counter");
+    expect(byId.get("b")?.groupName).toBe("Drive Thru");
+    expect(byId.get("c")?.showGroup).toBe(false);
+  });
+
+  it("does not double-count a name that appears once rateable and once not", () => {
+    const cols = rateableColumns([
+      { id: "a", name: "Register 1", is_rateable: true, groupName: "Front Counter" },
+      { id: "b", name: "Register 1", is_rateable: false, groupName: "FOH" },
+    ]);
+    expect(cols).toHaveLength(1);
+    expect(cols[0].showGroup).toBe(false);
+  });
+});
+
+describe("ratingCellTitle (RAT4)", () => {
+  it("is just the name pair when there is no comment", () => {
+    expect(ratingCellTitle("Sam", "Register 1")).toBe("Sam — Register 1");
+    expect(ratingCellTitle("Sam", "Register 1", "   ")).toBe("Sam — Register 1");
+  });
+
+  it("appends the prior comment so it shows in the tooltip", () => {
+    expect(ratingCellTitle("Sam", "Register 1", "Fast hands")).toContain("Fast hands");
   });
 });

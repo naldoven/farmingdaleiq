@@ -15,16 +15,18 @@
  * A DB-level partial unique index (position_ratings_one_current_per_user_position,
  * in the same RLS migration) makes a racing double-submit fail the second
  * insert with a unique violation (Postgres code 23505) instead of leaving two
- * "current" rows; that violation is caught below and treated as a success
- * (the rating was already recorded), so a double-submitted rate is safe to
- * run twice.
+ * "current" rows. RAT2: that violation is caught below and, instead of a bare
+ * ok that hides the discarded write, the now-current row is read back and
+ * returned so the caller learns the actual current value. The identical-payload
+ * double-submit case still resolves to success (the read-back value equals what
+ * was attempted), so a double-submitted rate is safe to run twice.
  */
 
 import { revalidatePath } from "next/cache";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult } from "@/app/(app)/ratings/action-types";
+import type { ActionResult, RatingSnapshot } from "@/app/(app)/ratings/action-types";
 import {
   quickRateSchema,
   rubricRateSchema,
@@ -67,7 +69,7 @@ export async function replaceCurrentRating(
     comment: string | null;
     ratedBy: string | null;
   },
-): Promise<ActionResult> {
+): Promise<ActionResult<RatingSnapshot>> {
   const { error: clearError } = await supabase
     .from("position_ratings")
     .update({ is_current: false })
@@ -79,33 +81,70 @@ export async function replaceCurrentRating(
     return { ok: false, error: clearError.message };
   }
 
-  const { error: insertError } = await supabase.from("position_ratings").insert({
-    user_id: params.userId,
-    position_id: params.positionId,
-    stars: params.stars,
-    category_scores: params.categoryScores as never,
-    comment: params.comment,
-    rated_by: params.ratedBy,
-    is_current: true,
-  });
+  const { data: inserted, error: insertError } = await supabase
+    .from("position_ratings")
+    .insert({
+      user_id: params.userId,
+      position_id: params.positionId,
+      stars: params.stars,
+      category_scores: params.categoryScores as never,
+      comment: params.comment,
+      rated_by: params.ratedBy,
+      is_current: true,
+    })
+    .select("stars, comment")
+    .single();
 
-  if (insertError && insertError.code !== UNIQUE_VIOLATION) {
-    return { ok: false, error: insertError.message };
+  if (insertError) {
+    if (insertError.code !== UNIQUE_VIOLATION) {
+      return { ok: false, error: insertError.message };
+    }
+
+    // RAT2: lost the race — a concurrent rate already inserted the current row
+    // for this pair. Read it back and return the ACTUAL current value instead
+    // of a bare ok, so the caller doesn't believe a discarded write landed.
+    const { data: current, error: readError } = await supabase
+      .from("position_ratings")
+      .select("stars, comment")
+      .eq("user_id", params.userId)
+      .eq("position_id", params.positionId)
+      .eq("is_current", true)
+      .maybeSingle();
+
+    if (readError) {
+      return { ok: false, error: readError.message };
+    }
+    if (!current) {
+      // No current row despite the unique violation: report honestly rather
+      // than a false success.
+      return { ok: false, error: "The rating couldn't be saved just now. Please try again." };
+    }
+
+    await resolveRerateFor(supabase, params.userId, params.positionId);
+    revalidatePath("/ratings");
+    return { ok: true, data: { stars: current.stars, comment: current.comment ?? null } };
   }
 
-  // Rating this position resolves any pending re-rate nudge for the pair.
+  await resolveRerateFor(supabase, params.userId, params.positionId);
+  revalidatePath("/ratings");
+  return { ok: true, data: { stars: inserted.stars, comment: inserted.comment ?? null } };
+}
+
+/** Rating a position resolves any pending re-rate nudge for that pair. */
+async function resolveRerateFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  positionId: string,
+): Promise<void> {
   await supabase
     .from("rerate_prompts")
     .update({ resolved_at: new Date().toISOString() })
-    .eq("user_id", params.userId)
-    .eq("position_id", params.positionId)
+    .eq("user_id", userId)
+    .eq("position_id", positionId)
     .is("resolved_at", null);
-
-  revalidatePath("/ratings");
-  return { ok: true, data: undefined };
 }
 
-export async function quickRate(input: QuickRateInput): Promise<ActionResult> {
+export async function quickRate(input: QuickRateInput): Promise<ActionResult<RatingSnapshot>> {
   try {
     await requirePermission("ratings.rate");
     const parsed = quickRateSchema.parse(input);
@@ -125,7 +164,7 @@ export async function quickRate(input: QuickRateInput): Promise<ActionResult> {
   }
 }
 
-export async function rubricRate(input: RubricRateInput): Promise<ActionResult> {
+export async function rubricRate(input: RubricRateInput): Promise<ActionResult<RatingSnapshot>> {
   try {
     await requirePermission("ratings.rate");
     const parsed = rubricRateSchema.parse(input);

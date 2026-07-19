@@ -51,6 +51,19 @@ function toActionError(error: unknown): string {
   return "Something went wrong.";
 }
 
+/**
+ * SETB3: a delete blocked by a remaining foreign-key reference (Postgres
+ * 23503) means the position is still wired into something the delete RPC does
+ * not own (a training roadmap or a training session). Surface a plain-English
+ * reason instead of the raw `..._fkey` Postgres string.
+ */
+function toDeleteError(error: { code?: string; message: string }): string {
+  if (error.code === "23503") {
+    return "This position is still used by a training roadmap or session and can't be deleted yet.";
+  }
+  return error.message;
+}
+
 function revalidateTemplates() {
   revalidatePath("/setups/templates");
   revalidatePath("/setups");
@@ -111,11 +124,14 @@ export async function deletePositionGroup(
     const parsed = deletePositionGroupSchema.parse(input);
     const supabase = await createClient();
 
-    // positions.group_id cascade-deletes with the group
-    // (supabase/migrations/20260707000300_shifts_setups.sql).
-    const { error } = await supabase.from("position_groups").delete().eq("id", parsed.id);
+    // SETB3: positions.group_id cascade-deletes with the group, but each of
+    // those positions has an auto-created Position Passport (+ ratings, break
+    // assignments, layout tiles) with no ON DELETE cascade, so the bare group
+    // delete failed on passports_position_id_fkey. This RPC clears each
+    // member position's dependents first, then deletes the group, atomically.
+    const { error } = await supabase.rpc("delete_position_group", { p_group_id: parsed.id });
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: toDeleteError(error) };
     revalidateTemplates();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -176,9 +192,13 @@ export async function deletePosition(
     const parsed = deletePositionSchema.parse(input);
     const supabase = await createClient();
 
-    const { error } = await supabase.from("positions").delete().eq("id", parsed.id);
+    // SETB3: a plain positions delete always failed on passports_position_id_fkey
+    // (every position auto-gets a Position Passport with no ON DELETE cascade).
+    // The RPC deletes the passport + ratings + rerate prompts + setup
+    // assignments + layout tiles, then the position, atomically.
+    const { error } = await supabase.rpc("delete_position", { p_position_id: parsed.id });
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: toDeleteError(error) };
     revalidateTemplates();
     return { ok: true, data: undefined };
   } catch (error) {
@@ -403,9 +423,13 @@ export async function createLayout(
     const parsed = createLayoutSchema.parse(input);
     const supabase = await createClient();
 
+    // SETB6: store_layouts.active defaults true, so without this a brand-new
+    // (still-empty) layout would instantly become the live posted board. New
+    // layouts are created inactive; the existing Activate control publishes
+    // one once its tiles are placed.
     const { data, error } = await supabase
       .from("store_layouts")
-      .insert({ name: parsed.name, day_part_id: parsed.dayPartId })
+      .insert({ name: parsed.name, day_part_id: parsed.dayPartId, active: false })
       .select("id")
       .single();
 
