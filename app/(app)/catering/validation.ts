@@ -84,6 +84,13 @@ export const changeStageSchema = z.object({
 });
 export type ChangeStageInput = z.infer<typeof changeStageSchema>;
 
+// CAT1: cancelling an order is a dedicated action (not a stage-dropdown move),
+// so it only needs the order id — the target stage is always `cancelled`.
+export const cancelOrderSchema = z.object({
+  orderId: z.string().uuid(),
+});
+export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
+
 export const addOrderItemSchema = z.object({
   orderId: z.string().uuid(),
   menuItemId: z.string().uuid(),

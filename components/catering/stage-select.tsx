@@ -28,7 +28,10 @@ export function StageSelect({ orderId, stage }: { orderId: string; stage: OrderS
       disabled={isPending}
       onValueChange={(value) => {
         startTransition(async () => {
-          await changeStage({ orderId, toStage: value as OrderStage });
+          // The dropdown only lists the pipeline flow stages (ORDER_STAGES),
+          // never the terminal `cancelled` stage (that goes through the
+          // dedicated cancel action), so the value is always a flow stage.
+          await changeStage({ orderId, toStage: value as (typeof ORDER_STAGES)[number] });
           router.refresh();
         });
       }}

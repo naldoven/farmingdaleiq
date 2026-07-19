@@ -14,6 +14,15 @@ export interface NotificationContent {
  * small set of clearly-adjacent keys (gift_sent, reward_fulfilled,
  * passport_stamped, graduation_ready, broadcast, top_performer) that the
  * same sentence's intent obviously covers.
+ *
+ * N4: `maint_request` and `work_order_status` also belong here. The
+ * Maintenance module (ARCHITECTURE.md "Requests": "any team member submits a
+ * maintenance request ... and is notified as its status changes") emits both
+ * carrying the requester's `user_id` (see app/(app)/maintenance/logic.ts
+ * `requesterRecipientPayload`), but they were previously only in
+ * DISCORD_ROUTABLE — so the requester got a Discord post to leaders and no
+ * in-app/push notification of their own request's outcome. Adding the keys
+ * here makes the notification drain resolve that requester recipient.
  */
 export const NOTIFIABLE_EVENT_KEYS: EventKey[] = [
   "task_assigned",
@@ -30,6 +39,8 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = [
   "graduation_ready",
   "broadcast",
   "top_performer",
+  "maint_request",
+  "work_order_status",
 ];
 
 /**
@@ -61,6 +72,8 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   graduation_ready: "Ready for graduation review",
   broadcast: "Announcement",
   top_performer: "Top Performer!",
+  maint_request: "Maintenance request update",
+  work_order_status: "Work order update",
 };
 
 const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
@@ -78,6 +91,8 @@ const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
   graduation_ready: "/training/graduates",
   broadcast: "/team",
   top_performer: "/team",
+  maint_request: "/maintenance",
+  work_order_status: "/maintenance",
 };
 
 /**

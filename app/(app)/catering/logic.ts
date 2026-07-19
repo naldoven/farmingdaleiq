@@ -20,6 +20,12 @@
  * per ARCHITECTURE.md ("items can be added or removed per order").
  */
 
+/**
+ * The kanban pipeline flow stages (New -> ... -> Closed). These drive the
+ * board columns and the stage dropdown, so `cancelled` is deliberately NOT
+ * here — a cancellation is a terminal side-exit reached via the cancelOrder
+ * action, not a normal forward move you drag a card into.
+ */
 export const ORDER_STAGES = [
   "new",
   "confirm",
@@ -28,7 +34,18 @@ export const ORDER_STAGES = [
   "followup",
   "closed",
 ] as const;
-export type OrderStage = (typeof ORDER_STAGES)[number];
+
+/**
+ * CAT1: terminal "cancelled" stage for an erroneous/duplicate/walked-away
+ * order. It must never count as revenue and must not queue a re-book
+ * follow-up. Kept off ORDER_STAGES so it doesn't become a kanban column /
+ * dropdown target, but part of the persisted stage domain below.
+ */
+export const CANCELLED_STAGE = "cancelled" as const;
+
+/** Every value the catering_orders.stage column can hold, flow + cancelled. */
+export const ALL_ORDER_STAGES = [...ORDER_STAGES, CANCELLED_STAGE] as const;
+export type OrderStage = (typeof ALL_ORDER_STAGES)[number];
 
 export const ORDER_STAGE_LABELS: Record<OrderStage, string> = {
   new: "New",
@@ -37,7 +54,27 @@ export const ORDER_STAGE_LABELS: Record<OrderStage, string> = {
   out: "Pickup/Delivery",
   followup: "Follow-up",
   closed: "Closed",
+  cancelled: "Cancelled",
 };
+
+/**
+ * Stages excluded from every money/analytics rollup: `new` (unconfirmed, not
+ * real spend yet) and `cancelled` (CAT1 — a cancelled order must never count
+ * toward revenue, lifetime spend, or analytics). One shared source of truth so
+ * /catering/analytics, /catering/history, and the order-detail guest-history
+ * box (CAT4) agree instead of drifting apart.
+ */
+export const NON_REVENUE_STAGES: readonly OrderStage[] = ["new", CANCELLED_STAGE];
+
+/** Whether an order's stage counts toward revenue/analytics rollups. */
+export function countsAsRevenue(stage: string): boolean {
+  return !(NON_REVENUE_STAGES as readonly string[]).includes(stage);
+}
+
+/** Filters a list of orders down to those that count as revenue. */
+export function filterRevenueOrders<T extends { stage: string }>(orders: T[]): T[] {
+  return orders.filter((order) => countsAsRevenue(order.stage));
+}
 
 export const CHECKLIST_STAGES = ["confirm", "setup", "kitchen_prep", "out"] as const;
 export type ChecklistStage = (typeof CHECKLIST_STAGES)[number];

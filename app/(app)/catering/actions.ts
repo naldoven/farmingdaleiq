@@ -29,6 +29,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
+  CANCELLED_STAGE,
   CHECKLIST_STAGES,
   defaultFollowUpDueDate,
   formatOrderNewMessage,
@@ -41,6 +42,7 @@ import {
 import {
   addChecklistItemSchema,
   addOrderItemSchema,
+  cancelOrderSchema,
   changeStageSchema,
   checklistDefaultIdSchema,
   checklistDefaultSchema,
@@ -59,6 +61,7 @@ import {
   updateOrderItemQtySchema,
   type AddChecklistItemInput,
   type AddOrderItemInput,
+  type CancelOrderInput,
   type ChangeStageInput,
   type ChecklistDefaultInput,
   type CreateOrderInput,
@@ -404,6 +407,64 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
         eventDate: order.event_date,
         fromStage: fromStage as OrderStage,
         toStage: parsed.toStage,
+      }),
+    });
+
+    revalidateCatering(parsed.orderId);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * CAT1: cancels an order (erroneous / duplicate / walked away), moving it to
+ * the terminal `cancelled` stage. Unlike forcing an order to `closed`, a
+ * cancelled order is excluded from every revenue/analytics/history rollup
+ * (see app/(app)/catering/logic.ts NON_REVENUE_STAGES) and never queues a
+ * re-book follow-up. catering.manage-gated. Idempotent: cancelling an
+ * already-cancelled order is a no-op success.
+ */
+export async function cancelOrder(input: CancelOrderInput): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = cancelOrderSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: order, error: fetchError } = await supabase
+      .from("catering_orders")
+      .select("id, stage, guest_name, event_date")
+      .eq("id", parsed.orderId)
+      .single();
+
+    if (fetchError || !order) {
+      return { ok: false, error: fetchError?.message ?? "Order not found." };
+    }
+
+    if (order.stage === CANCELLED_STAGE) {
+      // Already cancelled: treat as a successful no-op (safe double-submit).
+      return { ok: true, data: undefined };
+    }
+
+    const fromStage = order.stage;
+    const { error: updateError } = await supabase
+      .from("catering_orders")
+      .update({ stage: CANCELLED_STAGE, stage_changed_at: new Date().toISOString() })
+      .eq("id", parsed.orderId);
+
+    if (updateError) return { ok: false, error: updateError.message };
+
+    // No follow-up is queued on cancel (that only happens on `closed`), so a
+    // cancelled order never spawns a re-book call.
+    await emitEventSafely("catering_stage_change", {
+      orderId: parsed.orderId,
+      fromStage,
+      toStage: CANCELLED_STAGE,
+      message: formatStageChangeMessage({
+        guestName: order.guest_name,
+        eventDate: order.event_date,
+        fromStage: fromStage as OrderStage,
+        toStage: CANCELLED_STAGE,
       }),
     });
 

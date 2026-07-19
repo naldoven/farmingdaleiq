@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,7 +49,6 @@ export function CreateTaskForm({
   const [dueTime, setDueTime] = useState("");
   const [assignee, setAssignee] = useState(UNSET);
   const [tokenValue, setTokenValue] = useState("0");
-  const [notifyDiscord, setNotifyDiscord] = useState(false);
 
   return (
     <form
@@ -77,7 +75,6 @@ export function CreateTaskForm({
             assignedUserId: kind === "user" ? id : "",
             assignedPositionId: kind === "position" ? id : "",
             tokenValue: Number(tokenValue) || 0,
-            notifyDiscord,
             requestId,
           });
           if (!result.ok) {
@@ -91,7 +88,6 @@ export function CreateTaskForm({
           setDueTime("");
           setAssignee(UNSET);
           setTokenValue("0");
-          setNotifyDiscord(false);
           router.refresh();
         });
       }}
@@ -195,14 +191,6 @@ export function CreateTaskForm({
           />
         </div>
       </div>
-
-      <label className="flex items-center gap-2 text-sm">
-        <Checkbox
-          checked={notifyDiscord}
-          onCheckedChange={(v) => setNotifyDiscord(v === true)}
-        />
-        Notify Discord when assigned
-      </label>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {done && <p className="text-sm text-success">Task created.</p>}

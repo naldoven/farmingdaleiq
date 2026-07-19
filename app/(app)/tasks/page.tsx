@@ -1,5 +1,5 @@
 import { TaskBoard } from "@/components/tasks/task-board";
-import { type TaskRowView } from "@/components/tasks/task-list";
+import { resolveAssigneeLabel, type TaskRowView } from "@/components/tasks/task-list";
 import { type TaskTemplateRowView } from "@/components/tasks/task-templates-table";
 import type { NamedOption } from "@/components/tasks/delegate-task-control";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -73,6 +73,14 @@ export default async function TasksPage() {
       dueAt: t.due_at,
       status: t.status,
       tokenValue: t.token_value,
+      // T3: resolve the task's owner so the manager "All Tasks Today" view can
+      // show who each task is assigned to (person name or position name).
+      assigneeLabel: resolveAssigneeLabel({
+        assignedUserId: t.assigned_user_id,
+        assignedPositionId: t.assigned_position_id,
+        userNameById: profileNameById,
+        positionNameById,
+      }),
     };
   }
 

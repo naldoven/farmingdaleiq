@@ -31,7 +31,10 @@ export default async function CateringPipelinePage() {
     supabase
       .from("catering_orders")
       .select("id, guest_name, event_date, event_time, headcount, amount, fulfillment, stage")
+      // Active pipeline only: closed and cancelled (CAT1) orders are terminal
+      // and drop off the board.
       .neq("stage", "closed")
+      .neq("stage", "cancelled")
       .order("event_date"),
     supabase
       .from("catering_orders")

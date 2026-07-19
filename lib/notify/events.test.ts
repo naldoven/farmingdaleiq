@@ -355,6 +355,60 @@ describe("processAppEvents", () => {
     errorSpy.mockRestore();
   });
 
+  it("notifies the maintenance requester on a maint_request status change (N4)", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "maint_request",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { requestId: "req-1", status: "approved", user_id: "requester-1" },
+        },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.notificationsCreated).toBe(1);
+    const notifications = db.rowsOf("notifications");
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      user_id: "requester-1",
+      kind: "maint_request",
+      title: "Maintenance request update",
+    });
+  });
+
+  it("notifies the requester on a work_order_status event carrying user_id (N4)", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "work_order_status",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { workOrderId: "wo-1", status: "complete", user_id: "requester-1" },
+        },
+      ],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.notificationsCreated).toBe(1);
+    expect(db.rowsOf("notifications")[0]).toMatchObject({
+      user_id: "requester-1",
+      kind: "work_order_status",
+      title: "Work order update",
+    });
+  });
+
   it("honors the canonical notify_discord: false opt-out", async () => {
     const { db, client } = makeClient({
       app_events: [

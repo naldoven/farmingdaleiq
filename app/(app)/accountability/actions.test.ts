@@ -19,7 +19,7 @@ const RECIPIENT_ID = "22222222-2222-4222-8222-222222222222";
 const TYPE_ID = "33333333-3333-4333-8333-333333333333";
 
 type Row = Record<string, unknown>;
-type Response = { data: unknown; error: { message: string } | null };
+type Response = { data: unknown; error: { message: string; code?: string } | null };
 
 /**
  * Minimal fake PostgREST query builder: chain calls (select/eq/order/limit/
@@ -267,6 +267,69 @@ describe("issueInfraction", () => {
         userId: RECIPIENT_ID,
         typeId: "coaching",
       });
+    },
+  );
+
+  it(
+    "ACC2: a concurrent duplicate pending disciplinary action (23505) is a no-op, " +
+      "not an error, and does not re-emit disciplinary_triggered",
+    async () => {
+      perRequestClient = createFakeClient(
+        {
+          infraction_types: [{ data: { id: TYPE_ID, points: 15, active: true }, error: null }],
+          accountability_settings: [{ data: settingsRow(), error: null }],
+        },
+        (t) => perRequestTableCalls.push(t),
+      );
+
+      serviceRoleClient = createFakeClient(
+        {
+          infractions: [
+            { data: [], error: null }, // duplicate check: none
+            { data: { id: "new-infraction-id" }, error: null }, // insert
+            { data: [{ points: 15, expires_at: null }], error: null }, // active points = 15
+          ],
+          disciplinary_action_types: [
+            { data: [{ id: "coaching", threshold_points: 10 }], error: null },
+          ],
+          disciplinary_actions: [
+            { data: [], error: null }, // no existing actions -> "coaching" looks newly crossed
+            // The insert loses the race to a concurrent issue that already
+            // opened the same pending rung; the new partial unique index makes
+            // it collide (23505).
+            {
+              data: null,
+              error: {
+                code: "23505",
+                message:
+                  'duplicate key value violates unique constraint "disciplinary_actions_pending_uq"',
+              },
+            },
+          ],
+        },
+        (t) => serviceRoleTableCalls.push(t),
+      );
+
+      const result = await issueInfraction({
+        userId: RECIPIENT_ID,
+        typeId: TYPE_ID,
+        note: "Left the line unattended.",
+      });
+
+      // The 23505 is swallowed: the whole action still succeeds (no duplicate
+      // write-up surfaced as an error).
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.infractionId).toBe("new-infraction-id");
+        // The collided rung is NOT reported as newly opened by this call.
+        expect(result.data.triggeredActionTypeIds).toEqual([]);
+      }
+      expect(serviceRoleTableCalls).toContain("disciplinary_actions");
+      // No duplicate notification/Discord fan-out for a rung this call didn't open.
+      expect(emitEventMock).not.toHaveBeenCalledWith(
+        "disciplinary_triggered",
+        expect.anything(),
+      );
     },
   );
 

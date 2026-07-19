@@ -5,8 +5,10 @@ import {
   computeContactRollups,
   computeKitchenPrepItems,
   computeScaledSetupItems,
+  countsAsRevenue,
   currentWeekDates,
   defaultFollowUpDueDate,
+  filterRevenueOrders,
   formatOrderNewMessage,
   formatScaledLabel,
   formatStageChangeMessage,
@@ -342,5 +344,56 @@ describe("formatStageChangeMessage", () => {
         toStage: "confirm",
       }),
     ).toBe("Jane Doe — 2026-08-01: New → Confirmation Call");
+  });
+
+  it("labels a cancellation (CAT1)", () => {
+    expect(
+      formatStageChangeMessage({
+        guestName: "Jane Doe",
+        eventDate: "2026-08-01",
+        fromStage: "confirm",
+        toStage: "cancelled",
+      }),
+    ).toBe("Jane Doe — 2026-08-01: Confirmation Call → Cancelled");
+  });
+});
+
+describe("revenue stage exclusion (CAT1/CAT4)", () => {
+  it("counts confirmed/closed stages as revenue but not new or cancelled", () => {
+    expect(countsAsRevenue("confirm")).toBe(true);
+    expect(countsAsRevenue("setup")).toBe(true);
+    expect(countsAsRevenue("out")).toBe(true);
+    expect(countsAsRevenue("followup")).toBe(true);
+    expect(countsAsRevenue("closed")).toBe(true);
+    expect(countsAsRevenue("new")).toBe(false);
+    expect(countsAsRevenue("cancelled")).toBe(false);
+  });
+
+  it("filterRevenueOrders drops new and cancelled orders", () => {
+    const orders = [
+      { id: "1", stage: "confirm" },
+      { id: "2", stage: "new" },
+      { id: "3", stage: "cancelled" },
+      { id: "4", stage: "closed" },
+    ];
+    expect(filterRevenueOrders(orders).map((o) => o.id)).toEqual(["1", "4"]);
+  });
+
+  it("a cancelled order is excluded from revenue and lifetime spend (CAT1)", () => {
+    // The exact rollups /catering/analytics + the order-detail guest-history
+    // box run, but only over the revenue-countable orders.
+    const orders = [
+      { id: "1", contact_id: "c1", amount: 100, event_date: "2026-01-05", stage: "closed" },
+      { id: "2", contact_id: "c1", amount: 500, event_date: "2026-01-12", stage: "cancelled" },
+      { id: "3", contact_id: "c1", amount: 40, event_date: "2026-01-06", stage: "new" },
+    ];
+
+    const countable = filterRevenueOrders(orders);
+    const analytics = computeAnalytics(countable, [{ id: "c1", name: "Alice" }]);
+    expect(analytics.totalRevenue).toBe(100); // 500 cancelled + 40 new both excluded
+    expect(analytics.totalOrders).toBe(1);
+
+    const rollups = computeContactRollups(countable);
+    expect(rollups.get("c1")).toMatchObject({ orderCount: 1, lifetimeSpend: 100 });
   });
 });

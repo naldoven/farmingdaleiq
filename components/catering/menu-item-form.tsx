@@ -44,6 +44,13 @@ export function MenuItemForm({
   const [scalingRulesText, setScalingRulesText] = useState(initial?.scalingRulesText ?? "[]");
   const [active, setActive] = useState(initial?.active ?? true);
 
+  // CAT2: the always-present "New menu item" form and an open "Edit" form
+  // render on the same page, so hardcoded field ids (mi-name, ...) collided,
+  // producing invalid HTML and breaking label-to-input association (clicking
+  // one form's label focused the other's input). Scope every id/htmlFor to the
+  // item so each field id is unique across both forms.
+  const scope = initial?.id ?? "new";
+
   function submit() {
     setError(null);
     startTransition(async () => {
@@ -78,39 +85,39 @@ export function MenuItemForm({
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="mi-name">Name</Label>
-            <Input id="mi-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor={`mi-name-${scope}`}>Name</Label>
+            <Input id={`mi-name-${scope}`} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="mi-category">Category</Label>
-            <Input id="mi-category" value={category} onChange={(e) => setCategory(e.target.value)} />
+            <Label htmlFor={`mi-category-${scope}`}>Category</Label>
+            <Input id={`mi-category-${scope}`} value={category} onChange={(e) => setCategory(e.target.value)} />
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="mi-components">
+          <Label htmlFor={`mi-components-${scope}`}>
             Components (JSON array, e.g. [&quot;Sandwich&quot;, {`{"name":"Chips","qty":1}`}])
           </Label>
           <Textarea
-            id="mi-components"
+            id={`mi-components-${scope}`}
             value={componentsText}
             onChange={(e) => setComponentsText(e.target.value)}
             rows={2}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="mi-scaling">
+          <Label htmlFor={`mi-scaling-${scope}`}>
             Scaling rules (JSON array, e.g. [{`{"label":"Napkins","perHeadcount":1}`}])
           </Label>
           <Textarea
-            id="mi-scaling"
+            id={`mi-scaling-${scope}`}
             value={scalingRulesText}
             onChange={(e) => setScalingRulesText(e.target.value)}
             rows={2}
           />
         </div>
         <div className="flex items-center gap-2">
-          <Checkbox id="mi-active" checked={active} onCheckedChange={(v) => setActive(v === true)} />
-          <Label htmlFor="mi-active">Active</Label>
+          <Checkbox id={`mi-active-${scope}`} checked={active} onCheckedChange={(v) => setActive(v === true)} />
+          <Label htmlFor={`mi-active-${scope}`}>Active</Label>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="button" disabled={isPending || !name.trim()} onClick={submit} className="self-start">
