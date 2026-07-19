@@ -21,7 +21,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import { adjustTokens as adjustTokensLedger, giftTokens } from "@/lib/tokens/ledger";
 import { emitEvent } from "@/lib/events/bus";
@@ -34,16 +35,6 @@ import {
   type GiftTokensInput,
   type UpdateEarningRuleInput,
 } from "@/app/(app)/tokens/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /**
  * emitEvent() is best-effort here: the ledger mutation above it already

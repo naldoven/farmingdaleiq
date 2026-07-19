@@ -18,7 +18,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requirePermission, PermissionError } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import { savePushSubscription } from "@/lib/notify/push";
 import type { ActionResult } from "@/app/(app)/notifications/action-types";
@@ -28,16 +29,6 @@ import {
   type MarkNotificationReadInput,
   type SavePushSubscriptionInput,
 } from "@/app/(app)/notifications/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 export async function markRead(input: MarkNotificationReadInput): Promise<ActionResult> {
   try {

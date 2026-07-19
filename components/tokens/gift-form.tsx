@@ -37,7 +37,10 @@ export function GiftForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [toUserId, setToUserId] = useState(recipients[0]?.id ?? "");
+  // Default to no one picked (S3): defaulting to the first coworker meant a
+  // rushed submit sent tokens to whoever sorted first. Empty forces a choice;
+  // the guard below and the uuid() server schema both reject an empty value.
+  const [toUserId, setToUserId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);

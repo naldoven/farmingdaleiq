@@ -30,7 +30,11 @@ export function IssueInfractionForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [userId, setUserId] = useState(people[0]?.id ?? "");
+  // Default to no one picked (S3): defaulting to the first person meant a
+  // rushed submit issued the infraction against whoever sorted first. Empty
+  // forces a choice; the guard below and the uuid() server schema both reject
+  // an empty value.
+  const [userId, setUserId] = useState("");
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +79,9 @@ export function IssueInfractionForm({
             className="h-10 rounded-lg border border-line bg-card px-3 text-[15px] text-ink"
             required
           >
+            <option value="" disabled>
+              Pick a person
+            </option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}

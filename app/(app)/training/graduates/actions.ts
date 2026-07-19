@@ -12,21 +12,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/training/action-types";
 import { enrollmentStatusAfterAudit } from "@/app/(app)/training/graduates/logic";
 import { recordAuditSchema, type RecordAuditInput } from "@/app/(app)/training/graduates/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 export async function recordAudit(input: RecordAuditInput): Promise<ActionResult> {
   try {

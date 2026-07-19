@@ -27,7 +27,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/waste/action-types";
 import {
@@ -44,16 +45,6 @@ import {
   type UpdateCategoryInput,
   type UpdateItemInput,
 } from "@/app/(app)/waste/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /**
  * Case-insensitive duplicate-name guard. There's no unique constraint on

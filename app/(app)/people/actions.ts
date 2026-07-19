@@ -39,7 +39,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/people/action-types";
 import {
@@ -52,16 +53,6 @@ import {
   type SelfUpdateProfileInput,
   type UpdateProfileInput,
 } from "@/app/(app)/people/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /**
  * Edits a profile's contact fields, birthdate, hired_on, discord_user_id, and

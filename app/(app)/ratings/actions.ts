@@ -24,7 +24,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult, RatingSnapshot } from "@/app/(app)/ratings/action-types";
 import {
@@ -40,16 +41,6 @@ import {
 import { averageCategoryScores } from "@/app/(app)/ratings/logic";
 
 const UNIQUE_VIOLATION = "23505";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /** Marks any prior is_current rating for (userId, positionId) as not
  * current, then inserts the new one. Catches a racing unique-violation on

@@ -7,11 +7,20 @@
  * means this repo (People & Teams) already has a real implementation.
  */
 
+import type { PermissionKey } from "@/lib/auth/permissions";
+
 export interface NavItem {
   href: string;
   label: string;
   description: string;
   owner: string;
+  /**
+   * Permission key gating this destination. When set, the nav only shows the
+   * item to a user who holds the key — it mirrors the destination page's own
+   * requirePermission(...) so the sidebar never offers a link that throws on
+   * click (S4 dead-end fix). Items with no `permission` are visible to all.
+   */
+  permission?: PermissionKey;
 }
 
 export interface NavGroup {
@@ -48,12 +57,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/checklists",
+        permission: "checklists.complete",
         label: "Checklists",
         description: "Today's runs to complete; run player UI.",
         owner: "S1",
       },
       {
         href: "/checklists/templates",
+        permission: "checklists.manage_templates",
         label: "Templates",
         description: "Build/edit templates, sections, questions, schedules.",
         owner: "S1",
@@ -65,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/tasks",
+        permission: "tasks.complete",
         label: "Tasks",
         description: "My tasks + shift pool; create ad-hoc tasks.",
         owner: "S2",
@@ -76,6 +88,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/setups",
+        permission: "setups.view",
         label: "Setup board",
         description:
           "Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes.",
@@ -83,12 +96,14 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/setups/templates",
+        permission: "setups.manage",
         label: "Setup templates",
         description: "Manage setup templates, groups, positions, and the store layout editor.",
         owner: "S3",
       },
       {
         href: "/breaks",
+        permission: "breaks.view",
         label: "Breaks",
         description: "Break manager: today's entitlements, sequence, authorize/start/complete, overdue alerts.",
         owner: "S3",
@@ -100,6 +115,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/ratings",
+        permission: "ratings.view",
         label: "Ratings",
         description: "Skills matrix (people x positions, color-coded), rate/re-rate flows, re-rate queue.",
         owner: "S4",
@@ -111,6 +127,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/waste",
+        permission: "waste.log",
         label: "Waste",
         description: "Quick waste logging; admin: categories/items.",
         owner: "S5",
@@ -161,12 +178,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/people",
+        permission: "people.view",
         label: "Roster",
         description: "Roster, profiles, roles & permissions, teams.",
         owner: "P0",
       },
       {
         href: "/people/org-chart",
+        permission: "training.view",
         label: "Org Chart",
         description: "Editable org chart: tiers, goal counts, filled and vacant slots.",
         owner: "S4",
@@ -178,30 +197,35 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/training",
+        permission: "training.view",
         label: "Passports",
         description: "My progress, all passports, trainer sign-offs, leader stamping; admin: passport items, courses.",
         owner: "S4",
       },
       {
         href: "/training/grid",
+        permission: "training.view",
         label: "Station Grid",
         description: "Station grid: trainees by stations, click-to-cycle and score, phase averages.",
         owner: "S4",
       },
       {
         href: "/training/schedule",
+        permission: "training.view",
         label: "Trainee Schedule",
         description: "Trainee week schedule: station + time + trainer per day, session tags, print view.",
         owner: "S4",
       },
       {
         href: "/training/graduates",
+        permission: "training.view",
         label: "Graduates",
         description: "Graduates list and 30-day audits (PASS / PIP).",
         owner: "S4",
       },
       {
         href: "/training/pipelines",
+        permission: "training.view",
         label: "Pipelines",
         description: "Masters and leadership stage pipelines with per-person progress.",
         owner: "S4",
@@ -213,6 +237,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/vendors",
+        permission: "vendors.view",
         label: "Vendors",
         description: "Vendor directory.",
         owner: "S8",
@@ -224,12 +249,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/maintenance",
+        permission: "maintenance.request",
         label: "Maintenance",
         description: "Submit requests; triage queue; work order board & detail (comments, photos, cost).",
         owner: "S8",
       },
       {
         href: "/maintenance/equipment",
+        permission: "maintenance.request",
         label: "Equipment",
         description: "Equipment registry, unit pages with history, PM schedules.",
         owner: "S8",
@@ -241,48 +268,56 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/catering",
+        permission: "catering.view",
         label: "Pipeline",
         description: "Order pipeline board: stage columns, drag/dropdown moves, new-order intake.",
         owner: "S9",
       },
       {
         href: "/catering/week",
+        permission: "catering.view",
         label: "This Week",
         description: "This Week calendar of upcoming orders.",
         owner: "S9",
       },
       {
         href: "/catering/confirm",
+        permission: "catering.view",
         label: "Confirmation Calls",
         description: "Confirmation-call queue with per-order call checklist.",
         owner: "S9",
       },
       {
         href: "/catering/setup",
+        permission: "catering.view",
         label: "FOH Setup",
         description: "FOH setup queue: auto-scaled setup checklists per order.",
         owner: "S9",
       },
       {
         href: "/catering/dispatch",
+        permission: "catering.view",
         label: "Dispatch",
         description: "Pickup/delivery queue with handoff checklist.",
         owner: "S9",
       },
       {
         href: "/catering/history",
+        permission: "catering.view",
         label: "History",
         description: "Contacts, follow-ups due, order history with period filters.",
         owner: "S9",
       },
       {
         href: "/catering/analytics",
+        permission: "catering.view",
         label: "Analytics",
         description: "Catering volume, revenue, busiest days, top guests.",
         owner: "S9",
       },
       {
         href: "/catering/menu",
+        permission: "catering.view",
         label: "Menu",
         description: "Menu item catalog admin (components, scaling rules).",
         owner: "S9",
@@ -294,6 +329,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/reports",
+        permission: "reports.view",
         label: "Reports",
         description: "Store dashboard + per-module reports, CSV export.",
         owner: "P2 reporting",
@@ -305,6 +341,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/notifications",
+        permission: "notifications.view",
         label: "Notifications",
         description: "Notification center.",
         owner: "S10",
@@ -316,12 +353,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/settings",
+        permission: "settings.manage",
         label: "Settings",
         description: "Day-parts, earning rules, store settings.",
         owner: "S10",
       },
       {
         href: "/settings/discord",
+        permission: "discord.manage",
         label: "Discord",
         description: "Register channel webhooks, map event routes, link members' Discord IDs.",
         owner: "S10",
@@ -336,6 +375,40 @@ export function findNavItem(href: string): NavItem | undefined {
     if (item) return item;
   }
   return undefined;
+}
+
+/**
+ * The distinct permission keys used to gate nav items. The server layout
+ * checks these against the current user (via hasPermission) and passes back
+ * only the ones the user holds, so the two never drift from NAV_GROUPS.
+ */
+export function navPermissionKeys(): PermissionKey[] {
+  const keys = new Set<PermissionKey>();
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.permission) keys.add(item.permission);
+    }
+  }
+  return [...keys];
+}
+
+/**
+ * Returns NAV_GROUPS with gated items the user can't reach removed, dropping
+ * any group left with no visible items. `allowed` is the set of permission
+ * keys the current user holds; pass `null` to show everything (the default
+ * when no permission context is threaded, e.g. tests). Ungated items
+ * (no `permission`) are always kept — err toward showing.
+ */
+export function visibleNavGroups(allowed: ReadonlySet<string> | null): NavGroup[] {
+  if (!allowed) return NAV_GROUPS;
+  const groups: NavGroup[] = [];
+  for (const group of NAV_GROUPS) {
+    const items = group.items.filter(
+      (item) => !item.permission || allowed.has(item.permission),
+    );
+    if (items.length > 0) groups.push({ ...group, items });
+  }
+  return groups;
 }
 
 /**

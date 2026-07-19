@@ -15,8 +15,17 @@ export interface SidebarUser {
  * Desktop left sidebar (md+). Light card surface, wordmark header, grouped
  * NavLinks (active in accent red), and a user footer. Hidden on phones, where
  * the bottom tab bar + Menu drawer take over.
+ *
+ * `allowedPermissions` is threaded down to NavLinks so gated items the user
+ * can't reach are hidden (S4 dead-end fix).
  */
-export function Sidebar({ user }: { user: SidebarUser }) {
+export function Sidebar({
+  user,
+  allowedPermissions,
+}: {
+  user: SidebarUser;
+  allowedPermissions?: readonly string[];
+}) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-card md:flex">
       <div className="flex h-16 items-center border-b border-line px-5">
@@ -25,7 +34,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         </Link>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        <NavLinks />
+        <NavLinks allowedPermissions={allowedPermissions} />
       </div>
       <div className="border-t border-line p-3">
         <div className="flex items-center gap-3 px-1">

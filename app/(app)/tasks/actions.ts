@@ -24,7 +24,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { PermissionError, hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import { emitEvent } from "@/lib/events/bus";
 import {
@@ -50,16 +51,6 @@ import {
   type SetTaskTemplateActiveInput,
   type UpdateTaskTemplateInput,
 } from "@/app/(app)/tasks/validation";
-
-function toActionError(error: unknown): string {
-  if (error instanceof PermissionError) {
-    return "You don't have permission to do this.";
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Something went wrong.";
-}
 
 /** Best-effort event emission: never let a notification hook fail a write
  * the user is waiting on. emitEvent writes app_events through the frozen bus
