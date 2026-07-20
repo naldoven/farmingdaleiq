@@ -25,6 +25,7 @@ import type { LucideIcon } from "lucide-react";
 
 import type { ActionPillTone, ListRowTone } from "@/components/mobile";
 import type { PermissionKey } from "@/lib/auth/permissions";
+import { findNavItem } from "@/lib/nav/page-map";
 
 /** One tappable "Send" or "Assign" action pill on the Menu hub. */
 export interface MenuActionItem {
@@ -131,4 +132,42 @@ export function visibleActions(
   permissions: Partial<Record<PermissionKey, boolean>>,
 ): MenuActionItem[] {
   return items.filter((item) => item.permission === null || permissions[item.permission] === true);
+}
+
+/**
+ * The permission (if any) gating a View item, resolved from the page map by
+ * href so it never drifts from the destination page's own requirePermission.
+ * Ungated destinations return null.
+ */
+function viewItemPermission(item: MenuViewItem): PermissionKey | null {
+  return findNavItem(item.href)?.permission ?? null;
+}
+
+/**
+ * The distinct permission keys gating the View list, so the page can fan out
+ * hasPermission over exactly the keys it needs instead of hand-listing them
+ * (mirrors navPermissionKeys() for the sidebar).
+ */
+export function viewPermissionKeys(items: MenuViewItem[]): PermissionKey[] {
+  const keys = new Set<PermissionKey>();
+  for (const item of items) {
+    const permission = viewItemPermission(item);
+    if (permission) keys.add(permission);
+  }
+  return [...keys];
+}
+
+/**
+ * Filters the View list down to the modules a user can actually reach, using
+ * each destination's page-map permission. Ungated items (no page-map
+ * permission) are always kept -- same rule as visibleNavGroups.
+ */
+export function visibleViewItems(
+  items: MenuViewItem[],
+  permissions: Partial<Record<PermissionKey, boolean>>,
+): MenuViewItem[] {
+  return items.filter((item) => {
+    const permission = viewItemPermission(item);
+    return permission === null || permissions[permission] === true;
+  });
 }

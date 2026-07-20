@@ -40,6 +40,7 @@ const ENROLLMENT_ID = "enr-1";
 const USER_ID = "user-1";
 const SLIDER_ID = "slider-1";
 const PHOTO_ID = "photo-1";
+const SIGNATURE_ID = "sig-1";
 
 const items: PassportItem[] = [
   { id: SLIDER_ID, type: "slider", label: "Fry station", sort: 1, course_id: null },
@@ -73,6 +74,51 @@ function renderCard() {
 afterEach(() => {
   cleanup();
   upsertMock.mockClear();
+});
+
+/**
+ * TR2-UI-1: a stamper must never see Stamp / Countersign controls on their own
+ * enrollment row. The server already rejects self sign-off / self-stamp, but
+ * the card used to render both buttons whenever `canStamp` was true regardless
+ * of whose row it was. These tests drive the real component and assert the
+ * self row hides both controls while someone else's row still shows them.
+ */
+const signatureItems: PassportItem[] = [
+  { id: SIGNATURE_ID, type: "signature", label: "Trainer sign-off", sort: 1, course_id: null },
+];
+
+function renderStampScenario({ viewerId }: { viewerId: string }) {
+  render(
+    <PassportCard
+      passportId="p-1"
+      passportName="Fry Position"
+      kind="position"
+      items={signatureItems}
+      enrollments={enrollments}
+      progress={{}}
+      people={[]}
+      canManage={false}
+      canStamp={true}
+      currentUserId={viewerId}
+      currentStarsByUser={{}}
+    />,
+  );
+}
+
+describe("PassportCard self stamp/countersign gating (TR2-UI-1)", () => {
+  it("hides Stamp and Countersign on the viewer's own enrollment even with stamp permission", () => {
+    renderStampScenario({ viewerId: USER_ID }); // viewing my own row
+
+    expect(screen.queryByRole("button", { name: "Stamp" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Countersign" })).not.toBeInTheDocument();
+  });
+
+  it("shows Stamp and Countersign when a stamper views someone else's enrollment", () => {
+    renderStampScenario({ viewerId: "someone-else" });
+
+    expect(screen.getByRole("button", { name: "Stamp" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Countersign" })).toBeInTheDocument();
+  });
 });
 
 describe("PassportCard slider/photo completion (TR6)", () => {

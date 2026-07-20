@@ -262,7 +262,9 @@ export function PassportCard({
                     {enrollment.stampedAt ? (
                       <Badge variant="success">Stamped</Badge>
                     ) : (
-                      canStamp && (
+                      // TR2-UI-1: never offer self-stamp -- the action rejects it
+                      // server-side, so hide the button on your own row too.
+                      canStamp && !isSelf && (
                         <Button
                           size="sm"
                           disabled={isPending}
@@ -292,7 +294,8 @@ export function PassportCard({
                           <>
                             <Checkbox checked={done} disabled />
                             <span className={labelClass}>{item.label}</span>
-                            {!done && canStamp && (
+                            {/* TR2-UI-1: no self-countersign; matches the server guard. */}
+                            {!done && canStamp && !isSelf && (
                               <Button
                                 size="sm"
                                 variant="outline"
