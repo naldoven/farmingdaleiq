@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { ASSIGN_ACTIONS, SEND_ACTIONS, VIEW_ITEMS, visibleActions } from "./menu-items";
+import {
+  ASSIGN_ACTIONS,
+  SEND_ACTIONS,
+  VIEW_ITEMS,
+  visibleActions,
+  visibleViewItems,
+} from "./menu-items";
+
+/** The four View items intentionally left ungated (no page-map permission). */
+const UNGATED_VIEW_KEYS = ["accountability", "rewards", "tokens", "team-feed"];
 
 describe("visibleActions", () => {
   it("keeps items with no permission requirement regardless of the grant map", () => {
@@ -33,6 +42,48 @@ describe("visibleActions", () => {
       "feed.post_broadcast": true,
     });
     expect(result.map((a) => a.key)).toEqual(["recognition", "infraction", "broadcast"]);
+  });
+});
+
+describe("visibleViewItems", () => {
+  it("hides a gated View item when its permission is missing", () => {
+    const keys = visibleViewItems(VIEW_ITEMS, {}).map((i) => i.key);
+    expect(keys).not.toContain("settings"); // /settings -> settings.manage
+    expect(keys).not.toContain("training"); // /training -> training.view
+    expect(keys).not.toContain("reporting"); // /reports -> reports.view
+  });
+
+  it("shows a gated View item once its permission is granted", () => {
+    const keys = visibleViewItems(VIEW_ITEMS, { "settings.manage": true }).map((i) => i.key);
+    expect(keys).toContain("settings");
+    // A different gate stays hidden.
+    expect(keys).not.toContain("training");
+  });
+
+  it("always shows the ungated View items even with an empty grant set", () => {
+    const keys = visibleViewItems(VIEW_ITEMS, {}).map((i) => i.key);
+    for (const ungated of UNGATED_VIEW_KEYS) {
+      expect(keys).toContain(ungated);
+    }
+  });
+
+  it("shows every View item once all gated permissions are granted", () => {
+    const allGranted = {
+      "settings.manage": true,
+      "checklists.complete": true,
+      "setups.view": true,
+      "breaks.view": true,
+      "ratings.view": true,
+      "training.view": true,
+      "waste.log": true,
+      "people.view": true,
+      "vendors.view": true,
+      "maintenance.request": true,
+      "catering.view": true,
+      "reports.view": true,
+      "notifications.view": true,
+    } as const;
+    expect(visibleViewItems(VIEW_ITEMS, allGranted)).toHaveLength(VIEW_ITEMS.length);
   });
 });
 

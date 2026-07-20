@@ -1,8 +1,15 @@
 import { ActionPill, ListRow, SectionLabel } from "@/components/mobile";
 import { SignOutRow } from "@/components/shell/sign-out-row";
-import { hasPermission } from "@/lib/auth/permissions";
+import { hasPermission, type PermissionKey } from "@/lib/auth/permissions";
 
-import { ASSIGN_ACTIONS, SEND_ACTIONS, VIEW_ITEMS, visibleActions } from "./menu-items";
+import {
+  ASSIGN_ACTIONS,
+  SEND_ACTIONS,
+  VIEW_ITEMS,
+  visibleActions,
+  visibleViewItems,
+  viewPermissionKeys,
+} from "./menu-items";
 
 /**
  * /menu -- the mobile nav hub behind the bottom "Menu" tab, matching the
@@ -29,6 +36,16 @@ export default async function MenuPage() {
 
   const sendActions = visibleActions(SEND_ACTIONS, permissions);
   const assignActions = visibleActions(ASSIGN_ACTIONS, permissions);
+
+  // S3-NEW-MENU-GATE: the View list links straight to modules, so gate it the
+  // same way the sidebar is (S4). Fan out hasPermission over exactly the keys
+  // the page map says gate these destinations; ungated modules always show.
+  const viewKeys = viewPermissionKeys(VIEW_ITEMS);
+  const viewGrants = await Promise.all(viewKeys.map((key) => hasPermission(key)));
+  const viewPermissions = Object.fromEntries(
+    viewKeys.map((key, i) => [key, viewGrants[i]]),
+  ) as Partial<Record<PermissionKey, boolean>>;
+  const viewItems = visibleViewItems(VIEW_ITEMS, viewPermissions);
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-6">
@@ -69,7 +86,7 @@ export default async function MenuPage() {
       <section className="flex flex-col gap-3">
         <SectionLabel>View</SectionLabel>
         <div className="flex flex-col gap-2.5">
-          {VIEW_ITEMS.map((item) => (
+          {viewItems.map((item) => (
             <ListRow
               key={item.key}
               title={item.label}
