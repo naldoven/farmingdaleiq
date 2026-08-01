@@ -15,6 +15,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { logWasteEntry } from "@/app/(app)/waste/actions";
 import { WASTE_QUANTITY_MAX } from "@/app/(app)/waste/constants";
+import { safeAction } from "@/lib/errors/safe-action";
 
 export interface LogFormItemOption {
   id: string;
@@ -51,6 +52,10 @@ export function LogEntryForm({
   const [dayPartId, setDayPartId] = useState(NO_DAY_PART);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Success confirmation. On a phone the new row lands in "Recent entries"
+  // far below the fold, so a silent clear of the quantity field was the only
+  // signal anything happened -- which invites a re-tap and a duplicate entry.
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const selectedItem = items.find((item) => item.id === itemId);
 
@@ -64,17 +69,26 @@ export function LogEntryForm({
           return;
         }
         setError(null);
+        setSavedMessage(null);
         startTransition(async () => {
-          const result = await logWasteEntry({
-            itemId,
-            quantity: Number(quantity),
-            dayPartId: dayPartId === NO_DAY_PART ? null : dayPartId,
-            note,
-          });
+          const result = await safeAction(() =>
+            logWasteEntry({
+              itemId,
+              quantity: Number(quantity),
+              dayPartId: dayPartId === NO_DAY_PART ? null : dayPartId,
+              note,
+            }),
+          );
           if (!result.ok) {
             setError(result.error);
             return;
           }
+          setSavedMessage(
+            `Logged ${quantity} ${selectedItem?.unit ?? ""} of ${selectedItem?.name ?? "item"}.`.replace(
+              /\s+/g,
+              " ",
+            ),
+          );
           setQuantity("");
           setNote("");
           router.refresh();
@@ -153,6 +167,11 @@ export function LogEntryForm({
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {savedMessage && !error && (
+        <p aria-live="polite" className="text-sm font-medium text-success">
+          {savedMessage}
+        </p>
+      )}
 
       <Button type="submit" disabled={isPending || !itemId}>
         {isPending ? "Logging..." : "Log waste"}

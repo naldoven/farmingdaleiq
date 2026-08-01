@@ -12,7 +12,7 @@ import { WasteReports } from "@/components/waste/waste-reports";
 import { WasteViewTabs, type WasteTabKey } from "@/components/waste/waste-view-tabs";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { WasteEntryForRollup } from "@/app/(app)/waste/logic";
+import { storeDayRangeUtc, type WasteEntryForRollup } from "@/app/(app)/waste/logic";
 import type { WasteUnit } from "@/app/(app)/waste/validation";
 
 /**
@@ -34,6 +34,9 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** Hard ceiling on an explicit date filter so a leader can't accidentally
  * request an unbounded scan; comfortably above any single day's real volume. */
 const DATE_FILTER_LIMIT = 500;
+// Matches WASTE_REPORT_ENTRY_LIMIT in app/(app)/reports/queries.ts so the
+// Reports tab here and /reports/waste read the same slice of history.
+const REPORT_ENTRY_LIMIT = 5000;
 
 export const metadata = { title: "Waste" };
 
@@ -65,6 +68,18 @@ export default async function WastePage({
 
   const supabase = await createClient();
 
+  // The date filter must bound a STORE-local day, not a UTC one. Building the
+  // range from `${date}T00:00:00.000Z` meant that for a store on
+  // America/New_York, picking a date returned 8pm the previous evening through
+  // 8pm that evening -- so the closing shift's waste (the bulk of it) was filed
+  // under the next day and missing from the day you actually selected.
+  const { data: store } = await supabase
+    .from("stores")
+    .select("timezone")
+    .limit(1)
+    .maybeSingle();
+  const timeZone = store?.timezone || "America/New_York";
+
   let recentEntriesQuery = supabase
     .from("waste_entries")
     .select("id, item_id, quantity, note, logged_at, day_part_id, logged_by")
@@ -73,12 +88,10 @@ export default async function WastePage({
   if (selectedDate) {
     // Filtering by a specific day is an explicit, bounded query (unlike the
     // default view below), so it's safe to lift the normal 25-row cap.
-    const dayStart = new Date(`${selectedDate}T00:00:00.000Z`);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const { startIso, endIso } = storeDayRangeUtc(selectedDate, timeZone);
     recentEntriesQuery = recentEntriesQuery
-      .gte("logged_at", dayStart.toISOString())
-      .lt("logged_at", dayEnd.toISOString())
+      .gte("logged_at", startIso)
+      .lt("logged_at", endIso)
       .limit(DATE_FILTER_LIMIT);
   } else {
     recentEntriesQuery = recentEntriesQuery.limit(25);
@@ -101,7 +114,15 @@ export default async function WastePage({
     // Reports tab is manager/reports-tier only, so only pull the full entry
     // history when it's actually needed for the rollups.
     canViewReports
-      ? supabase.from("waste_entries").select("id, item_id, quantity, logged_at")
+      ? supabase
+          .from("waste_entries")
+          .select("id, item_id, quantity, logged_at")
+          // Ordered + bounded for the same reason as fetchWasteReportData: an
+          // unordered, unbounded select truncates to an arbitrary subset (with
+          // no error) if PostgREST's db-max-rows is ever set, silently
+          // under-counting the rollups.
+          .order("logged_at", { ascending: false })
+          .limit(REPORT_ENTRY_LIMIT)
       : Promise.resolve({ data: [] as { id: string; item_id: string; quantity: number; logged_at: string }[] }),
   ]);
 

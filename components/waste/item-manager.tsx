@@ -21,7 +21,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createItem, deleteItem, updateItem } from "@/app/(app)/waste/actions";
-import { WASTE_UNITS, type WasteUnit } from "@/app/(app)/waste/constants";
+import {
+  WASTE_UNIT_COST_MAX,
+  WASTE_UNITS,
+  type WasteUnit,
+} from "@/app/(app)/waste/constants";
+import { safeAction } from "@/lib/errors/safe-action";
 
 export interface ItemCategoryOption {
   id: string;
@@ -98,6 +103,10 @@ function ItemEditRow({
           value={unitCost}
           onChange={(event) => setUnitCost(event.target.value)}
           className="max-w-[6rem]"
+          type="number"
+          min={0}
+          max={WASTE_UNIT_COST_MAX}
+          step="0.01"
           inputMode="decimal"
           placeholder="$"
         />
@@ -111,14 +120,25 @@ function ItemEditRow({
             disabled={isPending}
             onClick={() => {
               setError(null);
+              // Parse the cost ONCE, explicitly. `Number("$2.50")` is NaN,
+              // which zod rejects on TYPE, so the curated "can't be negative" /
+              // max messages never fired and the user saw a generic type error
+              // instead of anything actionable.
+              const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+              if (parsedUnitCost !== null && !Number.isFinite(parsedUnitCost)) {
+                setError("Enter the unit cost as a number, e.g. 2.50");
+                return;
+              }
               startTransition(async () => {
-                const result = await updateItem({
-                  id: item.id,
-                  name,
-                  categoryId: categoryId === NO_CATEGORY ? null : categoryId,
-                  unit,
-                  unitCost: unitCost.trim() === "" ? null : Number(unitCost),
-                });
+                const result = await safeAction(() =>
+                  updateItem({
+                    id: item.id,
+                    name,
+                    categoryId: categoryId === NO_CATEGORY ? null : categoryId,
+                    unit,
+                    unitCost: parsedUnitCost,
+                  }),
+                );
                 if (!result.ok) {
                   setError(result.error);
                   return;
@@ -138,7 +158,7 @@ function ItemEditRow({
               if (!window.confirm(`Delete item "${item.name}"?`)) return;
               setError(null);
               startTransition(async () => {
-                const result = await deleteItem({ id: item.id });
+                const result = await safeAction(() => deleteItem({ id: item.id }));
                 if (!result.ok) {
                   setError(result.error);
                   return;
@@ -203,13 +223,24 @@ export function ItemManager({
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);
+          // Parse the cost ONCE, explicitly. `Number("$2.50")` is NaN,
+          // which zod rejects on TYPE, so the curated "can't be negative" /
+          // max messages never fired and the user saw a generic type error
+          // instead of anything actionable.
+          const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+          if (parsedUnitCost !== null && !Number.isFinite(parsedUnitCost)) {
+            setError("Enter the unit cost as a number, e.g. 2.50");
+            return;
+          }
           startTransition(async () => {
-            const result = await createItem({
-              name,
-              categoryId: categoryId === NO_CATEGORY ? null : categoryId,
-              unit,
-              unitCost: unitCost.trim() === "" ? null : Number(unitCost),
-            });
+            const result = await safeAction(() =>
+              createItem({
+                name,
+                categoryId: categoryId === NO_CATEGORY ? null : categoryId,
+                unit,
+                unitCost: parsedUnitCost,
+              }),
+            );
             if (!result.ok) {
               setError(result.error);
               return;
@@ -261,6 +292,10 @@ export function ItemManager({
           value={unitCost}
           onChange={(event) => setUnitCost(event.target.value)}
           className="max-w-[6rem]"
+          type="number"
+          min={0}
+          max={WASTE_UNIT_COST_MAX}
+          step="0.01"
           inputMode="decimal"
         />
         <Button type="submit" variant="secondary" disabled={isPending}>

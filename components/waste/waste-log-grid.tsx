@@ -6,10 +6,12 @@ import { ChevronDown, Heart, Trash2 } from "lucide-react";
 
 import { SearchBar } from "@/components/mobile";
 import { logWasteEntry } from "@/app/(app)/waste/actions";
+import { safeAction } from "@/lib/errors/safe-action";
 import {
   formatCentsAsUsd,
   rollupByCategory,
   rollupByItem,
+  sumCostCents,
   type ItemRollupRow,
   type WasteCategoryForRollup,
   type WasteEntryForRollup,
@@ -49,16 +51,21 @@ export function WasteLogGrid({
     () => new Map(itemRollup.map((row) => [row.itemId, row])),
     [itemRollup],
   );
-  const overallTotalCents = useMemo(
-    () => itemRollup.reduce((sum, row) => sum + (row.totalCostCents ?? 0), 0),
-    [itemRollup],
-  );
+  // sumCostCents reports how many logged ENTRIES had no cost, rather than
+  // folding them to zero. The old `sum + (row.totalCostCents ?? 0)` printed a
+  // definite dollar figure that silently omitted every un-costed entry. Counting
+  // per entry (not per row) matters because a category row's total goes non-null
+  // as soon as ONE of its entries is priced, so a mixed-cost category would
+  // otherwise report zero unknowns. The total is suffixed with "+" and explained.
+  const overallTotal = useMemo(() => sumCostCents(itemRollup), [itemRollup]);
 
   const activeCategory = categories.find((category) => category.id === categoryId) ?? null;
   const bannerLabel = activeCategory ? activeCategory.name : "All items";
-  const bannerTotalCents = activeCategory
-    ? (categoryRollup.find((row) => row.categoryId === categoryId)?.totalCostCents ?? 0)
-    : overallTotalCents;
+  const bannerTotal = activeCategory
+    ? sumCostCents(categoryRollup.filter((row) => row.categoryId === categoryId))
+    : overallTotal;
+  const bannerTotalLabel =
+    formatCentsAsUsd(bannerTotal.totalCents ?? 0) + (bannerTotal.unknownCount > 0 ? "+" : "");
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredItems = items.filter((item) => {
@@ -76,8 +83,17 @@ export function WasteLogGrid({
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 flex-1 truncate text-[15px] font-bold">
             {bannerLabel}
-            <span className="ml-2 text-[13px] font-semibold opacity-90">
-              Total: {formatCentsAsUsd(bannerTotalCents)}
+            <span
+              className="ml-2 text-[13px] font-semibold opacity-90"
+              title={
+                bannerTotal.unknownCount > 0
+                  ? bannerTotal.unknownCount === 1
+                    ? "1 logged entry has no unit cost set, so it is not included in this total."
+                    : `${bannerTotal.unknownCount} logged entries have no unit cost set, so they are not included in this total.`
+                  : undefined
+              }
+            >
+              Total: {bannerTotalLabel}
             </span>
           </span>
           <ChevronDown className="h-5 w-5 shrink-0 opacity-90" aria-hidden="true" />
@@ -143,11 +159,13 @@ function WasteItemCard({
     setError(null);
     setPendingKind(kind);
     startTransition(async () => {
-      const result = await logWasteEntry({
-        itemId: item.id,
-        quantity: 1,
-        note: kind === "donate" ? "Donated" : "Trash",
-      });
+      const result = await safeAction(() =>
+        logWasteEntry({
+          itemId: item.id,
+          quantity: 1,
+          note: kind === "donate" ? "Donated" : "Trash",
+        }),
+      );
       setPendingKind(null);
       if (!result.ok) {
         setError(result.error);
@@ -167,9 +185,9 @@ function WasteItemCard({
           disabled={isPending}
           onClick={() => logOne("trash")}
           aria-label={`Log 1 ${item.name} to trash`}
-          className="flex items-center justify-center gap-1 rounded-lg bg-danger-soft px-2 py-2 text-danger transition-opacity disabled:opacity-60"
+          className="flex items-center justify-center gap-1 rounded-lg bg-danger-soft min-h-[44px] px-2 py-3 text-danger transition-opacity disabled:opacity-60"
         >
-          <span className="text-[13px] font-bold">{pendingKind === "trash" ? "..." : "+1"}</span>
+          <span className="text-[13px] font-bold">{isPending && pendingKind === "trash" ? "..." : "+1"}</span>
           <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
         <button
@@ -177,9 +195,9 @@ function WasteItemCard({
           disabled={isPending}
           onClick={() => logOne("donate")}
           aria-label={`Log 1 ${item.name} donated`}
-          className="flex items-center justify-center gap-1 rounded-lg bg-success-soft px-2 py-2 text-success transition-opacity disabled:opacity-60"
+          className="flex items-center justify-center gap-1 rounded-lg bg-success-soft min-h-[44px] px-2 py-3 text-success transition-opacity disabled:opacity-60"
         >
-          <span className="text-[13px] font-bold">{pendingKind === "donate" ? "..." : "+1"}</span>
+          <span className="text-[13px] font-bold">{isPending && pendingKind === "donate" ? "..." : "+1"}</span>
           <Heart className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
@@ -192,7 +210,7 @@ function WasteItemCard({
         Total: {formatCentsAsUsd(rollup ? rollup.totalCostCents : 0)}
       </p>
 
-      {error && <p className="text-[11px] text-danger">{error}</p>}
+      {error && <p className="text-[12px] leading-snug text-danger">{error}</p>}
     </div>
   );
 }

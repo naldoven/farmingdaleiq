@@ -54,6 +54,22 @@ export const EVENT_KEYS = [
   // Catering
   "catering_order_new",
   "catering_stage_change",
+
+  // Waste
+  //
+  // Audit-trail only -- deliberately NOT added to NOTIFIABLE_EVENT_KEYS. Waste
+  // is logged dozens of times a shift, so notifying on it would be pure noise.
+  // The point is that the module previously emitted nothing at all: a
+  // waste.manage holder could hard-delete the entries that made a food-cost
+  // number look bad and no row anywhere recorded that they had existed, who
+  // logged them, or who removed them. waste_item_changed likewise captures
+  // unit_cost edits, which retroactively rewrite every historical rollup that
+  // references the item (see the KNOWN LIMITATION note in
+  // app/(app)/waste/logic.ts rollupByItem).
+  "waste_logged",
+  "waste_entry_deleted",
+  "waste_item_changed",
+  "waste_category_changed",
 ] as const;
 
 export type EventKey = (typeof EVENT_KEYS)[number];

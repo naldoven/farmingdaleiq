@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { WASTE_QUANTITY_MAX, WASTE_UNITS, type WasteUnit } from "./constants";
+import {
+  WASTE_QUANTITY_MAX,
+  WASTE_UNIT_COST_MAX,
+  WASTE_UNITS,
+  type WasteUnit,
+} from "./constants";
 
 /**
  * Input validation for the Waste server actions (app/(app)/waste/actions.ts).
@@ -10,7 +15,7 @@ import { WASTE_QUANTITY_MAX, WASTE_UNITS, type WasteUnit } from "./constants";
  * they are re-exported here for server/action code.
  */
 
-export { WASTE_UNITS, WASTE_QUANTITY_MAX };
+export { WASTE_UNITS, WASTE_QUANTITY_MAX, WASTE_UNIT_COST_MAX };
 export type { WasteUnit };
 
 export const idSchema = z.object({
@@ -25,7 +30,10 @@ export const logEntrySchema = z.object({
     .positive("Quantity must be greater than 0")
     .max(WASTE_QUANTITY_MAX, `Quantity can't exceed ${WASTE_QUANTITY_MAX}`),
   dayPartId: z.string().uuid().nullable().optional(),
-  note: z.string().trim().max(500).optional().or(z.literal("")),
+  // No `.or(z.literal(""))`: an empty string already satisfies `.trim()` with
+  // no min, and wrapping the schema in a union turned an over-length note into
+  // zod's generic "invalid union" message instead of the specific one below.
+  note: z.string().trim().max(500, "Note must be 500 characters or fewer").optional(),
 });
 export type LogEntryInput = z.infer<typeof logEntrySchema>;
 
@@ -44,7 +52,12 @@ export const createItemSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150),
   categoryId: z.string().uuid().nullable().optional(),
   unit: z.enum(WASTE_UNITS),
-  unitCost: z.coerce.number().nonnegative("Unit cost can't be negative").nullable().optional(),
+  unitCost: z.coerce
+    .number()
+    .nonnegative("Unit cost can't be negative")
+    .max(WASTE_UNIT_COST_MAX, `Unit cost can't exceed $${WASTE_UNIT_COST_MAX.toLocaleString()}`)
+    .nullable()
+    .optional(),
 });
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 

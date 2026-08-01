@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createCategory, deleteCategory, updateCategory } from "@/app/(app)/waste/actions";
+import { safeAction } from "@/lib/errors/safe-action";
 
 export interface CategoryRow {
   id: string;
@@ -57,11 +58,13 @@ function CategoryEditRow({ category }: { category: CategoryRow }) {
             onClick={() => {
               setError(null);
               startTransition(async () => {
-                const result = await updateCategory({
-                  id: category.id,
-                  name,
-                  sort: Number(sort) || 0,
-                });
+                const result = await safeAction(() =>
+                  updateCategory({
+                    id: category.id,
+                    name,
+                    sort: Number(sort) || 0,
+                  }),
+                );
                 if (!result.ok) {
                   setError(result.error);
                   return;
@@ -80,14 +83,14 @@ function CategoryEditRow({ category }: { category: CategoryRow }) {
             onClick={() => {
               if (
                 !window.confirm(
-                  `Delete category "${category.name}"? It must have no items left in it.`,
+                  `Delete category "${category.name}"? It must have no items left in it. This can't be undone.`,
                 )
               ) {
                 return;
               }
               setError(null);
               startTransition(async () => {
-                const result = await deleteCategory({ id: category.id });
+                const result = await safeAction(() => deleteCategory({ id: category.id }));
                 if (!result.ok) {
                   setError(result.error);
                   return;
@@ -143,7 +146,9 @@ export function CategoryManager({ categories }: { categories: CategoryRow[] }) {
           event.preventDefault();
           setError(null);
           startTransition(async () => {
-            const result = await createCategory({ name, sort: Number(sort) || 0 });
+            const result = await safeAction(() =>
+              createCategory({ name, sort: Number(sort) || 0 }),
+            );
             if (!result.ok) {
               setError(result.error);
               return;

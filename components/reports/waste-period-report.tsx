@@ -94,8 +94,11 @@ export function WastePeriodReport({
     cells: {
       categoryName: cell(r.categoryName),
       entryCount: cell(r.entryCount),
+      // "+" marks a partial total -- some entries in this category are on
+      // items with no unit cost. The CSV value stays the raw number.
       totalCost: cell(
-        formatCentsAsUsd(r.totalCostCents),
+        formatCentsAsUsd(r.totalCostCents) +
+          (r.unknownEntryCount > 0 && r.totalCostCents != null ? "+" : ""),
         r.totalCostCents != null ? r.totalCostCents / 100 : "",
       ),
     },

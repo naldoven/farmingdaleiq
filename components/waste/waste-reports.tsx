@@ -24,10 +24,16 @@ import {
   type WasteItemForRollup,
 } from "@/app/(app)/waste/logic";
 
+// Rolling day counts, NOT calendar periods -- PERIOD_DAYS in
+// app/(app)/waste/logic.ts is {week: 7, month: 30, quarter: 90} measured back
+// from now. Labelling them "This month" implied a calendar month, so on Aug 1
+// the tab showed Jul 2 - Aug 1 while claiming to show August, and it disagreed
+// with /reports/waste, which labels the identical math "last 30 days". Same
+// wording in both places now.
 const PERIOD_LABELS: Record<PeriodKey, string> = {
-  week: "This week",
-  month: "This month",
-  quarter: "This quarter",
+  week: "Last 7 days",
+  month: "Last 30 days",
+  quarter: "Last 90 days",
   all: "All time",
 };
 
@@ -131,7 +137,19 @@ export function WasteReports({
                 <TableRow key={row.categoryId ?? "uncategorized"}>
                   <TableCell className="font-medium">{row.categoryName}</TableCell>
                   <TableCell>{row.entryCount}</TableCell>
-                  <TableCell>{formatCentsAsUsd(row.totalCostCents)}</TableCell>
+                  {/* "+" marks a partial total: some entries in this category
+                      are on items with no unit cost, so they contribute
+                      quantity but no dollars. */}
+                  <TableCell
+                    title={
+                      row.unknownEntryCount > 0
+                        ? `${row.unknownEntryCount} of ${row.entryCount} entries have no unit cost set.`
+                        : undefined
+                    }
+                  >
+                    {formatCentsAsUsd(row.totalCostCents)}
+                    {row.unknownEntryCount > 0 && row.totalCostCents != null ? "+" : ""}
+                  </TableCell>
                 </TableRow>
               ))}
               {categoryRollup.length === 0 && (
