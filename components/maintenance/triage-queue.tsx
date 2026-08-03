@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ListRow, SectionCard } from "@/components/mobile";
+import { PhotoStrip } from "@/components/maintenance/photo-upload";
 import { approveRequest, declineRequest } from "@/app/(app)/maintenance/actions";
 
 export interface RequestRow {
@@ -30,6 +31,7 @@ export interface RequestRow {
   description: string | null;
   area: string | null;
   suggested_priority: string | null;
+  photo_urls: string[] | null;
   submitted_at: string;
 }
 
@@ -72,6 +74,8 @@ function ReviewDialog({
           {request.area && <p>Area: {request.area}</p>}
           {request.description && <p>{request.description}</p>}
         </div>
+
+        {(request.photo_urls?.length ?? 0) > 0 && <PhotoStrip photos={request.photo_urls ?? []} />}
 
         <div className="flex gap-2">
           <Button

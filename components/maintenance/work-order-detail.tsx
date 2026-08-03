@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SectionCard, StatusBadge, type StatusTone } from "@/components/mobile";
+import { PhotoStrip, PhotoUpload } from "@/components/maintenance/photo-upload";
 import {
   addWorkOrderComment,
   assignWorkOrder,
@@ -44,6 +45,8 @@ export interface WorkOrderDetailData {
   cost: number | null;
   invoice_url: string | null;
   created_at: string;
+  /** Photos attached to the originating maintenance request, if any. */
+  request_photo_urls: string[];
 }
 
 export interface CommentRow {
@@ -120,6 +123,7 @@ function CompleteForm({
   const [error, setError] = useState<string | null>(null);
   const [cost, setCost] = useState(workOrder.cost != null ? String(workOrder.cost) : "");
   const [invoiceUrl, setInvoiceUrl] = useState(workOrder.invoice_url ?? "");
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [markEquipmentUp, setMarkEquipmentUp] = useState(true);
 
   if (workOrder.status === "complete" || workOrder.status === "cancelled") return null;
@@ -160,8 +164,14 @@ function CompleteForm({
           <Input id="wo-cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="wo-invoice">Invoice photo URL</Label>
-          <Input id="wo-invoice" value={invoiceUrl} onChange={(e) => setInvoiceUrl(e.target.value)} />
+          <Label>Invoice photo</Label>
+          <PhotoUpload
+            photos={invoiceUrl ? [invoiceUrl] : []}
+            onChange={(p) => setInvoiceUrl(p[0] ?? "")}
+            folder="invoices"
+            max={1}
+            onBusyChange={setInvoiceBusy}
+          />
         </div>
       </div>
       {workOrder.equipment_id && canManageEquipment && (
@@ -171,7 +181,7 @@ function CompleteForm({
         </label>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" disabled={isPending || invoiceBusy}>
         {isPending ? "Completing..." : "Mark complete"}
       </Button>
     </form>
@@ -279,7 +289,8 @@ function CommentThread({ workOrderId, comments }: { workOrderId: string; comment
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [body, setBody] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photosBusy, setPhotosBusy] = useState(false);
 
   return (
     <div className="flex flex-col gap-3">
@@ -292,14 +303,9 @@ function CommentThread({ workOrderId, comments }: { workOrderId: string; comment
             </div>
             {comment.body && <p className="mt-1">{comment.body}</p>}
             {comment.photo_url && (
-              <a
-                href={comment.photo_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-primary hover:underline"
-              >
-                Photo
-              </a>
+              <div className="mt-2">
+                <PhotoStrip photos={[comment.photo_url]} />
+              </div>
             )}
           </div>
         ))}
@@ -315,22 +321,22 @@ function CommentThread({ workOrderId, comments }: { workOrderId: string; comment
             const result = await addWorkOrderComment({
               workOrderId,
               body: body || undefined,
-              photoUrl: photoUrl || undefined,
+              photoUrl: photos[0],
             });
             if (!result.ok) {
               setError(result.error);
               return;
             }
             setBody("");
-            setPhotoUrl("");
+            setPhotos([]);
             router.refresh();
           });
         }}
       >
         <Textarea placeholder="Add a comment" value={body} onChange={(e) => setBody(e.target.value)} />
-        <Input placeholder="Photo URL (optional)" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} />
+        <PhotoUpload photos={photos} onChange={setPhotos} folder="comments" max={1} onBusyChange={setPhotosBusy} />
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" size="sm" disabled={isPending}>
+        <Button type="submit" size="sm" disabled={isPending || photosBusy}>
           {isPending ? "Posting..." : "Post comment"}
         </Button>
       </form>
@@ -375,6 +381,8 @@ export function WorkOrderDetail({
       </div>
 
       {workOrder.description && <p className="text-[15px] text-muted-ink">{workOrder.description}</p>}
+
+      {workOrder.request_photo_urls.length > 0 && <PhotoStrip photos={workOrder.request_photo_urls} />}
 
       <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
         {workOrder.equipment_name && (

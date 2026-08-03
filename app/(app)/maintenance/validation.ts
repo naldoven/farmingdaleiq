@@ -11,9 +11,10 @@ const uuid = z.string().uuid();
 const optionalUuid = z.string().uuid().optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 const optionalText = z.string().trim().optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 // Photo/invoice fields are plain URL-shaped text, not strictly validated as
-// URLs: there is no file-upload flow yet (matches the Checklists precedent
-// in app/(app)/checklists/validation.ts's photoUrl field), so this just caps
-// length and drops blanks to undefined.
+// URLs. They're normally produced by the direct-upload flow
+// (components/maintenance/photo-upload.tsx -> the public maintenance-photos
+// bucket), but legacy rows and direct API calls may still carry arbitrary
+// pasted links, so this just caps length and drops blanks to undefined.
 const optionalUrl = z.string().trim().max(2000).optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 
 export const priorityEnum = z.enum(["low", "medium", "high", "urgent"]);
