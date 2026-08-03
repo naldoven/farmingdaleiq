@@ -37,6 +37,18 @@ export const logEntrySchema = z.object({
 });
 export type LogEntryInput = z.infer<typeof logEntrySchema>;
 
+// The full ordered id list for one category's items (see reorderItems in
+// actions.ts). Duplicates are rejected up front: two positions for the same id
+// would make the resulting sort values depend on write order.
+export const reorderItemsSchema = z.object({
+  orderedIds: z
+    .array(z.string().uuid())
+    .min(1, "Nothing to reorder")
+    .max(500, "Too many items to reorder at once")
+    .refine((ids) => new Set(ids).size === ids.length, "Duplicate item ids in reorder list"),
+});
+export type ReorderItemsInput = z.infer<typeof reorderItemsSchema>;
+
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   sort: z.coerce.number().int().default(0),

@@ -5,6 +5,7 @@ import {
   createItemSchema,
   idSchema,
   logEntrySchema,
+  reorderItemsSchema,
   updateCategorySchema,
   updateItemSchema,
   WASTE_UNIT_COST_MAX,
@@ -184,5 +185,24 @@ describe("note length", () => {
 
   it("accepts an empty note", () => {
     expect(logEntrySchema.parse({ itemId: UUID_A, quantity: 1, note: "" }).note).toBe("");
+  });
+});
+
+describe("reorderItemsSchema", () => {
+  it("accepts an ordered list of uuids and preserves the order", () => {
+    const result = reorderItemsSchema.parse({ orderedIds: [UUID_B, UUID_A] });
+    expect(result.orderedIds).toEqual([UUID_B, UUID_A]);
+  });
+
+  it("rejects an empty list", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [] })).toThrow();
+  });
+
+  it("rejects non-uuid entries", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [UUID_A, "nope"] })).toThrow();
+  });
+
+  it("rejects duplicate ids (two positions for one item would make sort depend on write order)", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [UUID_A, UUID_A] })).toThrow();
   });
 });

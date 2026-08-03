@@ -37,12 +37,14 @@ import {
   createItemSchema,
   idSchema,
   logEntrySchema,
+  reorderItemsSchema,
   updateCategorySchema,
   updateItemSchema,
   type CreateCategoryInput,
   type CreateItemInput,
   type IdInput,
   type LogEntryInput,
+  type ReorderItemsInput,
   type UpdateCategoryInput,
   type UpdateItemInput,
 } from "@/app/(app)/waste/validation";
@@ -422,6 +424,24 @@ export async function createItem(
       return { ok: false, error: "An item with this name already exists in this category." };
     }
 
+    // Append to the end of the category's manager-arranged order (see
+    // reorderItems below) instead of taking the column default of 0, which
+    // would prepend the new item above everything a manager deliberately
+    // ordered. If this lookup fails, fall through with sort 0 rather than
+    // failing the create -- a misplaced position is fixable in the UI, a
+    // refused create is not.
+    let maxSortQuery = supabase
+      .from("waste_items")
+      .select("sort")
+      .order("sort", { ascending: false })
+      .limit(1);
+    maxSortQuery =
+      categoryId === null
+        ? maxSortQuery.is("category_id", null)
+        : maxSortQuery.eq("category_id", categoryId);
+    const { data: maxSortRow } = await maxSortQuery.maybeSingle();
+    const nextSort = (maxSortRow?.sort ?? -1) + 1;
+
     const { data, error } = await supabase
       .from("waste_items")
       .insert({
@@ -429,6 +449,7 @@ export async function createItem(
         category_id: categoryId,
         unit: parsed.unit,
         unit_cost: parsed.unitCost ?? null,
+        sort: nextSort,
       })
       .select("id")
       .single();
@@ -477,9 +498,30 @@ export async function updateItem(input: UpdateItemInput): Promise<ActionResult> 
     // useful thing this event can carry.
     const { data: previous } = await supabase
       .from("waste_items")
-      .select("name, unit, unit_cost")
+      .select("name, unit, unit_cost, category_id")
       .eq("id", parsed.id)
       .maybeSingle();
+
+    // Moving an item to a different category appends it at the END of that
+    // category's manager-arranged order. sort positions are per-category, so
+    // carrying the old value over would silently splice the item into the
+    // middle of a list someone deliberately arranged. Same
+    // fail-open-to-position-0 stance as createItem: a misplaced position is
+    // fixable with the reorder arrows, a refused save is not.
+    let movedSort: number | null = null;
+    if (previous && (previous.category_id ?? null) !== categoryId) {
+      let maxSortQuery = supabase
+        .from("waste_items")
+        .select("sort")
+        .order("sort", { ascending: false })
+        .limit(1);
+      maxSortQuery =
+        categoryId === null
+          ? maxSortQuery.is("category_id", null)
+          : maxSortQuery.eq("category_id", categoryId);
+      const { data: maxSortRow } = await maxSortQuery.maybeSingle();
+      movedSort = (maxSortRow?.sort ?? -1) + 1;
+    }
 
     // `.select("id")` + a row-count check: under RLS a write filtered to zero
     // rows returns success, so without this the UI shows a green result for a
@@ -491,6 +533,7 @@ export async function updateItem(input: UpdateItemInput): Promise<ActionResult> 
         category_id: categoryId,
         unit: parsed.unit,
         unit_cost: parsed.unitCost ?? null,
+        ...(movedSort !== null ? { sort: movedSort } : {}),
       })
       .eq("id", parsed.id)
       .select("id");
@@ -510,6 +553,50 @@ export async function updateItem(input: UpdateItemInput): Promise<ActionResult> 
       unit: parsed.unit,
       unit_cost: parsed.unitCost ?? null,
       previous_unit_cost: previous?.unit_cost ?? null,
+    });
+
+    revalidatePath("/waste");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Persists a manager's arrow-button ordering of the items in one Admin
+ * category tab (components/waste/item-manager.tsx). Takes the FULL ordered id
+ * list for that category and writes sort = array index for each row, so the
+ * write is idempotent (re-sending the same list changes nothing) and
+ * self-healing (any stale sort values -- ties, gaps -- are normalized on the
+ * next reorder). An id that no longer exists is skipped rather than failing
+ * the whole reorder: the manager's intent for the surviving items is still
+ * clear, and the deleted row will be gone from the list on refresh anyway.
+ */
+export async function reorderItems(input: ReorderItemsInput): Promise<ActionResult> {
+  try {
+    await requirePermission("waste.manage");
+
+    const parsed = reorderItemsSchema.parse(input);
+    const supabase = await createClient();
+
+    // One UPDATE per row (a category tab holds tens of items at most; there is
+    // no batch-update path through PostgREST without a dedicated RPC). Run in
+    // parallel and surface the first real error; under RLS a filtered-to-zero
+    // update is success with no rows, which is exactly the skip we want for
+    // ids deleted mid-flight.
+    const results = await Promise.all(
+      parsed.orderedIds.map((id, index) =>
+        supabase.from("waste_items").update({ sort: index }).eq("id", id).select("id"),
+      ),
+    );
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      return { ok: false, error: friendlyDbError(failed.error, "Could not save the new order.") };
+    }
+
+    await emitEventSafely("waste_item_changed", {
+      action: "reordered",
+      item_ids: parsed.orderedIds,
     });
 
     revalidatePath("/waste");

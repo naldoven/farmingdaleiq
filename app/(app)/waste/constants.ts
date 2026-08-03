@@ -22,6 +22,13 @@ export type WasteUnit = (typeof WASTE_UNITS)[number];
 // into the browser bundle.
 export const WASTE_QUANTITY_MAX = 10_000;
 
+// Reason chips offered by the hold-to-log quantity sheet
+// (components/waste/quantity-sheet.tsx), mirroring the KitchenIQ picker the
+// crew already knows. The chosen reason is stored as part of the entry's note
+// ("Trash · Expired"), not as a column -- waste_entries is a frozen table with
+// no reason field to add (see the header comment in app/(app)/waste/actions.ts).
+export const WASTE_REASONS = ["Expired", "Contaminated", "Floor", "Order Accuracy"] as const;
+
 // Upper bound on an item's unit cost, in dollars. The quantity bound above
 // closed only half of the "$5.84e+21" typo class the audit found: cost is the
 // other factor in every rollup, and it was left with a bare nonnegative()

@@ -107,7 +107,12 @@ export default async function WastePage({
     supabase.from("waste_categories").select("id, name, sort").order("sort"),
     supabase
       .from("waste_items")
+      // Manager-arranged order first (supabase/migrations/
+      // 20260803010000_waste_item_sort.sql), name as the tiebreak so items
+      // that have never been reordered (all sort 0 on a fresh install) still
+      // come out alphabetical instead of in insertion order.
       .select("id, name, category_id, unit, unit_cost")
+      .order("sort")
       .order("name"),
     supabase.from("day_parts").select("id, name").order("sort"),
     recentEntriesQuery,
@@ -127,7 +132,22 @@ export default async function WastePage({
   ]);
 
   const categoryRows = categories ?? [];
-  const itemRows = items ?? [];
+  // Group by category (in the categories' own sort order, uncategorized last)
+  // on top of the per-item sort the query already applied. sort values are
+  // per-CATEGORY positions (0, 1, 2 within Primary AND within Secondary), so
+  // without this grouping the "All items" grid would interleave the two
+  // categories' rows. Array.prototype.sort is stable, so within a category the
+  // fetched sort-then-name order is preserved.
+  const categoryPosition = new Map(categoryRows.map((category, index) => [category.id, index]));
+  const itemRows = [...(items ?? [])].sort((a, b) => {
+    const aPosition = a.category_id
+      ? (categoryPosition.get(a.category_id) ?? categoryRows.length)
+      : categoryRows.length;
+    const bPosition = b.category_id
+      ? (categoryPosition.get(b.category_id) ?? categoryRows.length)
+      : categoryRows.length;
+    return aPosition - bPosition;
+  });
   const dayPartRows = dayParts ?? [];
   const recentEntryRows = recentEntries ?? [];
 
@@ -229,7 +249,17 @@ export default async function WastePage({
             ) : (
               <div className="divide-y divide-line">
                 {recentEntryRows.map((entry) => {
-                  const donated = entry.note?.trim().toLowerCase() === "donated";
+                  const noteText = entry.note?.trim() ?? "";
+                  // Grid entries prefix the note with disposition and may
+                  // append a reason/free text ("Donated · Expired · ...") --
+                  // see the log() note composition in waste-log-grid.tsx.
+                  // startsWith, not equality, so a suffixed note still gets
+                  // the right icon.
+                  const donated = noteText.toLowerCase().startsWith("donated");
+                  // Show everything AFTER the disposition prefix (the icon
+                  // already conveys trash/donated); manual-form notes have no
+                  // prefix and show in full.
+                  const noteDetail = noteText.replace(/^(donated|trash)\b(\s*·\s*)?/i, "").trim();
                   const dayPartName = entry.day_part_id
                     ? (dayPartNameById.get(entry.day_part_id) ?? null)
                     : null;
@@ -242,7 +272,12 @@ export default async function WastePage({
                       icon={donated ? Heart : Trash2}
                       iconTone={donated ? "success" : "danger"}
                       title={`${itemNameById.get(entry.item_id) ?? "Item"} · ${entry.quantity}`}
-                      description={[dayPartName, new Date(entry.logged_at).toLocaleString(), loggedByName]
+                      description={[
+                        noteDetail || null,
+                        dayPartName,
+                        new Date(entry.logged_at).toLocaleString(),
+                        loggedByName,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                       trailing={canManage ? <DeleteEntryButton id={entry.id} /> : undefined}

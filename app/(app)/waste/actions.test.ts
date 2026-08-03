@@ -62,6 +62,9 @@ function makeSupabaseMock(
     update: () => builder,
     delete: () => builder,
     eq: () => builder,
+    is: () => builder,
+    order: () => builder,
+    limit: () => builder,
     single: () => builder,
     maybeSingle: () => builder,
     then(onFulfilled, onRejected) {
@@ -193,6 +196,7 @@ describe("createItem name scoping (matches the per-category unique index)", () =
             },
           ],
         },
+        { data: { sort: 2 } }, // max-sort lookup (new item appends at the end)
         { data: { id: "44444444-4444-4444-8444-444444444444" }, error: null }, // insert
       ]),
     );
@@ -232,6 +236,62 @@ describe("createItem name scoping (matches the per-category unique index)", () =
       ok: false,
       error: "An item with this name already exists in this category.",
     });
+  });
+});
+
+describe("reorderItems", () => {
+  it("writes the new order and reports success", async () => {
+    const { reorderItems } = await import("@/app/(app)/waste/actions");
+    createClientMock.mockReturnValue(
+      makeSupabaseMock([
+        { data: [{ id: "11111111-1111-4111-8111-111111111111" }], error: null }, // update sort=0
+        { data: [{ id: "22222222-2222-4222-8222-222222222222" }], error: null }, // update sort=1
+      ]),
+    );
+
+    const result = await reorderItems({
+      orderedIds: [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+    });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+  });
+
+  it("surfaces a friendly error when any update is rejected", async () => {
+    const { reorderItems } = await import("@/app/(app)/waste/actions");
+    createClientMock.mockReturnValue(
+      makeSupabaseMock([
+        { data: [{ id: "11111111-1111-4111-8111-111111111111" }], error: null },
+        { data: null, error: { message: "permission denied for table waste_items", code: "42501" } },
+      ]),
+    );
+
+    const result = await reorderItems({
+      orderedIds: [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+      ],
+    });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
+  });
+
+  it("rejects duplicate ids before touching the database", async () => {
+    const { reorderItems } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await reorderItems({
+      orderedIds: [
+        "11111111-1111-4111-8111-111111111111",
+        "11111111-1111-4111-8111-111111111111",
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 });
 
