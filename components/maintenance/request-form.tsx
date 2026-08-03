@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PhotoUpload } from "@/components/maintenance/photo-upload";
 import { submitMaintenanceRequest } from "@/app/(app)/maintenance/actions";
 
 export interface EquipmentOption {
@@ -36,7 +37,8 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
   const [area, setArea] = useState("");
   const [equipmentId, setEquipmentId] = useState<string>(NO_EQUIPMENT_VALUE);
   const [priority, setPriority] = useState<string>(NO_PRIORITY_VALUE);
-  const [photoUrls, setPhotoUrls] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photosBusy, setPhotosBusy] = useState(false);
 
   return (
     <form
@@ -53,10 +55,7 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
             equipmentId: equipmentId === NO_EQUIPMENT_VALUE ? undefined : equipmentId,
             suggestedPriority:
               priority === NO_PRIORITY_VALUE ? undefined : (priority as (typeof PRIORITY_OPTIONS)[number]),
-            photoUrls: photoUrls
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean),
+            photoUrls: photos,
           });
           if (!result.ok) {
             setError(result.error);
@@ -67,7 +66,7 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
           setArea("");
           setEquipmentId(NO_EQUIPMENT_VALUE);
           setPriority(NO_PRIORITY_VALUE);
-          setPhotoUrls("");
+          setPhotos([]);
           setSuccess(true);
           router.refresh();
         });
@@ -130,17 +129,12 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="request-photos">Photos (one URL per line)</Label>
-        <Textarea
-          id="request-photos"
-          value={photoUrls}
-          onChange={(e) => setPhotoUrls(e.target.value)}
-          placeholder={"https://..."}
-        />
+        <Label>Photos (optional)</Label>
+        <PhotoUpload photos={photos} onChange={setPhotos} folder="requests" onBusyChange={setPhotosBusy} />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {success && <p className="text-sm text-emerald-600 dark:text-emerald-400">Request submitted.</p>}
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" disabled={isPending || photosBusy}>
         {isPending ? "Submitting..." : "Submit request"}
       </Button>
     </form>

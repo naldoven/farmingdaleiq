@@ -54,7 +54,7 @@ export default async function MaintenancePage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("maintenance_requests")
-      .select("id, title, description, area, suggested_priority, submitted_at")
+      .select("id, title, description, area, suggested_priority, photo_urls, submitted_at")
       .eq("status", "pending")
       .order("submitted_at"),
     supabase.from("profiles").select("id, name").eq("active", true).order("name"),

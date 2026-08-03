@@ -20,7 +20,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
   const { data: workOrder } = await supabase
     .from("work_orders")
     .select(
-      "id, title, description, status, priority, equipment_id, assigned_user_id, vendor_id, scheduled_for, due_at, completed_at, cost, invoice_url, created_at",
+      "id, request_id, title, description, status, priority, equipment_id, assigned_user_id, vendor_id, scheduled_for, due_at, completed_at, cost, invoice_url, created_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -29,7 +29,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
     notFound();
   }
 
-  const [{ data: comments }, { data: equipment }, { data: assignedProfile }, { data: vendor }, { data: profiles }, { data: vendors }] =
+  const [{ data: comments }, { data: equipment }, { data: assignedProfile }, { data: vendor }, { data: profiles }, { data: vendors }, { data: request }] =
     await Promise.all([
       supabase
         .from("work_order_comments")
@@ -47,6 +47,11 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
         : Promise.resolve({ data: null }),
       supabase.from("profiles").select("id, name").eq("active", true).order("name"),
       supabase.from("vendors").select("id, name").eq("active", true).order("name"),
+      // Photos uploaded with the originating request travel with the work
+      // order so the person doing the repair sees them.
+      workOrder.request_id
+        ? supabase.from("maintenance_requests").select("photo_urls").eq("id", workOrder.request_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
   const authorIds = Array.from(
@@ -79,6 +84,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
           cost: workOrder.cost,
           invoice_url: workOrder.invoice_url,
           created_at: workOrder.created_at,
+          request_photo_urls: request?.photo_urls ?? [],
         }}
         comments={(comments ?? []).map((c) => ({
           id: c.id,
