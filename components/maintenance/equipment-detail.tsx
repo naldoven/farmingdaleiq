@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
+import { PhotoStrip } from "@/components/maintenance/photo-upload";
 import { addEquipmentFile, setEquipmentStatus } from "@/app/(app)/maintenance/equipment/actions";
 import { PmScheduleManager, type PmScheduleRow } from "@/components/maintenance/pm-schedule-manager";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
@@ -21,6 +22,7 @@ export interface EquipmentDetailData {
   installed_on: string | null;
   warranty_expires_on: string | null;
   status: string;
+  photo_url: string | null;
   notes: string | null;
 }
 
@@ -176,6 +178,8 @@ export function EquipmentDetail({
           </StatusBadge>
         )}
       </div>
+
+      {equipment.photo_url && <PhotoStrip photos={[equipment.photo_url]} />}
 
       <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
         {equipment.category && (

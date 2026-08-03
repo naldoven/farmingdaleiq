@@ -20,7 +20,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
   const { data: equipment } = await supabase
     .from("equipment")
     .select(
-      "id, name, category, area, model, serial, service_vendor_id, installed_on, warranty_expires_on, status, notes",
+      "id, name, category, area, model, serial, service_vendor_id, installed_on, warranty_expires_on, status, photo_url, notes",
     )
     .eq("id", id)
     .maybeSingle();
@@ -77,6 +77,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
           installed_on: equipment.installed_on,
           warranty_expires_on: equipment.warranty_expires_on,
           status: equipment.status,
+          photo_url: equipment.photo_url,
           notes: equipment.notes,
         }}
         files={files ?? []}
