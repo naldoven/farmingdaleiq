@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ListRow, SearchBar, SectionCard, StatusBadge } from "@/components/mobile";
+import { PhotoUpload } from "@/components/maintenance/photo-upload";
 import { createEquipment } from "@/app/(app)/maintenance/equipment/actions";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
 
@@ -80,6 +81,7 @@ export function EquipmentList({
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -234,8 +236,14 @@ export function EquipmentList({
                 />
               </div>
               <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <Label htmlFor="eq-photo">Photo URL</Label>
-                <Input id="eq-photo" value={form.photoUrl} onChange={(e) => setForm({ ...form, photoUrl: e.target.value })} />
+                <Label>Photo</Label>
+                <PhotoUpload
+                  photos={form.photoUrl ? [form.photoUrl] : []}
+                  onChange={(p) => setForm({ ...form, photoUrl: p[0] ?? "" })}
+                  folder="equipment"
+                  max={1}
+                  onBusyChange={setPhotoBusy}
+                />
               </div>
               <div className="flex flex-col gap-1.5 sm:col-span-2">
                 <Label htmlFor="eq-notes">Notes</Label>
@@ -244,7 +252,7 @@ export function EquipmentList({
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <DialogFooter>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || photoBusy}>
                 {isPending ? "Saving..." : "Add equipment"}
               </Button>
             </DialogFooter>
