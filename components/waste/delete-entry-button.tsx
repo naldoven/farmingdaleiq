@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { deleteWasteEntry } from "@/app/(app)/waste/actions";
+import { safeAction } from "@/lib/errors/safe-action";
 
 /**
  * Manager-only correction control for the recent-entries list. Local to
@@ -28,7 +29,7 @@ export function DeleteEntryButton({ id }: { id: string }) {
           if (!window.confirm("Delete this waste entry?")) return;
           setError(null);
           startTransition(async () => {
-            const result = await deleteWasteEntry({ id });
+            const result = await safeAction(() => deleteWasteEntry({ id }));
             if (!result.ok) {
               setError(result.error);
               return;

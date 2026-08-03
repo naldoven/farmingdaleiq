@@ -7,6 +7,9 @@ import {
   periodStart,
   rollupByCategory,
   rollupByItem,
+  storeDayRangeUtc,
+  storeLocalDate,
+  sumCostCents,
   type WasteCategoryForRollup,
   type WasteEntryForRollup,
   type WasteItemForRollup,
@@ -97,6 +100,7 @@ describe("rollupByItem", () => {
         totalQuantity: 5,
         entryCount: 2,
         totalCostCents: 1000,
+        unknownEntryCount: 0,
       },
     ]);
   });
@@ -156,7 +160,13 @@ describe("rollupByCategory", () => {
     ];
     const rollup = rollupByCategory(entries, items, categories);
     expect(rollup).toEqual([
-      { categoryId: null, categoryName: "Uncategorized", entryCount: 1, totalCostCents: null },
+      {
+        categoryId: null,
+        categoryName: "Uncategorized",
+        entryCount: 1,
+        totalCostCents: null,
+        unknownEntryCount: 1,
+      },
     ]);
   });
 
@@ -233,5 +243,148 @@ describe("rollupByItem and rollupByCategory agree to the cent", () => {
     expect(itemTotal).toBe(330);
     expect(categoryTotal).toBe(330);
     expect(itemTotal).toBe(categoryTotal);
+  });
+});
+
+describe("entryCostCents: sub-cent unit costs (regression)", () => {
+  // The previous implementation snapped unit cost to whole cents FIRST
+  // (Math.round(unitCost * 100)), discarding up to 0.5c per UNIT, which
+  // quantity then multiplied. These are the cases that broke.
+  it("does not inflate an oz-priced item", () => {
+    // Math.round(0.125 * 100) = 13 -> 128 * 13 = 1664 ($16.64). True: $16.00.
+    expect(entryCostCents(128, 0.125)).toBe(1600);
+  });
+
+  it("does not erase an item priced below one cent per unit", () => {
+    // Math.round(0.004 * 100) = 0 -> the item vanished from cost rollups.
+    expect(entryCostCents(1000, 0.004)).toBe(400);
+  });
+
+  it("does not lose a half-cent on the unit cost", () => {
+    // 1.005 * 100 is 100.49999999999999 in binary float -> snapped to 100.
+    expect(entryCostCents(100, 1.005)).toBe(10050);
+  });
+
+  it("still resolves the float-drift case the integer-cents change fixed", () => {
+    // 1.5 * 1.15 = 1.7249999999999999; the true money value is $1.73.
+    expect(entryCostCents(1.5, 1.15)).toBe(173);
+  });
+
+  it("returns null for non-finite inputs rather than rendering $NaN.NaN", () => {
+    expect(entryCostCents(1, Number.NaN)).toBeNull();
+    expect(entryCostCents(1, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(entryCostCents(Number.NaN, 1)).toBeNull();
+  });
+});
+
+describe("periodStart is DST-safe", () => {
+  it("subtracts exact 24h days regardless of local calendar", () => {
+    const now = new Date("2026-03-15T12:00:00.000Z");
+    const start = periodStart("week", now);
+    expect(start?.toISOString()).toBe("2026-03-08T12:00:00.000Z");
+    expect(now.getTime() - (start as Date).getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it("returns null for all-time", () => {
+    expect(periodStart("all", new Date())).toBeNull();
+  });
+});
+
+describe("storeLocalDate", () => {
+  it("uses the store's calendar day, not UTC's", () => {
+    // 00:30 UTC on Aug 2 is still 8:30pm on Aug 1 in New York.
+    expect(storeLocalDate(new Date("2026-08-02T00:30:00.000Z"), "America/New_York")).toBe(
+      "2026-08-01",
+    );
+  });
+});
+
+describe("storeDayRangeUtc", () => {
+  it("bounds a store-local day, not a UTC one", () => {
+    const { startIso, endIso } = storeDayRangeUtc("2026-08-01", "America/New_York");
+    // EDT is UTC-4, so local midnight is 04:00Z.
+    expect(startIso).toBe("2026-08-01T04:00:00.000Z");
+    expect(endIso).toBe("2026-08-02T04:00:00.000Z");
+  });
+
+  it("includes evening waste that the old UTC range pushed into the next day", () => {
+    const { startIso, endIso } = storeDayRangeUtc("2026-08-01", "America/New_York");
+    // 9pm Eastern on Aug 1 -- the closing shift. The old `${date}T00:00:00Z`
+    // range ended at Aug 1 00:00Z and filed this under Aug 2.
+    const closingShift = new Date("2026-08-02T01:00:00.000Z");
+    expect(new Date(startIso) <= closingShift).toBe(true);
+    expect(closingShift < new Date(endIso)).toBe(true);
+  });
+
+  it("handles the fall-back day (25 hours long)", () => {
+    // DST ends Sun Nov 1 2026: local midnight is EDT (-4), next midnight EST (-5).
+    const { startIso, endIso } = storeDayRangeUtc("2026-11-01", "America/New_York");
+    expect(startIso).toBe("2026-11-01T04:00:00.000Z");
+    expect(endIso).toBe("2026-11-02T05:00:00.000Z");
+    expect(new Date(endIso).getTime() - new Date(startIso).getTime()).toBe(25 * 60 * 60 * 1000);
+  });
+
+  it("handles the spring-forward day (23 hours long)", () => {
+    // DST starts Sun Mar 8 2026: local midnight is EST (-5), next midnight EDT (-4).
+    const { startIso, endIso } = storeDayRangeUtc("2026-03-08", "America/New_York");
+    expect(startIso).toBe("2026-03-08T05:00:00.000Z");
+    expect(endIso).toBe("2026-03-09T04:00:00.000Z");
+    expect(new Date(endIso).getTime() - new Date(startIso).getTime()).toBe(23 * 60 * 60 * 1000);
+  });
+});
+
+describe("sumCostCents", () => {
+  it("reports unknown rows instead of folding them into zero", () => {
+    const result = sumCostCents([
+      { totalCostCents: 500 },
+      { totalCostCents: null },
+      { totalCostCents: 250 },
+    ]);
+    expect(result).toEqual({ totalCents: 750, unknownCount: 1 });
+  });
+
+  it("distinguishes an all-unknown set from a genuinely zero one", () => {
+    expect(sumCostCents([{ totalCostCents: null }])).toEqual({
+      totalCents: null,
+      unknownCount: 1,
+    });
+    expect(sumCostCents([{ totalCostCents: 0 }])).toEqual({ totalCents: 0, unknownCount: 0 });
+  });
+
+  it("returns null for an empty set", () => {
+    expect(sumCostCents([])).toEqual({ totalCents: null, unknownCount: 0 });
+  });
+});
+
+describe("unknownEntryCount survives a mixed-cost category (regression)", () => {
+  // The first attempt at the "partial total" fix keyed off a null
+  // totalCostCents. But rollupByCategory only leaves that null when EVERY entry
+  // in the category is un-costed, so the common real case -- one priced item
+  // plus several un-priced ones -- produced a non-null total and reported zero
+  // unknowns, printing a confident figure that omitted most of the waste.
+  const items: WasteItemForRollup[] = [
+    { id: "priced", name: "Filet", categoryId: "c1", unit: "each", unitCost: 5 },
+    { id: "unpriced", name: "New item", categoryId: "c1", unit: "each", unitCost: null },
+  ];
+  const categories: WasteCategoryForRollup[] = [{ id: "c1", name: "Primary" }];
+  const entries: WasteEntryForRollup[] = [
+    { id: "e1", itemId: "priced", quantity: 2, loggedAt: daysAgo(1) },
+    { id: "e2", itemId: "unpriced", quantity: 9, loggedAt: daysAgo(1) },
+    { id: "e3", itemId: "unpriced", quantity: 4, loggedAt: daysAgo(1) },
+  ];
+
+  it("flags the un-costed entries even though the category total is non-null", () => {
+    const rows = rollupByCategory(entries, items, categories);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].totalCostCents).toBe(1000); // only the 2 x $5.00 is known
+    expect(rows[0].unknownEntryCount).toBe(2);
+
+    const total = sumCostCents(rows);
+    expect(total).toEqual({ totalCents: 1000, unknownCount: 2 });
+  });
+
+  it("agrees with the per-item rollup", () => {
+    const total = sumCostCents(rollupByItem(entries, items));
+    expect(total).toEqual({ totalCents: 1000, unknownCount: 2 });
   });
 });

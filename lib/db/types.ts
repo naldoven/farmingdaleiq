@@ -3427,6 +3427,7 @@ export type Database = {
           category_id: string | null
           id: string
           name: string
+          sort: number
           unit: string
           unit_cost: number | null
         }
@@ -3434,6 +3435,7 @@ export type Database = {
           category_id?: string | null
           id?: string
           name: string
+          sort?: number
           unit: string
           unit_cost?: number | null
         }
@@ -3441,6 +3443,7 @@ export type Database = {
           category_id?: string | null
           id?: string
           name?: string
+          sort?: number
           unit?: string
           unit_cost?: number | null
         }

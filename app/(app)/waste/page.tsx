@@ -12,7 +12,7 @@ import { WasteReports } from "@/components/waste/waste-reports";
 import { WasteViewTabs, type WasteTabKey } from "@/components/waste/waste-view-tabs";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { WasteEntryForRollup } from "@/app/(app)/waste/logic";
+import { storeDayRangeUtc, type WasteEntryForRollup } from "@/app/(app)/waste/logic";
 import type { WasteUnit } from "@/app/(app)/waste/validation";
 
 /**
@@ -34,6 +34,9 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** Hard ceiling on an explicit date filter so a leader can't accidentally
  * request an unbounded scan; comfortably above any single day's real volume. */
 const DATE_FILTER_LIMIT = 500;
+// Matches WASTE_REPORT_ENTRY_LIMIT in app/(app)/reports/queries.ts so the
+// Reports tab here and /reports/waste read the same slice of history.
+const REPORT_ENTRY_LIMIT = 5000;
 
 export const metadata = { title: "Waste" };
 
@@ -65,6 +68,18 @@ export default async function WastePage({
 
   const supabase = await createClient();
 
+  // The date filter must bound a STORE-local day, not a UTC one. Building the
+  // range from `${date}T00:00:00.000Z` meant that for a store on
+  // America/New_York, picking a date returned 8pm the previous evening through
+  // 8pm that evening -- so the closing shift's waste (the bulk of it) was filed
+  // under the next day and missing from the day you actually selected.
+  const { data: store } = await supabase
+    .from("stores")
+    .select("timezone")
+    .limit(1)
+    .maybeSingle();
+  const timeZone = store?.timezone || "America/New_York";
+
   let recentEntriesQuery = supabase
     .from("waste_entries")
     .select("id, item_id, quantity, note, logged_at, day_part_id, logged_by")
@@ -73,12 +88,10 @@ export default async function WastePage({
   if (selectedDate) {
     // Filtering by a specific day is an explicit, bounded query (unlike the
     // default view below), so it's safe to lift the normal 25-row cap.
-    const dayStart = new Date(`${selectedDate}T00:00:00.000Z`);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const { startIso, endIso } = storeDayRangeUtc(selectedDate, timeZone);
     recentEntriesQuery = recentEntriesQuery
-      .gte("logged_at", dayStart.toISOString())
-      .lt("logged_at", dayEnd.toISOString())
+      .gte("logged_at", startIso)
+      .lt("logged_at", endIso)
       .limit(DATE_FILTER_LIMIT);
   } else {
     recentEntriesQuery = recentEntriesQuery.limit(25);
@@ -94,19 +107,47 @@ export default async function WastePage({
     supabase.from("waste_categories").select("id, name, sort").order("sort"),
     supabase
       .from("waste_items")
+      // Manager-arranged order first (supabase/migrations/
+      // 20260803010000_waste_item_sort.sql), name as the tiebreak so items
+      // that have never been reordered (all sort 0 on a fresh install) still
+      // come out alphabetical instead of in insertion order.
       .select("id, name, category_id, unit, unit_cost")
+      .order("sort")
       .order("name"),
     supabase.from("day_parts").select("id, name").order("sort"),
     recentEntriesQuery,
     // Reports tab is manager/reports-tier only, so only pull the full entry
     // history when it's actually needed for the rollups.
     canViewReports
-      ? supabase.from("waste_entries").select("id, item_id, quantity, logged_at")
+      ? supabase
+          .from("waste_entries")
+          .select("id, item_id, quantity, logged_at")
+          // Ordered + bounded for the same reason as fetchWasteReportData: an
+          // unordered, unbounded select truncates to an arbitrary subset (with
+          // no error) if PostgREST's db-max-rows is ever set, silently
+          // under-counting the rollups.
+          .order("logged_at", { ascending: false })
+          .limit(REPORT_ENTRY_LIMIT)
       : Promise.resolve({ data: [] as { id: string; item_id: string; quantity: number; logged_at: string }[] }),
   ]);
 
   const categoryRows = categories ?? [];
-  const itemRows = items ?? [];
+  // Group by category (in the categories' own sort order, uncategorized last)
+  // on top of the per-item sort the query already applied. sort values are
+  // per-CATEGORY positions (0, 1, 2 within Primary AND within Secondary), so
+  // without this grouping the "All items" grid would interleave the two
+  // categories' rows. Array.prototype.sort is stable, so within a category the
+  // fetched sort-then-name order is preserved.
+  const categoryPosition = new Map(categoryRows.map((category, index) => [category.id, index]));
+  const itemRows = [...(items ?? [])].sort((a, b) => {
+    const aPosition = a.category_id
+      ? (categoryPosition.get(a.category_id) ?? categoryRows.length)
+      : categoryRows.length;
+    const bPosition = b.category_id
+      ? (categoryPosition.get(b.category_id) ?? categoryRows.length)
+      : categoryRows.length;
+    return aPosition - bPosition;
+  });
   const dayPartRows = dayParts ?? [];
   const recentEntryRows = recentEntries ?? [];
 
@@ -208,7 +249,17 @@ export default async function WastePage({
             ) : (
               <div className="divide-y divide-line">
                 {recentEntryRows.map((entry) => {
-                  const donated = entry.note?.trim().toLowerCase() === "donated";
+                  const noteText = entry.note?.trim() ?? "";
+                  // Grid entries prefix the note with disposition and may
+                  // append a reason/free text ("Donated · Expired · ...") --
+                  // see the log() note composition in waste-log-grid.tsx.
+                  // startsWith, not equality, so a suffixed note still gets
+                  // the right icon.
+                  const donated = noteText.toLowerCase().startsWith("donated");
+                  // Show everything AFTER the disposition prefix (the icon
+                  // already conveys trash/donated); manual-form notes have no
+                  // prefix and show in full.
+                  const noteDetail = noteText.replace(/^(donated|trash)\b(\s*·\s*)?/i, "").trim();
                   const dayPartName = entry.day_part_id
                     ? (dayPartNameById.get(entry.day_part_id) ?? null)
                     : null;
@@ -221,7 +272,12 @@ export default async function WastePage({
                       icon={donated ? Heart : Trash2}
                       iconTone={donated ? "success" : "danger"}
                       title={`${itemNameById.get(entry.item_id) ?? "Item"} · ${entry.quantity}`}
-                      description={[dayPartName, new Date(entry.logged_at).toLocaleString(), loggedByName]
+                      description={[
+                        noteDetail || null,
+                        dayPartName,
+                        new Date(entry.logged_at).toLocaleString(),
+                        loggedByName,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                       trailing={canManage ? <DeleteEntryButton id={entry.id} /> : undefined}

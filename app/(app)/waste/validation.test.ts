@@ -5,8 +5,10 @@ import {
   createItemSchema,
   idSchema,
   logEntrySchema,
+  reorderItemsSchema,
   updateCategorySchema,
   updateItemSchema,
+  WASTE_UNIT_COST_MAX,
 } from "@/app/(app)/waste/validation";
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
@@ -130,5 +132,77 @@ describe("createItemSchema / updateItemSchema", () => {
     expect(result.id).toBe(UUID_A);
     expect(result.categoryId).toBe(UUID_B);
     expect(result.unitCost).toBe(2.5);
+  });
+});
+
+describe("unit cost bounds (the other half of the '$5.84e+21' typo class)", () => {
+  it("rejects a cost above the maximum", () => {
+    expect(() =>
+      createItemSchema.parse({ name: "Fries", unit: "lb", unitCost: WASTE_UNIT_COST_MAX + 1 }),
+    ).toThrow();
+  });
+
+  it("rejects a decimal-slip typo", () => {
+    // The float-overflow end of the same typo class.
+    expect(() => createItemSchema.parse({ name: "Filet", unit: "each", unitCost: 1e21 })).toThrow();
+  });
+
+  it("rejects NaN and Infinity", () => {
+    expect(() =>
+      createItemSchema.parse({ name: "Filet", unit: "each", unitCost: Number.NaN }),
+    ).toThrow();
+    expect(() =>
+      createItemSchema.parse({
+        name: "Filet",
+        unit: "each",
+        unitCost: Number.POSITIVE_INFINITY,
+      }),
+    ).toThrow();
+  });
+
+  it("still accepts a realistic cost at the boundary", () => {
+    const result = createItemSchema.parse({
+      name: "Filet",
+      unit: "each",
+      unitCost: WASTE_UNIT_COST_MAX,
+    });
+    expect(result.unitCost).toBe(WASTE_UNIT_COST_MAX);
+  });
+});
+
+describe("note length", () => {
+  it("gives a specific message rather than a union error", () => {
+    const result = logEntrySchema.safeParse({
+      itemId: UUID_A,
+      quantity: 1,
+      note: "x".repeat(501),
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Note must be 500 characters or fewer");
+    }
+  });
+
+  it("accepts an empty note", () => {
+    expect(logEntrySchema.parse({ itemId: UUID_A, quantity: 1, note: "" }).note).toBe("");
+  });
+});
+
+describe("reorderItemsSchema", () => {
+  it("accepts an ordered list of uuids and preserves the order", () => {
+    const result = reorderItemsSchema.parse({ orderedIds: [UUID_B, UUID_A] });
+    expect(result.orderedIds).toEqual([UUID_B, UUID_A]);
+  });
+
+  it("rejects an empty list", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [] })).toThrow();
+  });
+
+  it("rejects non-uuid entries", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [UUID_A, "nope"] })).toThrow();
+  });
+
+  it("rejects duplicate ids (two positions for one item would make sort depend on write order)", () => {
+    expect(() => reorderItemsSchema.parse({ orderedIds: [UUID_A, UUID_A] })).toThrow();
   });
 });

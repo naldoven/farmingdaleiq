@@ -27,6 +27,18 @@ type DB = SupabaseClient<Database>;
  */
 const REPORT_WINDOW_DAYS = 180;
 
+/**
+ * Cap on the entry history pulled for the waste report. The longest selectable
+ * rolling window is 90 days, so this only ever bites the "All time" view.
+ *
+ * The select was previously unbounded AND unordered. If PostgREST's db-max-rows
+ * is ever set on the project, an unordered select is truncated to an ARBITRARY
+ * subset with no error and no indicator -- the report would quietly under-count
+ * and look fine. Ordering by logged_at desc makes any truncation deterministic
+ * and recent-biased instead.
+ */
+const WASTE_REPORT_ENTRY_LIMIT = 5000;
+
 /** ISO cutoff `REPORT_WINDOW_DAYS` before now, for `.gte()` window filters. */
 function reportWindowStart(now: Date = new Date()): string {
   const start = new Date(now);
@@ -84,7 +96,11 @@ export async function fetchBaseReportData(supabase: DB): Promise<BaseReportData>
     // Maintenance report needs is fetched separately and windowed).
     supabase.from("work_orders").select("id, title, status, priority, due_at").not("status", "in", "(complete,cancelled)"),
     supabase.from("equipment").select("id, name, status, area"),
-    supabase.from("waste_entries").select("id, item_id, quantity, logged_at"),
+    supabase
+      .from("waste_entries")
+      .select("id, item_id, quantity, logged_at")
+      .order("logged_at", { ascending: false })
+      .limit(WASTE_REPORT_ENTRY_LIMIT),
     supabase.from("waste_items").select("id, name, unit, unit_cost, category_id"),
     supabase.from("waste_categories").select("id, name"),
   ]);
@@ -116,7 +132,11 @@ export interface WasteReportData {
 
 export async function fetchWasteReportData(supabase: DB): Promise<WasteReportData> {
   const [{ data: wasteEntries }, { data: wasteItems }, { data: wasteCategories }] = await Promise.all([
-    supabase.from("waste_entries").select("id, item_id, quantity, logged_at"),
+    supabase
+      .from("waste_entries")
+      .select("id, item_id, quantity, logged_at")
+      .order("logged_at", { ascending: false })
+      .limit(WASTE_REPORT_ENTRY_LIMIT),
     supabase.from("waste_items").select("id, name, unit, unit_cost, category_id"),
     supabase.from("waste_categories").select("id, name"),
   ]);

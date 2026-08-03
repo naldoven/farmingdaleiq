@@ -23,6 +23,9 @@ import { fetchMyInfractions } from "@/app/(app)/accountability/queries";
 import {
   formatCentsAsUsd,
   rollupByCategory,
+  storeDayRangeUtc,
+  storeLocalDate,
+  sumCostCents,
   type WasteCategoryForRollup,
   type WasteEntryForRollup,
   type WasteItemForRollup,
@@ -33,9 +36,14 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt } from "@/lib/breaks/entitlement";
 import { createClient } from "@/lib/supabase/server";
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+// NOTE: "today" is resolved against the STORE's timezone below, not
+// `new Date().toISOString().slice(0, 10)`. The UTC form rolled over at 8pm
+// Eastern, so for the last four hours of every evening the dashboard showed
+// tomorrow's setups, tasks, and checklist runs and reported "No waste logged
+// today" while the closing shift was still logging. The cron materializers
+// already write these date columns in store-local terms
+// (app/(app)/checklists/logic.ts storeLocalNow), so store-local is the form
+// that actually matches the stored data.
 
 /** "14:30:00" -> "2:30 PM". Day-part start/end times have no date attached. */
 function formatClockTime(time: string): string {
@@ -96,7 +104,14 @@ export default async function TeamPage({
 
   const { dayPartId, side } = await searchParams;
   const selectedSide: "foh" | "boh" = side === "boh" ? "boh" : "foh";
-  const today = todayIso();
+
+  const { data: store } = await supabase
+    .from("stores")
+    .select("timezone")
+    .limit(1)
+    .maybeSingle();
+  const timeZone = store?.timezone || "America/New_York";
+  const today = storeLocalDate(new Date(), timeZone);
 
   const [
     canViewSetups,
@@ -243,18 +258,28 @@ export default async function TeamPage({
   // this shows the two highest-cost real categories instead of inventing a
   // primary/secondary flag.
   let wasteTotalCents: number | null = null;
-  let wasteBreakdown: { categoryName: string; totalCostCents: number | null }[] = [];
+  // Count of logged ENTRIES whose cost is unknown (their item has no
+  // unit_cost). Counted per entry, not per category: a category row's total
+  // goes non-null as soon as ONE of its entries is costed, so counting nulls
+  // at the category level missed every mixed-cost category.
+  // Folding those to zero and printing a bold dollar figure overstated the
+  // number's confidence -- "$18.40" when the true figure was $60 and nothing
+  // on screen said so.
+  let wasteUnknownCount = 0;
+  let wasteBreakdown: {
+    categoryName: string;
+    totalCostCents: number | null;
+    unknownEntryCount: number;
+  }[] = [];
   if (canViewWasteRollup) {
-    const dayStart = new Date(`${today}T00:00:00.000Z`);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const { startIso, endIso } = storeDayRangeUtc(today, timeZone);
 
     const [{ data: entries }, { data: items }, { data: categories }] = await Promise.all([
       supabase
         .from("waste_entries")
         .select("id, item_id, quantity, logged_at")
-        .gte("logged_at", dayStart.toISOString())
-        .lt("logged_at", dayEnd.toISOString()),
+        .gte("logged_at", startIso)
+        .lt("logged_at", endIso),
       supabase.from("waste_items").select("id, name, category_id, unit, unit_cost"),
       supabase.from("waste_categories").select("id, name"),
     ]);
@@ -279,10 +304,16 @@ export default async function TeamPage({
       }));
 
       const categoryRows = rollupByCategory(rollupEntries, rollupItems, rollupCategories);
-      wasteTotalCents = categoryRows.reduce((sum, row) => sum + (row.totalCostCents ?? 0), 0);
+      const wasteTotal = sumCostCents(categoryRows);
+      wasteTotalCents = wasteTotal.totalCents ?? 0;
+      wasteUnknownCount = wasteTotal.unknownCount;
       wasteBreakdown = categoryRows
         .slice(0, 2)
-        .map((row) => ({ categoryName: row.categoryName, totalCostCents: row.totalCostCents }));
+        .map((row) => ({
+          categoryName: row.categoryName,
+          totalCostCents: row.totalCostCents,
+          unknownEntryCount: row.unknownEntryCount,
+        }));
     }
   }
 
@@ -440,13 +471,24 @@ export default async function TeamPage({
             <div className="flex flex-col gap-3">
               <div>
                 <p className="text-[13px] text-muted-ink">Today&apos;s total</p>
-                <p className="text-[30px] font-bold text-danger">{formatCentsAsUsd(wasteTotalCents)}</p>
+                <p className="text-[30px] font-bold text-danger">
+                  {formatCentsAsUsd(wasteTotalCents)}
+                  {wasteUnknownCount > 0 ? "+" : ""}
+                </p>
+                {wasteUnknownCount > 0 && (
+                  <p className="text-[12px] text-muted-ink">
+                    Excludes waste logged against items with no unit cost set.
+                  </p>
+                )}
               </div>
               <HScroll>
                 {wasteBreakdown.map((row) => (
                   <StatTile
                     key={row.categoryName}
-                    value={formatCentsAsUsd(row.totalCostCents)}
+                    value={
+                      formatCentsAsUsd(row.totalCostCents) +
+                      (row.unknownEntryCount > 0 && row.totalCostCents != null ? "+" : "")
+                    }
                     label={row.categoryName}
                     tone="danger"
                   />
