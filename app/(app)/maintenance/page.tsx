@@ -100,13 +100,7 @@ export default async function MaintenancePage() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 px-1">
             <p className="text-[13px] font-semibold text-muted-ink">{openCount} open</p>
-            {canTriage && (
-              <CreateWorkOrderForm
-                equipmentOptions={equipment ?? []}
-                assigneeOptions={profiles ?? []}
-                vendorOptions={vendors ?? []}
-              />
-            )}
+            {canTriage && <CreateWorkOrderForm equipmentOptions={equipment ?? []} />}
           </div>
           <WorkOrderList workOrders={workOrderRows} />
         </div>

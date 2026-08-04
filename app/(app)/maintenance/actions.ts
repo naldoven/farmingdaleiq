@@ -329,6 +329,7 @@ export async function createWorkOrder(
         vendor_id: parsed.vendorId ?? null,
         scheduled_for: parsed.scheduledFor ?? null,
         due_at: parsed.dueAt ?? null,
+        photo_urls: parsed.photoUrls.length > 0 ? parsed.photoUrls : null,
         created_by: user?.id ?? null,
       })
       .select("id")

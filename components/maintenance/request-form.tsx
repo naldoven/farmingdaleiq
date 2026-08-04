@@ -22,9 +22,7 @@ export interface EquipmentOption {
   name: string;
 }
 
-const PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"] as const;
 const NO_EQUIPMENT_VALUE = "none";
-const NO_PRIORITY_VALUE = "unset";
 
 /** Submit form for any team member (ARCHITECTURE.md "Requests"). */
 export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentOption[] }) {
@@ -34,9 +32,7 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
   const [success, setSuccess] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [area, setArea] = useState("");
   const [equipmentId, setEquipmentId] = useState<string>(NO_EQUIPMENT_VALUE);
-  const [priority, setPriority] = useState<string>(NO_PRIORITY_VALUE);
   const [photos, setPhotos] = useState<string[]>([]);
   const [photosBusy, setPhotosBusy] = useState(false);
 
@@ -48,13 +44,15 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
         setError(null);
         setSuccess(false);
         startTransition(async () => {
+          // Area/suggested-priority inputs were dropped from this form to
+          // keep it quick on a phone; the schema keys stay for API
+          // compatibility, so they're passed explicitly as undefined.
           const result = await submitMaintenanceRequest({
             title,
             description: description || undefined,
-            area: area || undefined,
+            area: undefined,
             equipmentId: equipmentId === NO_EQUIPMENT_VALUE ? undefined : equipmentId,
-            suggestedPriority:
-              priority === NO_PRIORITY_VALUE ? undefined : (priority as (typeof PRIORITY_OPTIONS)[number]),
+            suggestedPriority: undefined,
             photoUrls: photos,
           });
           if (!result.ok) {
@@ -63,9 +61,7 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
           }
           setTitle("");
           setDescription("");
-          setArea("");
           setEquipmentId(NO_EQUIPMENT_VALUE);
-          setPriority(NO_PRIORITY_VALUE);
           setPhotos([]);
           setSuccess(true);
           router.refresh();
@@ -90,43 +86,21 @@ export function RequestForm({ equipmentOptions }: { equipmentOptions: EquipmentO
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="request-area">Area of the store</Label>
-          <Input id="request-area" value={area} onChange={(e) => setArea(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Equipment (optional)</Label>
-          <Select value={equipmentId} onValueChange={setEquipmentId}>
-            <SelectTrigger>
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_EQUIPMENT_VALUE}>None</SelectItem>
-              {equipmentOptions.map((eq) => (
-                <SelectItem key={eq.id} value={eq.id}>
-                  {eq.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Suggested priority</Label>
-          <Select value={priority} onValueChange={setPriority}>
-            <SelectTrigger>
-              <SelectValue placeholder="Not sure" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_PRIORITY_VALUE}>Not sure</SelectItem>
-              {PRIORITY_OPTIONS.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label>Equipment (optional)</Label>
+        <Select value={equipmentId} onValueChange={setEquipmentId}>
+          <SelectTrigger>
+            <SelectValue placeholder="None" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_EQUIPMENT_VALUE}>None</SelectItem>
+            {equipmentOptions.map((eq) => (
+              <SelectItem key={eq.id} value={eq.id}>
+                {eq.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label>Photos (optional)</Label>

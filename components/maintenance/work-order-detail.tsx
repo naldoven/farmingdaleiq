@@ -45,8 +45,8 @@ export interface WorkOrderDetailData {
   cost: number | null;
   invoice_url: string | null;
   created_at: string;
-  /** Photos attached to the originating maintenance request, if any. */
-  request_photo_urls: string[];
+  /** The order's own photos plus any from the originating request. */
+  photo_urls: string[];
 }
 
 export interface CommentRow {
@@ -382,7 +382,7 @@ export function WorkOrderDetail({
 
       {workOrder.description && <p className="text-[15px] text-muted-ink">{workOrder.description}</p>}
 
-      {workOrder.request_photo_urls.length > 0 && <PhotoStrip photos={workOrder.request_photo_urls} />}
+      {workOrder.photo_urls.length > 0 && <PhotoStrip photos={workOrder.photo_urls} />}
 
       <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
         {workOrder.equipment_name && (
