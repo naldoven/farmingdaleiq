@@ -177,3 +177,127 @@ describe("composeDiscordSummary", () => {
     expect(composeDiscordSummary(parsed)).toContain("NEEDS REVIEW");
   });
 });
+
+/**
+ * Fixtures: the real DIRECT CFA emails (no forward wrapper) that started
+ * arriving once the dedicated inbox received orders straight from
+ * one@email.chick-fil-a.com (Aug 2026). getPlainBody() renders the bold
+ * section headers as *Header* runs and hard-wraps lines, gluing headers
+ * onto the end of content lines; the item table is one line per row.
+ * Captured verbatim from the NEEDS REVIEW stub orders of 2026-08-03.
+ */
+const DIRECT_DELIVERY_SUBJECT = "Incoming Catering Order: Delivery Order Received for (04093)";
+const DIRECT_DELIVERY_BODY = ` Chick-fil-A 
+* Catering Delivery Order for 04093 * 
+* Delivery Time * 
+Tuesday 8/4/2026 at 10:45am *Delivery Address* 
+TRC 
+395 North Service Road Melville , NY  11747 *Customer Information* 
+EzCater Mustafa 
++19732334502 
+04093@chick-fil-a.com 
+*Guest Count:*  20 
+*Paper Goods:*  Yes 
+*Special Instructions* 
+Please include plates, cutlery and cups. Please call upon arrival. He will 
+meet the driver at the reception desk to bring food upstairs. 
+Item Name Quantity Qty Price 
+Grilled Chicken Bundle 1 $116.50 
+Large Hot Chick-fil-A® Nuggets Tray 1 $167.50 
+   8oz Chick-fil-A® Sauce 1 
+   8oz Polynesian Sauce 1 
+Original Flavor Waffle Potato Chips 12 $3.49 
+Gallon Chick-fil-A® Lemonade 1 $16.50 
+Subtotal $716.76 
+Tax $57.53 
+Total $774.29 
+`;
+
+describe("parseCateringEmail (direct CFA delivery format)", () => {
+  const parsed = parseCateringEmail({ subject: DIRECT_DELIVERY_SUBJECT, body: DIRECT_DELIVERY_BODY });
+
+  it("parses ok despite *Header* runs glued to wrapped lines", () => {
+    expect(parsed.ok).toBe(true);
+  });
+
+  it("extracts the core order fields", () => {
+    expect(parsed.fulfillment).toBe("delivery");
+    expect(parsed.eventDate).toBe("2026-08-04");
+    expect(parsed.eventTime).toBe("10:45");
+    expect(parsed.guestName).toBe("EzCater Mustafa");
+    expect(parsed.phone).toBe("+19732334502");
+    expect(parsed.email).toBe("04093@chick-fil-a.com");
+    expect(parsed.headcount).toBe(20);
+    expect(parsed.paperGoods).toBe(true);
+  });
+
+  it("captures the delivery address block", () => {
+    expect(parsed.deliveryAddress).toBe("TRC, 395 North Service Road Melville , NY 11747");
+  });
+
+  it("keeps the wrapped special instructions", () => {
+    expect(parsed.specialInstructions).toContain("plates, cutlery and cups");
+    expect(parsed.specialInstructions).toContain("reception desk");
+  });
+
+  it("parses inline item rows, sub-items, and totals", () => {
+    expect(parsed.items).toEqual([
+      { name: "Grilled Chicken Bundle", qty: 1, price: "$116.50" },
+      { name: "Large Hot Chick-fil-A® Nuggets Tray", qty: 1, price: "$167.50" },
+      { name: "8oz Chick-fil-A® Sauce", qty: 1, price: null },
+      { name: "8oz Polynesian Sauce", qty: 1, price: null },
+      { name: "Original Flavor Waffle Potato Chips", qty: 12, price: "$3.49" },
+      { name: "Gallon Chick-fil-A® Lemonade", qty: 1, price: "$16.50" },
+    ]);
+    expect(parsed.subtotal).toBe("$716.76");
+    expect(parsed.tax).toBe("$57.53");
+    expect(parsed.total).toBe("$774.29");
+    expect(parsed.amount).toBe(774.29);
+  });
+});
+
+const DIRECT_PICKUP_SUBJECT = "Incoming Catering Order: Pickup Order Received for (04093)";
+const DIRECT_PICKUP_BODY = ` Chick-fil-A 
+* Catering Pickup Order for 04093 * 
+* Pickup Time * 
+Saturday 8/15/2026 at 2:00pm *Customer Information* 
+James Griesmeyer 
++15168513152 
+james@larsenhi.com 
+*Guest Count:*  30 
+*Paper Goods:*  No 
+Item Name Quantity Qty Price 
+Large Mac & Cheese Tray 1 $82.00 
+Medium Hot Chick-fil-A® Nuggets Tray 1 $81.00 
+   8oz Chick-fil-A® Sauce 1 
+Subtotal $163.00 
+Tax $14.26 
+Total $177.26 
+`;
+
+describe("parseCateringEmail (direct CFA pickup format)", () => {
+  const parsed = parseCateringEmail({ subject: DIRECT_PICKUP_SUBJECT, body: DIRECT_PICKUP_BODY });
+
+  it("parses ok with the customer block glued to the pickup time line", () => {
+    expect(parsed.ok).toBe(true);
+    expect(parsed.fulfillment).toBe("pickup");
+    expect(parsed.eventDate).toBe("2026-08-15");
+    expect(parsed.eventTime).toBe("14:00");
+    expect(parsed.guestName).toBe("James Griesmeyer");
+    expect(parsed.phone).toBe("+15168513152");
+    expect(parsed.email).toBe("james@larsenhi.com");
+    expect(parsed.headcount).toBe(30);
+    expect(parsed.paperGoods).toBe(false);
+    expect(parsed.deliveryAddress).toBeNull();
+  });
+
+  it("parses the inline item table and totals", () => {
+    expect(parsed.items).toEqual([
+      { name: "Large Mac & Cheese Tray", qty: 1, price: "$82.00" },
+      { name: "Medium Hot Chick-fil-A® Nuggets Tray", qty: 1, price: "$81.00" },
+      { name: "8oz Chick-fil-A® Sauce", qty: 1, price: null },
+    ]);
+    expect(parsed.total).toBe("$177.26");
+    expect(parsed.amount).toBe(177.26);
+  });
+});

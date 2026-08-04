@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       amount: parsed.amount,
       stage: "new",
       fulfillment: parsed.fulfillment,
-      delivery_address: null,
+      delivery_address: parsed.deliveryAddress,
       paper_goods: parsed.paperGoods,
       source: sourceKey,
       notes,
