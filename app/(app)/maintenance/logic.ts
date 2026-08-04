@@ -130,8 +130,8 @@ export function resolvePmPriority(priority: string | null): WorkOrderPriority {
 
 /**
  * The `app_events.payload` recipient fragment for the person who submitted a
- * maintenance request (ARCHITECTURE.md "Requests": "any team member submits
- * ... and is notified as its status changes"). Uses the canonical recipient
+ * maintenance request (ARCHITECTURE.md "Requests": the requester "is
+ * notified as the request's status changes"). Uses the canonical recipient
  * key (`user_id`, string) that `lib/notify/recipients.ts`'s
  * `extractRecipientIds` reads — see this function's contract test in
  * logic.test.ts, which runs the real extractor against this real shape.
