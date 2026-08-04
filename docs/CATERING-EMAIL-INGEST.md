@@ -10,11 +10,13 @@ CFA catering system (sends order notifications directly)
   -> catering_order_new event -> Discord outbox -> #catering summary card
 ```
 
-Parser: `lib/catering/inbound-email.ts` (built from the real order 04093
-sample). Route: `app/api/inbound/catering/route.ts`. Duplicates are keyed on
-the CFA order number (`catering_orders.source = "email:<number>"`), so retries
-and re-forwards never double-create. Unparseable emails still create a
-NEEDS REVIEW stub order with the raw email in its notes.
+Parser: `lib/catering/inbound-email.ts` (built from the real 04093 sample —
+note "(04093)" in the subject is the STORE number, present on every order,
+not an order id). Route: `app/api/inbound/catering/route.ts`. Duplicates are
+keyed on the Gmail message id (`catering_orders.source =
+"email:<messageId>"`), so Apps Script retries of the same email never
+double-create. Unparseable emails still create a NEEDS REVIEW stub order
+with the raw email in its notes.
 
 ## One-time setup (Naldo)
 

@@ -163,7 +163,10 @@ describe("POST /api/inbound/catering happy path", () => {
       amount: 1472.2,
       stage: "new",
       fulfillment: "pickup",
-      source: "email:04093",
+      // Keyed on the Gmail message id -- NOT the subject's "(04093)", which
+      // is the store number and identical on every order (the original
+      // order-number key made every order after the first a "duplicate").
+      source: "email:msg-1",
       contact_id: "contact-1",
       phone: "16313358148",
     });
@@ -180,7 +183,7 @@ describe("POST /api/inbound/catering happy path", () => {
     expect(String(payload.message)).toContain("Total $1472.20");
   });
 
-  it("skips duplicates by source key", async () => {
+  it("skips duplicates by source key (same Gmail message id)", async () => {
     fakeAdmin = createFakeAdmin({
       catering_orders: [{ data: { id: "existing-1" } }],
     });
@@ -189,6 +192,7 @@ describe("POST /api/inbound/catering happy path", () => {
         {
           subject: "Incoming Catering Order: Pickup Order Received for (04093)",
           body: GOOD_BODY,
+          messageId: "msg-1",
         },
         "Bearer test-secret",
       ),
