@@ -88,9 +88,10 @@ async function workOrderRequesterPayload(
 }
 
 /**
- * Any team member can submit a request (ARCHITECTURE.md "Requests": "any
- * team member submits a maintenance request"). maintenance.request is a base
- * permission key granted to every seeded role.
+ * Trainers and above can submit a request (ARCHITECTURE.md "Requests";
+ * originally every seeded role held maintenance.request as a base key, but
+ * 20260803120000_maintenance_request_trainer_up.sql removed it from the
+ * below-trainer roles).
  */
 export async function submitMaintenanceRequest(
   input: SubmitMaintenanceRequestInput,

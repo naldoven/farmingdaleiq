@@ -217,9 +217,11 @@ not a second model.
 Researched separately from KitchenIQ — UpKeep is a CMMS (computerized maintenance
 management system). The workflow we reproduce, right-sized for one store:
 
-- **Requests**: any team member submits a maintenance request — title, description,
-  priority suggestion, optional equipment tag, area of the store, photos. The
-  requester is notified as the request's status changes.
+- **Requests**: trainers and above submit a maintenance request — title,
+  description, optional equipment tag, photos (uploaded directly from the
+  phone). The requester is notified as the request's status changes.
+  (Originally "any team member"; restricted to trainer-and-above on
+  2026-08-03 — see migration 20260803120000_maintenance_request_trainer_up.)
 - **Triage**: a leader with the maintenance permission reviews the queue and either
   approves (setting priority, assignee, due date) or declines with a reason that is
   sent back to the requester. Approval converts the request into a work order.

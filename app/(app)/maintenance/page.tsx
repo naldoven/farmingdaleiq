@@ -15,9 +15,10 @@ const REQUEST_STATUS_TONE: Record<string, StatusTone> = {
 
 /**
  * /maintenance — submit a request, triage the queue, and see the work order
- * board (ARCHITECTURE.md "Maintenance (modeled on UpKeep)"). Every signed-in
- * team member holds maintenance.request (base permission); the Triage tab
- * only renders for maintenance.triage+.
+ * board (ARCHITECTURE.md "Maintenance (modeled on UpKeep)"). The whole
+ * section is trainer-and-above: maintenance.request was removed from the
+ * below-trainer roles in 20260803120000_maintenance_request_trainer_up.sql;
+ * the Triage tab only renders for maintenance.triage+.
  *
  * Restyled to the KitchenIQ mobile pattern (docs/DESIGN-SYSTEM.md): the
  * shadcn underline Tabs became a ChipRow of FilterChips (MaintenanceTabs),
@@ -36,9 +37,10 @@ export default async function MaintenancePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // These reads are all base-permission-visible (maintenance.request /
-  // people.view / vendors.view are granted to every seeded role), so they're
-  // fetched unconditionally; only the Triage tab's UI is gated on canTriage.
+  // Everyone who can reach this page (maintenance.request holders) can also
+  // read all of this — people.view / vendors.view are granted to every
+  // seeded role — so it's fetched unconditionally; only the Triage tab's UI
+  // is gated on canTriage.
   const [
     { data: equipment },
     { data: workOrders },
