@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PhotoUpload } from "@/components/maintenance/photo-upload";
 import { createWorkOrder } from "@/app/(app)/maintenance/actions";
 
 export interface CreateWorkOrderFormOption {
@@ -38,17 +39,12 @@ export interface CreateWorkOrderFormOption {
   name: string;
 }
 
-const PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"] as const;
 const NONE_VALUE = "none";
 
 export function CreateWorkOrderForm({
   equipmentOptions,
-  assigneeOptions,
-  vendorOptions,
 }: {
   equipmentOptions: CreateWorkOrderFormOption[];
-  assigneeOptions: CreateWorkOrderFormOption[];
-  vendorOptions: CreateWorkOrderFormOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -57,19 +53,14 @@ export function CreateWorkOrderForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [equipmentId, setEquipmentId] = useState(NONE_VALUE);
-  const [priority, setPriority] = useState<string>("medium");
-  const [assignedUserId, setAssignedUserId] = useState(NONE_VALUE);
-  const [vendorId, setVendorId] = useState(NONE_VALUE);
-  const [dueAt, setDueAt] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photosBusy, setPhotosBusy] = useState(false);
 
   function reset() {
     setTitle("");
     setDescription("");
     setEquipmentId(NONE_VALUE);
-    setPriority("medium");
-    setAssignedUserId(NONE_VALUE);
-    setVendorId(NONE_VALUE);
-    setDueAt("");
+    setPhotos([]);
     setError(null);
   }
 
@@ -121,60 +112,8 @@ export function CreateWorkOrderForm({
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Priority</Label>
-                <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Assign to</Label>
-                <Select value={assignedUserId} onValueChange={setAssignedUserId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>Unassigned</SelectItem>
-                    {assigneeOptions.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Or assign a vendor</Label>
-                <Select value={vendorId} onValueChange={setVendorId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="No vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_VALUE}>No vendor</SelectItem>
-                    {vendorOptions.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="wo-due-at">Due</Label>
-                <Input
-                  id="wo-due-at"
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                />
+                <Label>Photos (optional)</Label>
+                <PhotoUpload photos={photos} onChange={setPhotos} folder="work-orders" onBusyChange={setPhotosBusy} />
               </div>
             </div>
 
@@ -183,19 +122,23 @@ export function CreateWorkOrderForm({
             <DialogFooter>
               <Button
                 type="button"
-                disabled={isPending || !title.trim()}
+                disabled={isPending || photosBusy || !title.trim()}
                 onClick={() => {
                   setError(null);
                   startTransition(async () => {
+                    // Priority/assignee/due were dropped from this dialog to
+                    // keep creation quick; new orders start at medium and get
+                    // assigned from the work order's own Assignment card.
                     const result = await createWorkOrder({
                       title,
                       description: description || undefined,
                       equipmentId: equipmentId === NONE_VALUE ? undefined : equipmentId,
-                      priority: priority as (typeof PRIORITY_OPTIONS)[number],
-                      assignedUserId: assignedUserId === NONE_VALUE ? undefined : assignedUserId,
-                      vendorId: vendorId === NONE_VALUE ? undefined : vendorId,
+                      priority: "medium",
+                      assignedUserId: undefined,
+                      vendorId: undefined,
                       scheduledFor: undefined,
-                      dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+                      dueAt: undefined,
+                      photoUrls: photos,
                     });
                     if (!result.ok) {
                       setError(result.error);

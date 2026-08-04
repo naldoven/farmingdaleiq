@@ -54,6 +54,7 @@ export const createWorkOrderSchema = z.object({
   vendorId: optionalUuid,
   scheduledFor: optionalText,
   dueAt: optionalText,
+  photoUrls: z.array(z.string().trim().max(2000)).optional().default([]),
 });
 export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
 

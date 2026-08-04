@@ -3515,6 +3515,7 @@ export type Database = {
           id: string
           invoice_url: string | null
           notify_discord: boolean
+          photo_urls: string[] | null
           pm_schedule_id: string | null
           priority: string
           request_id: string | null
@@ -3538,6 +3539,7 @@ export type Database = {
           id?: string
           invoice_url?: string | null
           notify_discord?: boolean
+          photo_urls?: string[] | null
           pm_schedule_id?: string | null
           priority?: string
           request_id?: string | null
@@ -3561,6 +3563,7 @@ export type Database = {
           id?: string
           invoice_url?: string | null
           notify_discord?: boolean
+          photo_urls?: string[] | null
           pm_schedule_id?: string | null
           priority?: string
           request_id?: string | null
