@@ -26,6 +26,8 @@ export interface ParsedCateringEmail {
   ok: boolean;
   orderNumber: string | null;
   fulfillment: "pickup" | "delivery" | null;
+  /** Delivery orders only: the lines under "Delivery Address", comma-joined. */
+  deliveryAddress: string | null;
   /** YYYY-MM-DD */
   eventDate: string | null;
   /** HH:MM, 24-hour */
@@ -96,22 +98,40 @@ function parseInstructions(lines: string[]): string | null {
   if (start < 0) return null;
   const collected: string[] = [];
   for (const line of lines.slice(start + 1)) {
-    if (/^item name$/i.test(line) || /^subtotal$/i.test(line)) break;
+    // \b, not $: direct emails render the item header as one
+    // "Item Name Quantity Qty Price" line.
+    if (/^item name\b/i.test(line) || /^subtotal\b/i.test(line)) break;
     collected.push(line);
   }
   const text = collected.join("\n").trim();
   return text ? text : null;
 }
 
+/** Delivery orders: the lines between "Delivery Address" and "Customer Information". */
+function parseDeliveryAddress(lines: string[]): string | null {
+  const start = lines.findIndex((l) => /^delivery address$/i.test(l));
+  if (start < 0) return null;
+  const collected: string[] = [];
+  for (const line of lines.slice(start + 1, start + 5)) {
+    if (/^customer information$/i.test(line)) break;
+    collected.push(line);
+  }
+  const text = collected.join(", ").trim();
+  return text ? text : null;
+}
+
 function parseItems(lines: string[]): ParsedCateringItem[] {
-  // The item table serializes as: "Item Name" / "Quantity" / "Price" header
-  // lines, then repeating [name, qty, optional price] triples until Subtotal.
-  const headerIndex = lines.findIndex((l) => /^item name$/i.test(l));
+  // Two serializations of the item table exist. The forwarded sample
+  // renders "Item Name" / "Quantity" / "Price" header lines, then repeating
+  // [name, qty, optional price] triples. Direct CFA emails render one
+  // "Item Name Quantity Qty Price" header line, then one
+  // "Name Qty $Price" (or "Name Qty" for included sub-items) line per row.
+  const headerIndex = lines.findIndex((l) => /^item name\b/i.test(l));
   if (headerIndex < 0) return [];
   const items: ParsedCateringItem[] = [];
   let current: ParsedCateringItem | null = null;
   for (const line of lines.slice(headerIndex + 1)) {
-    if (/^subtotal$/i.test(line)) break;
+    if (/^subtotal\b/i.test(line)) break;
     if (/^(quantity|price)$/i.test(line)) continue;
     if (MONEY_RE.test(line)) {
       if (current) current.price = line;
@@ -119,6 +139,12 @@ function parseItems(lines: string[]): ParsedCateringItem[] {
     }
     if (QTY_RE.test(line)) {
       if (current) current.qty = Number(line);
+      continue;
+    }
+    const inline = line.match(/^(.+?)\s+(\d{1,4})(?:\s+(\$\d[\d,]*\.\d{2}))?$/);
+    if (inline) {
+      current = { name: inline[1], qty: Number(inline[2]), price: inline[3] ?? null };
+      items.push(current);
       continue;
     }
     current = { name: line, qty: 1, price: null };
@@ -138,11 +164,19 @@ function parseLabeledMoney(lines: string[], label: RegExp): string | null {
 }
 
 export function parseCateringEmail(input: { subject: string; body: string }): ParsedCateringEmail {
-  const haystack = `${input.subject}\n${input.body}`;
+  // Two real renderings exist. The forwarded sample this parser was first
+  // built from serializes every label on its own bare line. Direct CFA
+  // emails (the live path since Aug 2026) render section headers as
+  // *Header* runs, and getPlainBody()'s hard wrapping can glue a header
+  // onto the end of the preceding content line ("...at 10:45am *Delivery
+  // Address*"). Normalize both into the same shape: break each *...* run
+  // onto its own line, strip the asterisks, collapse runs of whitespace.
   const lines = input.body
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .flatMap((l) => l.split(/(?=\*[^*\n]+\*)/))
+    .map((l) => l.replace(/\*/g, " ").replace(/\s+/g, " ").trim())
     .filter((l) => l.length > 0);
+  const haystack = `${input.subject}\n${lines.join("\n")}`;
 
   const orderNumber = haystack.match(/order received for \((\d+)\)/i)?.[1]
     ?? haystack.match(/catering (?:pickup|delivery) order for (\d+)/i)?.[1]
@@ -164,6 +198,7 @@ export function parseCateringEmail(input: { subject: string; body: string }): Pa
     ok: false,
     orderNumber,
     fulfillment,
+    deliveryAddress: parseDeliveryAddress(lines),
     eventDate: when.date,
     eventTime: when.time,
     guestName: customer.name,
