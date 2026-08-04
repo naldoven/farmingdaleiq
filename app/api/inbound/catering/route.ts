@@ -19,10 +19,14 @@ import { normalizePhone, planChecklistMaterialization } from "@/app/(app)/cateri
  * Auth: `Authorization: Bearer $CATERING_INBOUND_SECRET` (same pattern as the
  * cron routes). Fail-closed: no env var means every request is rejected.
  *
- * Idempotent: catering_orders.source carries `email:<orderNumber>` (falling
- * back to the Gmail message id for unparseable emails), and an order whose
- * source already exists is skipped -- Apps Script retries and re-forwarded
- * emails do not create duplicates.
+ * Idempotent: catering_orders.source carries `email:<gmailMessageId>`, and an
+ * order whose source already exists is skipped -- Apps Script retries of the
+ * same email do not create duplicates. The parenthesized number in the CFA
+ * subject ("Order Received for (04093)") is deliberately NOT the key: it is
+ * the STORE number, identical on every order this store receives, and keying
+ * on it (as this route originally did) made every order after the first a
+ * "duplicate" -- three weeks of real orders were silently swallowed in
+ * July/August 2026 before this was caught.
  *
  * Unparseable emails still create a stub order (NEEDS REVIEW, raw email in
  * notes) so no order is ever silently dropped.
@@ -60,14 +64,15 @@ export async function POST(request: NextRequest) {
   }
 
   const parsed = parseCateringEmail({ subject, body });
-  // Duplicate key: CFA order number first, Gmail message id second. With
-  // neither there is no stable identity, so a random suffix keeps a second
-  // unidentifiable email from being swallowed as a "duplicate" of the first.
-  const sourceKey = parsed.orderNumber
-    ? `email:${parsed.orderNumber}`
-    : messageId
-      ? `email:${messageId}`
-      : `email:unparsed:${crypto.randomUUID()}`;
+  // Duplicate key: the Gmail message id, which is stable across Apps Script
+  // retries of the same email -- the only duplication this guard exists to
+  // stop. Never the parsed subject number: that is the store number, shared
+  // by every order (see the header comment). With no message id there is no
+  // stable identity, so a random suffix keeps a second unidentifiable email
+  // from being swallowed as a "duplicate" of the first.
+  const sourceKey = messageId
+    ? `email:${messageId}`
+    : `email:unparsed:${crypto.randomUUID()}`;
 
   const supabase = createServiceRoleClient();
 
