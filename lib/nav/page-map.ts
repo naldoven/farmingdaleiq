@@ -23,14 +23,43 @@ export interface NavItem {
   permission?: PermissionKey;
 }
 
+/**
+ * Icon key for a nav group, resolved to a lucide component by the nav renderer
+ * (components/shell/nav-links.tsx). Kept as a string here — the same trick
+ * PRIMARY_TABS uses — so this module stays free of React/lucide imports and
+ * remains plain data the logic tests can read.
+ */
+export type NavIconName =
+  | "home"
+  | "menu"
+  | "checklists"
+  | "tasks"
+  | "setups"
+  | "ratings"
+  | "waste"
+  | "accountability"
+  | "rewards"
+  | "team"
+  | "people"
+  | "training"
+  | "vendors"
+  | "maintenance"
+  | "catering"
+  | "reports"
+  | "notifications"
+  | "settings";
+
 export interface NavGroup {
   label: string;
+  /** Icon shown beside the group in the sidebar, and alone in the icon rail. */
+  icon: NavIconName;
   items: NavItem[];
 }
 
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Home",
+    icon: "home",
     items: [
       {
         href: "/",
@@ -42,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Menu",
+    icon: "menu",
     items: [
       {
         href: "/menu",
@@ -54,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Checklists",
+    icon: "checklists",
     items: [
       {
         href: "/checklists",
@@ -73,6 +104,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Tasks",
+    icon: "tasks",
     items: [
       {
         href: "/tasks",
@@ -85,6 +117,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Setups & Shifts",
+    icon: "setups",
     items: [
       {
         href: "/setups",
@@ -112,6 +145,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Ratings",
+    icon: "ratings",
     items: [
       {
         href: "/ratings",
@@ -124,6 +158,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Waste",
+    icon: "waste",
     items: [
       {
         href: "/waste",
@@ -136,6 +171,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Accountability",
+    icon: "accountability",
     items: [
       {
         href: "/accountability",
@@ -147,6 +183,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Tokens & Rewards",
+    icon: "rewards",
     items: [
       {
         href: "/rewards",
@@ -164,6 +201,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Team",
+    icon: "team",
     items: [
       {
         href: "/team",
@@ -175,6 +213,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "People",
+    icon: "people",
     items: [
       {
         href: "/people",
@@ -194,6 +233,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Training",
+    icon: "training",
     items: [
       {
         href: "/training",
@@ -234,6 +274,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Vendors",
+    icon: "vendors",
     items: [
       {
         href: "/vendors",
@@ -246,6 +287,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Maintenance",
+    icon: "maintenance",
     items: [
       {
         href: "/maintenance",
@@ -265,6 +307,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Catering",
+    icon: "catering",
     items: [
       {
         href: "/catering",
@@ -326,6 +369,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Reports",
+    icon: "reports",
     items: [
       {
         href: "/reports",
@@ -338,6 +382,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Notifications",
+    icon: "notifications",
     items: [
       {
         href: "/notifications",
@@ -350,6 +395,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Settings",
+    icon: "settings",
     items: [
       {
         href: "/settings",
@@ -409,6 +455,65 @@ export function visibleNavGroups(allowed: ReadonlySet<string> | null): NavGroup[
     if (items.length > 0) groups.push({ ...group, items });
   }
   return groups;
+}
+
+/**
+ * Whether a nav item is the current route. Exact match, or the current path is
+ * nested under it — except "/" which only matches exactly, so Home does not
+ * light up on every page. Shared by the sidebar links and the group accordion
+ * so "which link is highlighted" and "which group auto-opens" never disagree.
+ */
+export function isNavItemActive(href: string, pathname: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
+/**
+ * The single best nav match for a route: every ancestor matches by prefix
+ * (/catering/confirm matches both "/catering" and "/catering/confirm"), so the
+ * longest href wins and is the only one treated as current.
+ */
+function bestNavMatch(
+  pathname: string,
+  groups: readonly NavGroup[],
+): { group: NavGroup; item: NavItem } | null {
+  let best: { group: NavGroup; item: NavItem } | null = null;
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (!isNavItemActive(item.href, pathname)) continue;
+      if (!best || item.href.length > best.item.href.length) {
+        best = { group, item };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * The href of the one nav item to highlight as current, or null when nothing
+ * matches. Callers compare against this rather than calling isNavItemActive per
+ * item: prefix matching alone would light up a section landing page *and* the
+ * sub-page inside it (on /catering/confirm, both "Pipeline" and "Confirmation
+ * Calls" went red), which only became visible once groups started showing
+ * their siblings.
+ */
+export function activeNavHref(
+  pathname: string,
+  groups: readonly NavGroup[] = NAV_GROUPS,
+): string | null {
+  return bestNavMatch(pathname, groups)?.item.href ?? null;
+}
+
+/**
+ * The label of the group holding the current route, or null when nothing
+ * matches. The sidebar uses this to auto-open the section you're standing in,
+ * so the collapsed nav still shows you where you are.
+ */
+export function activeNavGroupLabel(
+  pathname: string,
+  groups: readonly NavGroup[] = NAV_GROUPS,
+): string | null {
+  return bestNavMatch(pathname, groups)?.group.label ?? null;
 }
 
 /**
