@@ -1,25 +1,9 @@
 import {
   Award,
-  BarChart3,
-  Bell,
-  ClipboardCheck,
   ClipboardList,
-  Coffee,
-  Coins,
-  GraduationCap,
-  Gift,
-  LayoutGrid,
   ListTodo,
   Megaphone,
-  Rss,
-  Settings,
   ShieldAlert,
-  Star,
-  Trash2,
-  Truck,
-  Users,
-  UtensilsCrossed,
-  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -53,12 +37,33 @@ export const MENU_SECTIONS = [
 
 export type MenuSection = (typeof MENU_SECTIONS)[number];
 
+/** Serializable icon key resolved inside the client-side menu renderer. */
+export type MenuViewIconName =
+  | "settings"
+  | "checklists"
+  | "setups"
+  | "breaks"
+  | "ratings"
+  | "training"
+  | "waste"
+  | "accountability"
+  | "rewards"
+  | "tokens"
+  | "team-feed"
+  | "people"
+  | "vendors"
+  | "maintenance"
+  | "catering"
+  | "reporting"
+  | "notifications";
+
 /** One row in the "View" list -- a link straight to a module. */
 export interface MenuViewItem {
   key: string;
   label: string;
   href: string;
-  icon: LucideIcon;
+  /** String rather than a component function so MenuPage can pass it to the client. */
+  icon: MenuViewIconName;
   iconTone: ListRowTone;
   /** Which collapsible heading this module sits under. */
   section: MenuSection;
@@ -130,23 +135,23 @@ export const ASSIGN_ACTIONS: MenuActionItem[] = [
  * choices tuned for this screen.
  */
 export const VIEW_ITEMS: MenuViewItem[] = [
-  { key: "settings", label: "Admin / Settings", href: "/settings", icon: Settings, iconTone: "neutral", section: "Admin" },
-  { key: "checklists", label: "Checklists", href: "/checklists", icon: ClipboardCheck, iconTone: "neutral", section: "Daily Ops" },
-  { key: "setups", label: "Setups", href: "/setups", icon: LayoutGrid, iconTone: "neutral", section: "Daily Ops" },
-  { key: "breaks", label: "Breaks", href: "/breaks", icon: Coffee, iconTone: "neutral", section: "Daily Ops" },
-  { key: "ratings", label: "Ratings", href: "/ratings", icon: Star, iconTone: "neutral", section: "People & Training" },
-  { key: "training", label: "Training", href: "/training", icon: GraduationCap, iconTone: "neutral", section: "People & Training" },
-  { key: "waste", label: "Waste", href: "/waste", icon: Trash2, iconTone: "neutral", section: "Daily Ops" },
-  { key: "accountability", label: "Accountability", href: "/accountability", icon: ShieldAlert, iconTone: "danger", section: "People & Training" },
-  { key: "rewards", label: "Rewards", href: "/rewards", icon: Gift, iconTone: "neutral", section: "Recognition" },
-  { key: "tokens", label: "Tokens", href: "/tokens", icon: Coins, iconTone: "warning", section: "Recognition" },
-  { key: "team-feed", label: "Team Feed", href: "/team", icon: Rss, iconTone: "neutral", section: "Recognition" },
-  { key: "people", label: "People", href: "/people", icon: Users, iconTone: "neutral", section: "People & Training" },
-  { key: "vendors", label: "Vendors", href: "/vendors", icon: Truck, iconTone: "neutral", section: "Operations" },
-  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: Wrench, iconTone: "neutral", section: "Operations" },
-  { key: "catering", label: "Catering", href: "/catering", icon: UtensilsCrossed, iconTone: "neutral", section: "Operations" },
-  { key: "reporting", label: "Reporting", href: "/reports", icon: BarChart3, iconTone: "neutral", section: "Admin" },
-  { key: "notifications", label: "Notifications", href: "/notifications", icon: Bell, iconTone: "neutral", section: "Admin" },
+  { key: "settings", label: "Admin / Settings", href: "/settings", icon: "settings", iconTone: "neutral", section: "Admin" },
+  { key: "checklists", label: "Checklists", href: "/checklists", icon: "checklists", iconTone: "neutral", section: "Daily Ops" },
+  { key: "setups", label: "Setups", href: "/setups", icon: "setups", iconTone: "neutral", section: "Daily Ops" },
+  { key: "breaks", label: "Breaks", href: "/breaks", icon: "breaks", iconTone: "neutral", section: "Daily Ops" },
+  { key: "ratings", label: "Ratings", href: "/ratings", icon: "ratings", iconTone: "neutral", section: "People & Training" },
+  { key: "training", label: "Training", href: "/training", icon: "training", iconTone: "neutral", section: "People & Training" },
+  { key: "waste", label: "Waste", href: "/waste", icon: "waste", iconTone: "neutral", section: "Daily Ops" },
+  { key: "accountability", label: "Accountability", href: "/accountability", icon: "accountability", iconTone: "danger", section: "People & Training" },
+  { key: "rewards", label: "Rewards", href: "/rewards", icon: "rewards", iconTone: "neutral", section: "Recognition" },
+  { key: "tokens", label: "Tokens", href: "/tokens", icon: "tokens", iconTone: "warning", section: "Recognition" },
+  { key: "team-feed", label: "Team Feed", href: "/team", icon: "team-feed", iconTone: "neutral", section: "Recognition" },
+  { key: "people", label: "People", href: "/people", icon: "people", iconTone: "neutral", section: "People & Training" },
+  { key: "vendors", label: "Vendors", href: "/vendors", icon: "vendors", iconTone: "neutral", section: "Operations" },
+  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Operations" },
+  { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Operations" },
+  { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
+  { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
 ];
 
 /** Filters a list of Send/Assign actions down to the ones a user may see. */

@@ -1,6 +1,26 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import {
+  BarChart3,
+  Bell,
+  ChevronDown,
+  ClipboardCheck,
+  Coffee,
+  Coins,
+  Gift,
+  GraduationCap,
+  LayoutGrid,
+  Rss,
+  Settings,
+  ShieldAlert,
+  Star,
+  Trash2,
+  Truck,
+  Users,
+  UtensilsCrossed,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 
 import { ListRow } from "@/components/mobile";
 import {
@@ -10,10 +30,31 @@ import {
 } from "@/lib/nav/nav-prefs";
 import { cn } from "@/lib/utils";
 
-import type { MenuViewSection } from "./menu-items";
+import type { MenuViewIconName, MenuViewSection } from "./menu-items";
 
 /** The one section open on a first visit — what most of the team needs daily. */
 const DEFAULT_OPEN_SECTION = "Daily Ops";
+
+/** Resolve serializable server-provided icon keys on the client side. */
+const VIEW_ICONS: Record<MenuViewIconName, LucideIcon> = {
+  settings: Settings,
+  checklists: ClipboardCheck,
+  setups: LayoutGrid,
+  breaks: Coffee,
+  ratings: Star,
+  training: GraduationCap,
+  waste: Trash2,
+  accountability: ShieldAlert,
+  rewards: Gift,
+  tokens: Coins,
+  "team-feed": Rss,
+  people: Users,
+  vendors: Truck,
+  maintenance: Wrench,
+  catering: UtensilsCrossed,
+  reporting: BarChart3,
+  notifications: Bell,
+};
 
 /**
  * The Menu tab's "View" list, grouped into collapsible sections. Seventeen
@@ -64,7 +105,7 @@ export function MenuViewSections({ sections }: { sections: MenuViewSection[] }) 
                   <ListRow
                     key={item.key}
                     title={item.label}
-                    icon={item.icon}
+                    icon={VIEW_ICONS[item.icon]}
                     iconTone={item.iconTone}
                     href={item.href}
                   />
