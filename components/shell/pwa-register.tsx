@@ -99,8 +99,8 @@ export function PwaRegister() {
   if (!deferredPrompt && !showIOSInstructions) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 md:px-0">
-      <div className="flex w-full max-w-md items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4rem_+_max(env(safe-area-inset-bottom,0px),10px))] z-50 flex justify-center px-4 pb-4 md:bottom-0 md:px-0">
+      <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
           FIQ
         </span>
