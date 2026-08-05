@@ -128,6 +128,12 @@ describe("menu data", () => {
       expect(MENU_SECTIONS, `${item.key} has an unknown section`).toContain(item.section);
     }
   });
+
+  it("puts Catering with the daily operating tools", () => {
+    expect(VIEW_ITEMS.find((item) => item.key === "catering")?.section).toBe(
+      "Daily Ops",
+    );
+  });
 });
 
 describe("groupViewItems", () => {
