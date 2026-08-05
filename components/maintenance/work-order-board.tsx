@@ -39,7 +39,9 @@ export interface WorkOrderRow {
 const COLUMNS: { status: string; label: string; dotClass: string }[] = [
   { status: "open", label: "Open", dotClass: "bg-info" },
   { status: "in_progress", label: "In progress", dotClass: "bg-warning" },
-  { status: "on_hold", label: "On hold", dotClass: "bg-danger" },
+  // Display label only -- the stored status stays "on_hold" (see
+  // work-order-detail.tsx's STATUS_LABEL comment for why).
+  { status: "on_hold", label: "Awaiting Vendor/Parts", dotClass: "bg-danger" },
   { status: "complete", label: "Complete", dotClass: "bg-success" },
 ];
 
@@ -50,6 +52,10 @@ function formatDue(dueAt: string | null): string | null {
   const d = new Date(dueAt);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function columnLabel(status: string): string {
+  return COLUMNS.find((c) => c.status === status)?.label ?? status.replace("_", " ");
 }
 
 function cardCaption(wo: WorkOrderRow): string {
@@ -97,7 +103,7 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
       }
 
       if (!isValidWorkOrderTransition(current.status as WorkOrderStatus, column as WorkOrderStatus)) {
-        setError(`Can't move a ${current.status.replace("_", " ")} order to ${column.replace("_", " ")}.`);
+        setError(`Can't move a ${columnLabel(current.status)} order to ${columnLabel(column)}.`);
         return;
       }
 
@@ -140,9 +146,9 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
               }`}
             >
               <div className="flex items-center gap-2 px-1.5 pb-2">
-                <span className={`h-2 w-2 rounded-full ${column.dotClass}`} aria-hidden="true" />
-                <h3 className="text-[13px] font-semibold text-ink">{column.label}</h3>
-                <span className="text-[13px] text-muted-ink">{cards.length}</span>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${column.dotClass}`} aria-hidden="true" />
+                <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{column.label}</h3>
+                <span className="shrink-0 text-[13px] text-muted-ink">{cards.length}</span>
               </div>
               <div className="flex flex-col gap-2 lg:max-h-[65vh] lg:overflow-y-auto lg:pr-1">
                 {cards.length === 0 ? (

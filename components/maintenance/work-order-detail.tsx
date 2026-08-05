@@ -61,7 +61,10 @@ const NONE_VALUE = "none";
 const STATUS_LABEL: Record<string, string> = {
   open: "Open",
   in_progress: "In progress",
-  on_hold: "On hold",
+  // Display label only -- the stored status/enum value stays "on_hold"
+  // (DB check constraint, WORK_ORDER_TRANSITIONS in logic.ts, RLS, event
+  // payloads); renamed 2026-08-05 per leader preference.
+  on_hold: "Awaiting Vendor/Parts",
   complete: "Complete",
   cancelled: "Cancelled",
 };
