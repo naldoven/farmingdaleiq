@@ -2,7 +2,7 @@ import { ListRow, SectionCard, StatusBadge, type StatusTone } from "@/components
 import { MaintenanceTabs } from "@/components/maintenance/maintenance-tabs";
 import { RequestForm } from "@/components/maintenance/request-form";
 import { TriageQueue } from "@/components/maintenance/triage-queue";
-import { WorkOrderList, type WorkOrderRow } from "@/components/maintenance/work-order-list";
+import { WorkOrderBoard, type WorkOrderRow } from "@/components/maintenance/work-order-board";
 import { CreateWorkOrderForm } from "@/app/(app)/maintenance/create-work-order-form";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -104,7 +104,7 @@ export default async function MaintenancePage() {
             <p className="text-[13px] font-semibold text-muted-ink">{openCount} open</p>
             {canTriage && <CreateWorkOrderForm equipmentOptions={equipment ?? []} />}
           </div>
-          <WorkOrderList workOrders={workOrderRows} />
+          <WorkOrderBoard workOrders={workOrderRows} />
         </div>
       ),
     },
@@ -114,11 +114,13 @@ export default async function MaintenancePage() {
             id: "triage",
             label: `Triage (${pendingRequests?.length ?? 0})`,
             content: (
-              <TriageQueue
-                requests={pendingRequests ?? []}
-                assigneeOptions={profiles ?? []}
-                vendorOptions={vendors ?? []}
-              />
+              <div className="mx-auto w-full lg:max-w-[480px]">
+                <TriageQueue
+                  requests={pendingRequests ?? []}
+                  assigneeOptions={profiles ?? []}
+                  vendorOptions={vendors ?? []}
+                />
+              </div>
             ),
           },
         ]
@@ -127,9 +129,11 @@ export default async function MaintenancePage() {
       id: "submit",
       label: "Submit request",
       content: (
-        <SectionCard title="Submit a maintenance request">
-          <RequestForm equipmentOptions={equipment ?? []} />
-        </SectionCard>
+        <div className="mx-auto w-full lg:max-w-[480px]">
+          <SectionCard title="Submit a maintenance request">
+            <RequestForm equipmentOptions={equipment ?? []} />
+          </SectionCard>
+        </div>
       ),
     },
     {
@@ -139,7 +143,7 @@ export default async function MaintenancePage() {
         requestRows.length === 0 ? (
           <p className="px-1 text-[13px] text-muted-ink">You haven&apos;t submitted any requests yet.</p>
         ) : (
-          <SectionCard flush>
+          <SectionCard flush className="mx-auto w-full lg:max-w-[480px]">
             <div className="divide-y divide-line">
               {requestRows.map((request) => {
                 const detail =
@@ -168,7 +172,9 @@ export default async function MaintenancePage() {
   ];
 
   return (
-    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+    // 480px phone-first like every page; lg+ widens to fit the Kanban's four
+    // 272px columns side by side (non-board tabs re-cap themselves at 480px).
+    <div className="mx-auto flex w-full max-w-[480px] flex-col gap-4 lg:max-w-[1140px]">
       <MaintenanceTabs tabs={tabs} defaultTab="board" />
     </div>
   );
