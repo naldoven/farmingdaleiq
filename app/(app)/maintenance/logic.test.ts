@@ -51,6 +51,12 @@ describe("isValidWorkOrderTransition", () => {
   it("rejects any transition out of a terminal cancelled state", () => {
     expect(isValidWorkOrderTransition("cancelled", "open")).toBe(false);
   });
+
+  it("rejects cancelling a work order from any active status (leader decision 2026-08-05: no more cancelling, every order must reach complete)", () => {
+    expect(isValidWorkOrderTransition("open", "cancelled")).toBe(false);
+    expect(isValidWorkOrderTransition("in_progress", "cancelled")).toBe(false);
+    expect(isValidWorkOrderTransition("on_hold", "cancelled")).toBe(false);
+  });
 });
 
 function schedule(overrides: Partial<PmScheduleLike> = {}): PmScheduleLike {

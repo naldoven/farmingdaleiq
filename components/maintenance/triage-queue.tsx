@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -61,7 +60,6 @@ function ReviewDialog({
   const [priority, setPriority] = useState<string>(request.suggested_priority ?? "medium");
   const [assignedUserId, setAssignedUserId] = useState(NONE_VALUE);
   const [vendorId, setVendorId] = useState(NONE_VALUE);
-  const [dueAt, setDueAt] = useState("");
   const [declinedReason, setDeclinedReason] = useState("");
 
   return (
@@ -145,15 +143,6 @@ function ReviewDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="due-at">Due</Label>
-              <Input
-                id="due-at"
-                type="datetime-local"
-                value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
-              />
-            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -183,8 +172,10 @@ function ReviewDialog({
                         priority: priority as (typeof PRIORITY_OPTIONS)[number],
                         assignedUserId: assignedUserId === NONE_VALUE ? undefined : assignedUserId,
                         vendorId: vendorId === NONE_VALUE ? undefined : vendorId,
+                        // Scheduled visit / due date are no longer tracked
+                        // (leader decision, 2026-08-05).
                         scheduledFor: undefined,
-                        dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+                        dueAt: undefined,
                       })
                     : await declineRequest({ requestId: request.id, declinedReason });
                 if (!result.ok) {

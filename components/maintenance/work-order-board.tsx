@@ -18,7 +18,6 @@ export interface WorkOrderRow {
   equipment_name: string | null;
   assigned_user_name: string | null;
   vendor_name: string | null;
-  due_at: string | null;
 }
 
 /**
@@ -47,23 +46,13 @@ const COLUMNS: { status: string; label: string; dotClass: string }[] = [
 
 const DRAGGABLE_STATUSES = new Set(["open", "in_progress", "on_hold"]);
 
-function formatDue(dueAt: string | null): string | null {
-  if (!dueAt) return null;
-  const d = new Date(dueAt);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
 function columnLabel(status: string): string {
   return COLUMNS.find((c) => c.status === status)?.label ?? status.replace("_", " ");
 }
 
 function cardCaption(wo: WorkOrderRow): string {
-  const due = formatDue(wo.due_at);
   const assignee = wo.assigned_user_name ?? wo.vendor_name;
-  return [wo.equipment_name, assignee ? `Assigned to ${assignee}` : "Unassigned", due ? `Due ${due}` : null]
-    .filter(Boolean)
-    .join(" · ");
+  return [wo.equipment_name, assignee ? `Assigned to ${assignee}` : "Unassigned"].filter(Boolean).join(" · ");
 }
 
 export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
@@ -113,7 +102,7 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
 
       updateWorkOrderStatus({
         workOrderId: cardId,
-        status: column as "open" | "in_progress" | "on_hold" | "cancelled",
+        status: column as "open" | "in_progress" | "on_hold",
       }).then((result) => {
         if (!result.ok) {
           setOrders((prev) => prev.map((wo) => (wo.id === cardId ? { ...wo, status: previousStatus } : wo)));
