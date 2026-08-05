@@ -52,7 +52,7 @@ export default async function MaintenancePage() {
     supabase.from("equipment").select("id, name").order("name"),
     supabase
       .from("work_orders")
-      .select("id, title, status, priority, equipment_id, assigned_user_id, vendor_id, due_at, created_at")
+      .select("id, title, status, priority, equipment_id, assigned_user_id, vendor_id, created_at")
       .order("created_at", { ascending: false }),
     supabase
       .from("maintenance_requests")
@@ -88,7 +88,6 @@ export default async function MaintenancePage() {
     equipment_name: wo.equipment_id ? (equipmentNameById.get(wo.equipment_id) ?? null) : null,
     assigned_user_name: wo.assigned_user_id ? (profileNameById.get(wo.assigned_user_id) ?? null) : null,
     vendor_name: wo.vendor_id ? (vendorNameById.get(wo.vendor_id) ?? null) : null,
-    due_at: wo.due_at,
   }));
 
   const openCount = workOrderRows.filter((wo) => wo.status !== "complete" && wo.status !== "cancelled").length;

@@ -39,8 +39,6 @@ export interface WorkOrderDetailData {
   assigned_user_name: string | null;
   vendor_id: string | null;
   vendor_name: string | null;
-  scheduled_for: string | null;
-  due_at: string | null;
   completed_at: string | null;
   cost: number | null;
   invoice_url: string | null;
@@ -88,7 +86,7 @@ function StatusControls({ workOrder }: { workOrder: WorkOrderDetailData }) {
     startTransition(async () => {
       const result = await updateWorkOrderStatus({
         workOrderId: workOrder.id,
-        status: status as "open" | "in_progress" | "on_hold" | "cancelled",
+        status: status as "open" | "in_progress" | "on_hold",
       });
       if (!result.ok) {
         setError(result.error);
@@ -205,10 +203,6 @@ function AssignForm({
   const [error, setError] = useState<string | null>(null);
   const [assignedUserId, setAssignedUserId] = useState(workOrder.assigned_user_id ?? NONE_VALUE);
   const [vendorId, setVendorId] = useState(workOrder.vendor_id ?? NONE_VALUE);
-  const [scheduledFor, setScheduledFor] = useState(
-    workOrder.scheduled_for ? workOrder.scheduled_for.slice(0, 16) : "",
-  );
-  const [dueAt, setDueAt] = useState(workOrder.due_at ? workOrder.due_at.slice(0, 16) : "");
 
   return (
     <form
@@ -221,8 +215,12 @@ function AssignForm({
             workOrderId: workOrder.id,
             assignedUserId: assignedUserId === NONE_VALUE ? undefined : assignedUserId,
             vendorId: vendorId === NONE_VALUE ? undefined : vendorId,
-            scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
-            dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+            // Scheduled visit / due date are no longer tracked (leader
+            // decision, 2026-08-05) -- omitting these leaves any old stored
+            // value untouched rather than clearing it (see assignWorkOrder
+            // in actions.ts), so this form simply never sets them again.
+            scheduledFor: undefined,
+            dueAt: undefined,
           });
           if (!result.ok) {
             setError(result.error);
@@ -264,19 +262,6 @@ function AssignForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="scheduled-for">Scheduled visit</Label>
-          <Input
-            id="scheduled-for"
-            type="datetime-local"
-            value={scheduledFor}
-            onChange={(e) => setScheduledFor(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="due-at">Due</Label>
-          <Input id="due-at" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </div>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -406,18 +391,6 @@ export function WorkOrderDetail({
           <dt className="text-muted-foreground">Assigned</dt>
           <dd>{workOrder.assigned_user_name ?? workOrder.vendor_name ?? "Unassigned"}</dd>
         </div>
-        {workOrder.scheduled_for && (
-          <div>
-            <dt className="text-muted-foreground">Scheduled visit</dt>
-            <dd>{new Date(workOrder.scheduled_for).toLocaleString()}</dd>
-          </div>
-        )}
-        {workOrder.due_at && (
-          <div>
-            <dt className="text-muted-foreground">Due</dt>
-            <dd>{new Date(workOrder.due_at).toLocaleString()}</dd>
-          </div>
-        )}
         {workOrder.completed_at && (
           <div>
             <dt className="text-muted-foreground">Completed</dt>

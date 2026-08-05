@@ -20,7 +20,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
   const { data: workOrder } = await supabase
     .from("work_orders")
     .select(
-      "id, request_id, title, description, status, priority, equipment_id, assigned_user_id, vendor_id, scheduled_for, due_at, completed_at, cost, invoice_url, photo_urls, created_at",
+      "id, request_id, title, description, status, priority, equipment_id, assigned_user_id, vendor_id, completed_at, cost, invoice_url, photo_urls, created_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -78,8 +78,6 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
           assigned_user_name: assignedProfile?.name ?? null,
           vendor_id: workOrder.vendor_id,
           vendor_name: vendor?.name ?? null,
-          scheduled_for: workOrder.scheduled_for,
-          due_at: workOrder.due_at,
           completed_at: workOrder.completed_at,
           cost: workOrder.cost,
           invoice_url: workOrder.invoice_url,

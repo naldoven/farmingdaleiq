@@ -223,12 +223,16 @@ management system). The workflow we reproduce, right-sized for one store:
   (Originally "any team member"; restricted to trainer-and-above on
   2026-08-03 — see migration 20260803120000_maintenance_request_trainer_up.)
 - **Triage**: a leader with the maintenance permission reviews the queue and either
-  approves (setting priority, assignee, due date) or declines with a reason that is
+  approves (setting priority, assignee) or declines with a reason that is
   sent back to the requester. Approval converts the request into a work order.
-- **Work orders**: statuses open → in progress → on hold → complete (or cancelled).
-  Assigned to a team member (in-house fix) **or** a vendor from the Vendors
-  directory (with a scheduled visit date). Carry a comment/photo thread
-  (before/after shots), and record cost + invoice photo on completion.
+- **Work orders**: statuses open → in progress → on hold → complete. Every
+  work order that gets created must eventually be carried through to
+  Complete — cancelling and the scheduled-visit/due-date fields were removed
+  by leader decision (2026-08-05; existing historical rows keep whatever
+  values they already had, just no longer editable or shown). Assigned to a
+  team member (in-house fix) **or** a vendor from the Vendors directory.
+  Carry a comment/photo thread (before/after shots), and record cost +
+  invoice photo on completion.
 - **Equipment registry**: each unit (fryer, ice machine, hood, AC, …) has a page
   with category, store area, model/serial, service vendor, install date, warranty
   expiry, attached manuals, and its full work-order history. Equipment can be
