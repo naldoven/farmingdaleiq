@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ASSIGN_ACTIONS,
+  MENU_SECTIONS,
   SEND_ACTIONS,
   VIEW_ITEMS,
+  groupViewItems,
   visibleActions,
   visibleViewItems,
 } from "./menu-items";
@@ -119,5 +121,53 @@ describe("menu data", () => {
       "reporting",
       "notifications",
     ]);
+  });
+
+  it("files every module under a known section", () => {
+    for (const item of VIEW_ITEMS) {
+      expect(MENU_SECTIONS, `${item.key} has an unknown section`).toContain(item.section);
+    }
+  });
+});
+
+describe("groupViewItems", () => {
+  it("buckets every item, losing none", () => {
+    const grouped = groupViewItems(VIEW_ITEMS);
+    const keys = grouped.flatMap((g) => g.items.map((i) => i.key));
+    expect(new Set(keys)).toEqual(new Set(VIEW_ITEMS.map((i) => i.key)));
+    expect(keys).toHaveLength(VIEW_ITEMS.length);
+  });
+
+  it("returns sections in MENU_SECTIONS order regardless of VIEW_ITEMS order", () => {
+    // VIEW_ITEMS opens with "settings" (an Admin item), so a naive
+    // first-seen ordering would put Admin first instead of last.
+    const grouped = groupViewItems(VIEW_ITEMS);
+    expect(grouped.map((g) => g.section)).toEqual([...MENU_SECTIONS]);
+  });
+
+  it("turns 17 rows into a handful of headings", () => {
+    const grouped = groupViewItems(VIEW_ITEMS);
+    expect(grouped.length).toBeLessThan(VIEW_ITEMS.length / 3);
+  });
+
+  it("drops a section whose modules are all gated away", () => {
+    // No permissions at all: Admin's three items (settings, reporting,
+    // notifications) are every one of them gated, so the heading disappears.
+    const grouped = groupViewItems(visibleViewItems(VIEW_ITEMS, {}));
+    expect(grouped.map((g) => g.section)).not.toContain("Admin");
+    // Recognition is entirely ungated, so it survives.
+    expect(grouped.map((g) => g.section)).toContain("Recognition");
+  });
+
+  it("keeps a partially gated section with only its reachable modules", () => {
+    const grouped = groupViewItems(
+      visibleViewItems(VIEW_ITEMS, { "settings.manage": true }),
+    );
+    const admin = grouped.find((g) => g.section === "Admin");
+    expect(admin?.items.map((i) => i.key)).toEqual(["settings"]);
+  });
+
+  it("returns nothing for an empty item list", () => {
+    expect(groupViewItems([])).toEqual([]);
   });
 });

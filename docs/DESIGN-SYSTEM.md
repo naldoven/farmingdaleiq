@@ -149,7 +149,34 @@ the full navigation drawer. Props: `pathname`, `onMenuClick`, `menuOpen`.
 ### Sidebar
 
 Desktop left sidebar (`md+`). Wordmark header, grouped `NavLinks` (active in
-accent red), user footer. Prop: `user: { name; roleName }`.
+accent red), user footer. Props: `user: { name; roleName }`,
+`allowedPermissions`.
+
+**Collapsible.** The header toggle shrinks it to a 72px icon rail and back. The
+choice, and which nav sections are open, persist per browser in localStorage via
+`lib/nav/nav-prefs.ts` — a `useSyncExternalStore` store, not `useState` +
+`useEffect`, so the first client render still matches the server (see
+`useHydrated()` for why). Collapsed, the footer drops to just the avatar.
+
+### NavLinks
+
+The nav body, shared by the sidebar and the mobile Menu drawer. The page map has
+~20 sections and ~35 destinations; flat, that was an unusable wall of links, so
+it renders two ways:
+
+- A section with **one** destination (Home, Tasks, Waste) is a plain link row.
+- A section with **several** (Training, Catering, Settings) is an accordion.
+  Only the section holding the current route is open by default, which puts the
+  resting nav at ~18 rows instead of ~55.
+
+`collapsed` renders the icon rail instead: one icon per section, from the
+`icon` key each `NAV_GROUP` carries. A rail has no room for sub-pages, so
+clicking a multi-page section's icon re-expands the sidebar with that section
+already open; a single-destination icon just navigates.
+
+Exactly one link is ever marked `aria-current="page"` — use `activeNavHref()`
+from the page map, never a bare prefix test, or a section landing page and the
+sub-page inside it both read as current.
 
 ### StoreLocationPill
 

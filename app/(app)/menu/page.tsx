@@ -1,4 +1,4 @@
-import { ActionPill, ListRow, SectionLabel } from "@/components/mobile";
+import { ActionPill, SectionLabel } from "@/components/mobile";
 import { SignOutRow } from "@/components/shell/sign-out-row";
 import { hasPermission, type PermissionKey } from "@/lib/auth/permissions";
 
@@ -6,10 +6,12 @@ import {
   ASSIGN_ACTIONS,
   SEND_ACTIONS,
   VIEW_ITEMS,
+  groupViewItems,
   visibleActions,
   visibleViewItems,
   viewPermissionKeys,
 } from "./menu-items";
+import { MenuViewSections } from "./view-sections";
 
 /**
  * /menu -- the mobile nav hub behind the bottom "Menu" tab, matching the
@@ -85,18 +87,7 @@ export default async function MenuPage() {
 
       <section className="flex flex-col gap-3">
         <SectionLabel>View</SectionLabel>
-        <div className="flex flex-col gap-2.5">
-          {viewItems.map((item) => (
-            <ListRow
-              key={item.key}
-              title={item.label}
-              icon={item.icon}
-              iconTone={item.iconTone}
-              href={item.href}
-              className="rounded-2xl border border-line bg-card"
-            />
-          ))}
-        </div>
+        <MenuViewSections sections={groupViewItems(viewItems)} />
       </section>
 
       <section className="flex flex-col gap-3">

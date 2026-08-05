@@ -38,6 +38,21 @@ export interface MenuActionItem {
   permission: PermissionKey | null;
 }
 
+/**
+ * The View list is grouped into these sections so the Menu tab is a short
+ * index of five collapsible headings instead of one 17-row scroll. Order here
+ * is the order they render in.
+ */
+export const MENU_SECTIONS = [
+  "Daily Ops",
+  "People & Training",
+  "Recognition",
+  "Operations",
+  "Admin",
+] as const;
+
+export type MenuSection = (typeof MENU_SECTIONS)[number];
+
 /** One row in the "View" list -- a link straight to a module. */
 export interface MenuViewItem {
   key: string;
@@ -45,6 +60,14 @@ export interface MenuViewItem {
   href: string;
   icon: LucideIcon;
   iconTone: ListRowTone;
+  /** Which collapsible heading this module sits under. */
+  section: MenuSection;
+}
+
+/** A View section with the modules the current user can actually reach. */
+export interface MenuViewSection {
+  section: MenuSection;
+  items: MenuViewItem[];
 }
 
 /**
@@ -107,23 +130,23 @@ export const ASSIGN_ACTIONS: MenuActionItem[] = [
  * choices tuned for this screen.
  */
 export const VIEW_ITEMS: MenuViewItem[] = [
-  { key: "settings", label: "Admin / Settings", href: "/settings", icon: Settings, iconTone: "neutral" },
-  { key: "checklists", label: "Checklists", href: "/checklists", icon: ClipboardCheck, iconTone: "neutral" },
-  { key: "setups", label: "Setups", href: "/setups", icon: LayoutGrid, iconTone: "neutral" },
-  { key: "breaks", label: "Breaks", href: "/breaks", icon: Coffee, iconTone: "neutral" },
-  { key: "ratings", label: "Ratings", href: "/ratings", icon: Star, iconTone: "neutral" },
-  { key: "training", label: "Training", href: "/training", icon: GraduationCap, iconTone: "neutral" },
-  { key: "waste", label: "Waste", href: "/waste", icon: Trash2, iconTone: "neutral" },
-  { key: "accountability", label: "Accountability", href: "/accountability", icon: ShieldAlert, iconTone: "danger" },
-  { key: "rewards", label: "Rewards", href: "/rewards", icon: Gift, iconTone: "neutral" },
-  { key: "tokens", label: "Tokens", href: "/tokens", icon: Coins, iconTone: "warning" },
-  { key: "team-feed", label: "Team Feed", href: "/team", icon: Rss, iconTone: "neutral" },
-  { key: "people", label: "People", href: "/people", icon: Users, iconTone: "neutral" },
-  { key: "vendors", label: "Vendors", href: "/vendors", icon: Truck, iconTone: "neutral" },
-  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: Wrench, iconTone: "neutral" },
-  { key: "catering", label: "Catering", href: "/catering", icon: UtensilsCrossed, iconTone: "neutral" },
-  { key: "reporting", label: "Reporting", href: "/reports", icon: BarChart3, iconTone: "neutral" },
-  { key: "notifications", label: "Notifications", href: "/notifications", icon: Bell, iconTone: "neutral" },
+  { key: "settings", label: "Admin / Settings", href: "/settings", icon: Settings, iconTone: "neutral", section: "Admin" },
+  { key: "checklists", label: "Checklists", href: "/checklists", icon: ClipboardCheck, iconTone: "neutral", section: "Daily Ops" },
+  { key: "setups", label: "Setups", href: "/setups", icon: LayoutGrid, iconTone: "neutral", section: "Daily Ops" },
+  { key: "breaks", label: "Breaks", href: "/breaks", icon: Coffee, iconTone: "neutral", section: "Daily Ops" },
+  { key: "ratings", label: "Ratings", href: "/ratings", icon: Star, iconTone: "neutral", section: "People & Training" },
+  { key: "training", label: "Training", href: "/training", icon: GraduationCap, iconTone: "neutral", section: "People & Training" },
+  { key: "waste", label: "Waste", href: "/waste", icon: Trash2, iconTone: "neutral", section: "Daily Ops" },
+  { key: "accountability", label: "Accountability", href: "/accountability", icon: ShieldAlert, iconTone: "danger", section: "People & Training" },
+  { key: "rewards", label: "Rewards", href: "/rewards", icon: Gift, iconTone: "neutral", section: "Recognition" },
+  { key: "tokens", label: "Tokens", href: "/tokens", icon: Coins, iconTone: "warning", section: "Recognition" },
+  { key: "team-feed", label: "Team Feed", href: "/team", icon: Rss, iconTone: "neutral", section: "Recognition" },
+  { key: "people", label: "People", href: "/people", icon: Users, iconTone: "neutral", section: "People & Training" },
+  { key: "vendors", label: "Vendors", href: "/vendors", icon: Truck, iconTone: "neutral", section: "Operations" },
+  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: Wrench, iconTone: "neutral", section: "Operations" },
+  { key: "catering", label: "Catering", href: "/catering", icon: UtensilsCrossed, iconTone: "neutral", section: "Operations" },
+  { key: "reporting", label: "Reporting", href: "/reports", icon: BarChart3, iconTone: "neutral", section: "Admin" },
+  { key: "notifications", label: "Notifications", href: "/notifications", icon: Bell, iconTone: "neutral", section: "Admin" },
 ];
 
 /** Filters a list of Send/Assign actions down to the ones a user may see. */
@@ -170,4 +193,17 @@ export function visibleViewItems(
     const permission = viewItemPermission(item);
     return permission === null || permissions[permission] === true;
   });
+}
+
+/**
+ * Buckets View items into their sections, in MENU_SECTIONS order, dropping any
+ * section the user has no reachable modules in. Grouping happens here rather
+ * than by reordering VIEW_ITEMS so that list stays the flat, stable roster of
+ * every module.
+ */
+export function groupViewItems(items: MenuViewItem[]): MenuViewSection[] {
+  return MENU_SECTIONS.map((section) => ({
+    section,
+    items: items.filter((item) => item.section === section),
+  })).filter((group) => group.items.length > 0);
 }

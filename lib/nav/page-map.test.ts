@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   NAV_GROUPS,
+  activeNavGroupLabel,
+  activeNavHref,
   avatarColor,
   initialsFromName,
+  isNavItemActive,
   navPermissionKeys,
   resolveHeader,
   visibleNavGroups,
@@ -171,5 +174,96 @@ describe("visibleNavGroups (S4 nav gating)", () => {
     const hrefs = allItems(visibleNavGroups(all));
     const total = NAV_GROUPS.flatMap((g) => g.items).length;
     expect(hrefs).toHaveLength(total);
+  });
+});
+
+describe("isNavItemActive", () => {
+  it("matches the exact route", () => {
+    expect(isNavItemActive("/training", "/training")).toBe(true);
+  });
+
+  it("matches a route nested under the item", () => {
+    expect(isNavItemActive("/training", "/training/grid")).toBe(true);
+    expect(isNavItemActive("/maintenance", "/maintenance/abc-123")).toBe(true);
+  });
+
+  it("does not match a sibling route that merely shares a prefix string", () => {
+    expect(isNavItemActive("/team", "/teams")).toBe(false);
+    expect(isNavItemActive("/setups", "/setups-archive")).toBe(false);
+  });
+
+  it("only matches home exactly, so Home never lights up everywhere", () => {
+    expect(isNavItemActive("/", "/")).toBe(true);
+    expect(isNavItemActive("/", "/vendors")).toBe(false);
+  });
+});
+
+describe("activeNavHref", () => {
+  it("picks the deepest match so an ancestor page is not also current", () => {
+    // /catering/confirm matches "/catering" by prefix too; only the exact page
+    // may be highlighted, or both Pipeline and Confirmation Calls go red.
+    expect(activeNavHref("/catering/confirm")).toBe("/catering/confirm");
+    expect(activeNavHref("/checklists/templates")).toBe("/checklists/templates");
+    expect(activeNavHref("/people/org-chart")).toBe("/people/org-chart");
+  });
+
+  it("falls back to the section landing page for an unmapped detail route", () => {
+    expect(activeNavHref("/catering/orders/abc-123")).toBe("/catering");
+    expect(activeNavHref("/maintenance/abc-123")).toBe("/maintenance");
+  });
+
+  it("matches the landing page itself when that is the route", () => {
+    expect(activeNavHref("/catering")).toBe("/catering");
+  });
+
+  it("returns null when nothing in the map matches", () => {
+    expect(activeNavHref("/nowhere")).toBeNull();
+  });
+
+  it("never returns home for a non-home route", () => {
+    expect(activeNavHref("/vendors")).toBe("/vendors");
+    expect(activeNavHref("/")).toBe("/");
+  });
+});
+
+describe("activeNavGroupLabel", () => {
+  it("finds the group holding a top-level route", () => {
+    expect(activeNavGroupLabel("/vendors")).toBe("Vendors");
+    expect(activeNavGroupLabel("/")).toBe("Home");
+  });
+
+  it("finds the group holding a nested route", () => {
+    expect(activeNavGroupLabel("/checklists/templates")).toBe("Checklists");
+    expect(activeNavGroupLabel("/settings/discord")).toBe("Settings");
+  });
+
+  it("prefers the longest matching href when two items overlap", () => {
+    // Both /people and /people/org-chart match; the longer one wins, and both
+    // happen to sit in People — the tie-break matters where they differ.
+    expect(activeNavGroupLabel("/people/org-chart")).toBe("People");
+    expect(activeNavGroupLabel("/training/grid")).toBe("Training");
+  });
+
+  it("still resolves an unmapped detail route via its section prefix", () => {
+    expect(activeNavGroupLabel("/maintenance/abc-123")).toBe("Maintenance");
+  });
+
+  it("returns null when nothing in the map matches", () => {
+    expect(activeNavGroupLabel("/nowhere")).toBeNull();
+  });
+
+  it("only considers the groups it is given, so gated-away sections never win", () => {
+    const visible = visibleNavGroups(new Set<string>());
+    // /reports is gated away for a user with no keys.
+    expect(activeNavGroupLabel("/reports", visible)).toBeNull();
+    expect(activeNavGroupLabel("/reports")).toBe("Reports");
+  });
+});
+
+describe("nav group icons", () => {
+  it("gives every group an icon so the collapsed rail can render it", () => {
+    for (const group of NAV_GROUPS) {
+      expect(group.icon, `${group.label} is missing an icon`).toBeTruthy();
+    }
   });
 });
