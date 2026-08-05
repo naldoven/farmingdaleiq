@@ -1,6 +1,8 @@
 "use client";
 
+import type { PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
+import { GripVertical } from "lucide-react";
 
 import { ProgressBar, SectionCard, StatusBadge } from "@/components/mobile";
 import { StageSelect } from "@/components/catering/stage-select";
@@ -24,12 +26,21 @@ export interface OrderCardData {
 
 /**
  * One pipeline card: guest, date/time, headcount, amount, and checklist
- * progress. Draggable via native HTML5 drag-and-drop (dragging sets
- * `orderId` as the transfer payload, read by the column's onDrop handler in
- * kanban-board.tsx); the stage dropdown is the accessible fallback for the
- * same move (ARCHITECTURE.md: "Cards move by drag or a stage dropdown").
+ * progress. Draggable via Pointer Events (components/mobile/kanban-drag.tsx
+ * -- `onPointerDown` is wired up by the parent KanbanBoard, which owns the
+ * shared drag hook so every card and column shares one drag session); the
+ * stage dropdown is the accessible fallback for the same move
+ * (ARCHITECTURE.md: "Cards move by drag or a stage dropdown").
  */
-export function OrderCard({ order }: { order: OrderCardData }) {
+export function OrderCard({
+  order,
+  onPointerDown,
+  isDragging,
+}: {
+  order: OrderCardData;
+  onPointerDown?: (e: ReactPointerEvent) => void;
+  isDragging?: boolean;
+}) {
   const hasProgress = order.checklistTotal != null && order.checklistTotal > 0;
   const progressPct = hasProgress
     ? Math.round(((order.checklistDone ?? 0) / order.checklistTotal!) * 100)
@@ -37,20 +48,21 @@ export function OrderCard({ order }: { order: OrderCardData }) {
 
   return (
     <SectionCard
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", order.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      className="w-[248px] shrink-0 cursor-grab active:cursor-grabbing"
+      onPointerDown={onPointerDown}
+      className={`w-[248px] shrink-0 cursor-grab transition-opacity active:cursor-grabbing ${
+        isDragging ? "opacity-40" : ""
+      }`}
     >
       <div className="flex flex-col gap-2">
-        <Link
-          href={`/catering/orders/${order.id}`}
-          className="truncate text-[15px] font-semibold text-ink hover:underline"
-        >
-          {order.guestName}
-        </Link>
+        <div className="flex items-start justify-between gap-2">
+          <Link
+            href={`/catering/orders/${order.id}`}
+            className="truncate text-[15px] font-semibold text-ink hover:underline"
+          >
+            {order.guestName}
+          </Link>
+          <GripVertical className="h-4 w-4 shrink-0 text-muted-ink" aria-hidden="true" />
+        </div>
         <p className="text-[13px] text-muted-ink">
           {order.eventDate}
           {order.eventTime ? ` · ${order.eventTime}` : ""}
@@ -65,11 +77,7 @@ export function OrderCard({ order }: { order: OrderCardData }) {
           <p className="text-[19px] font-bold text-ink">${order.amount.toFixed(2)}</p>
         )}
         {hasProgress && <ProgressBar value={progressPct} tone="accent" label="Checklists" />}
-        {/* Stops the dropdown's own click from bubbling into the card's
-         * drag-start listener on some browsers. */}
-        <div onClick={(e) => e.stopPropagation()}>
-          <StageSelect orderId={order.id} stage={order.stage} />
-        </div>
+        <StageSelect orderId={order.id} stage={order.stage} />
       </div>
     </SectionCard>
   );
