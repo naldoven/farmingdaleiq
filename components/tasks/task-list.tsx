@@ -4,10 +4,14 @@ import {
   Gift,
   MessageCircle,
   Repeat,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 
+import Link from "next/link";
+
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { ListRow, StatusBadge, type ListRowTone, type StatusTone } from "@/components/mobile";
 import { CancelTaskButton } from "@/components/tasks/cancel-task-button";
 import { ClaimTaskButton } from "@/components/tasks/claim-task-button";
@@ -26,6 +30,12 @@ export interface TaskRowView {
    * sits unassigned in the pool. Rendered in the manager "all" view so a
    * leader can see each task's owner at a glance. */
   assigneeLabel: string | null;
+  /** Set only for kind === "maintenance" (app/(app)/tasks/maintenance-sync.ts):
+   * the work order this task links back to. There's no "Complete" button for
+   * this kind -- completing the task never changes the work order (one-way
+   * link, leader decision 2026-08-05), so the action is a link to go handle
+   * the real status change in Maintenance instead. */
+  workOrderId: string | null;
 }
 
 /**
@@ -56,6 +66,7 @@ const KIND_LABELS: Record<string, string> = {
   reward_fulfillment: "Reward fulfillment",
   follow_up: "Follow-up",
   lead_duty: "Lead duty",
+  maintenance: "Maintenance",
 };
 
 const KIND_ICONS: Record<string, LucideIcon> = {
@@ -64,6 +75,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   reward_fulfillment: Gift,
   follow_up: MessageCircle,
   lead_duty: Crown,
+  maintenance: Wrench,
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -159,7 +171,13 @@ export function TaskList({
 
           {mode === "mine" && isActionable(t.status) && (
             <div className="flex justify-end px-4 pb-3">
-              <CompleteTaskButton taskId={t.id} />
+              {t.kind === "maintenance" && t.workOrderId ? (
+                <Button asChild size="sm" variant="secondary">
+                  <Link href={`/maintenance/${t.workOrderId}`}>Open in Maintenance</Link>
+                </Button>
+              ) : (
+                <CompleteTaskButton taskId={t.id} />
+              )}
             </div>
           )}
 

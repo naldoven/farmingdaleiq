@@ -74,7 +74,10 @@ below describes observed behavior we intend to reproduce.
 - Un-assigned to-dos for a shift sit in a pool visible to the shift leader for manual
   delegation.
 - The system itself creates tasks (e.g. a reward claim generates a fulfillment task
-  for leaders; a flagged checklist answer generates a follow-up).
+  for leaders; a flagged checklist answer generates a follow-up; a maintenance work
+  order assigned to a team member generates a "maintenance" task, reappearing each
+  day it's still open — leader decision 2026-08-05, one-way link: completing it
+  never changes the work order, see app/(app)/tasks/maintenance-sync.ts).
 - Completion can award tokens.
 
 ### Setups & Shifts
@@ -230,8 +233,10 @@ management system). The workflow we reproduce, right-sized for one store:
   Complete — cancelling and the scheduled-visit/due-date fields were removed
   by leader decision (2026-08-05; existing historical rows keep whatever
   values they already had, just no longer editable or shown). Assigned to a
-  team member (in-house fix) **or** a vendor from the Vendors directory.
-  Carry a comment/photo thread (before/after shots), and record cost +
+  team member (in-house fix) **or** a vendor from the Vendors directory —
+  a team-member assignment also surfaces the work order in that person's
+  personal Task list (see "Tasks (To-Dos)" above). Carry a comment/photo
+  thread (before/after shots), and record cost +
   invoice photo on completion.
 - **Equipment registry**: each unit (fryer, ice machine, hood, AC, …) has a page
   with category, store area, model/serial, service vendor, install date, warranty

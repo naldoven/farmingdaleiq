@@ -41,7 +41,7 @@ export default async function TasksPage() {
     supabase
       .from("tasks")
       .select(
-        "id, kind, title, day_part_id, due_at, assigned_user_id, assigned_position_id, status, token_value",
+        "id, kind, title, day_part_id, due_at, assigned_user_id, assigned_position_id, status, token_value, ref",
       )
       .eq("date", today)
       .order("due_at", { ascending: true, nullsFirst: false }),
@@ -65,6 +65,13 @@ export default async function TasksPage() {
   const dayPartOptions: NamedOption[] = (dayParts ?? []).map((d) => ({ id: d.id, name: d.name }));
 
   function toRowView(t: NonNullable<typeof tasks>[number]): TaskRowView {
+    // A maintenance-origin task carries its work order id in ref (see
+    // app/(app)/tasks/maintenance-sync.ts) so the row can link back to it --
+    // completing this task never changes the work order (one-way link,
+    // leader decision 2026-08-05), so "handling it" means going there.
+    const ref = t.ref as Record<string, unknown> | null;
+    const workOrderId = typeof ref?.work_order_id === "string" ? ref.work_order_id : null;
+
     return {
       id: t.id,
       title: t.title,
@@ -73,6 +80,7 @@ export default async function TasksPage() {
       dueAt: t.due_at,
       status: t.status,
       tokenValue: t.token_value,
+      workOrderId,
       // T3: resolve the task's owner so the manager "All Tasks Today" view can
       // show who each task is assigned to (person name or position name).
       assigneeLabel: resolveAssigneeLabel({
