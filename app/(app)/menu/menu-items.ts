@@ -149,7 +149,7 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "people", label: "People", href: "/people", icon: "people", iconTone: "neutral", section: "People & Training" },
   { key: "vendors", label: "Vendors", href: "/vendors", icon: "vendors", iconTone: "neutral", section: "Operations" },
   { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Operations" },
-  { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Operations" },
+  { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Daily Ops" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
 ];
