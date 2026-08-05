@@ -131,6 +131,15 @@ describe("menu data", () => {
 });
 
 describe("groupViewItems", () => {
+  it("keeps the grouped data serializable across the Server-to-Client boundary", () => {
+    const grouped = groupViewItems(VIEW_ITEMS);
+    const icons = grouped.flatMap((group) => group.items.map((item) => item.icon));
+
+    // MenuPage is a Server Component and MenuViewSections is a Client
+    // Component. React cannot serialize component functions in their props.
+    expect(icons.every((icon) => typeof icon === "string")).toBe(true);
+  });
+
   it("buckets every item, losing none", () => {
     const grouped = groupViewItems(VIEW_ITEMS);
     const keys = grouped.flatMap((g) => g.items.map((i) => i.key));
