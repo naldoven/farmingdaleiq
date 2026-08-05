@@ -21,3 +21,4 @@ export { SearchBar, type SearchBarProps } from "./search-bar";
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from "./status-badge";
 export { ProgressBar, type ProgressBarProps } from "./progress-bar";
 export { SectionCard, type SectionCardProps } from "./section-card";
+export { useKanbanDrag, KanbanGhostCard, type KanbanDragApi, type KanbanDragOptions } from "./kanban-drag";

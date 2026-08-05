@@ -12,15 +12,18 @@ export interface HScrollProps extends React.HTMLAttributes<HTMLDivElement> {
  * single row that scrolls sideways inside its own container, so the page body
  * never scrolls horizontally. Scrollbar is hidden; edge padding is included so
  * the first/last tiles are not clipped.
+ *
+ * forwardRef so a Kanban board can attach its scroll container ref here (for
+ * edge auto-scroll while dragging a card, components/mobile/kanban-drag.tsx)
+ * without giving up this shared scoreboard-row primitive.
  */
-export function HScroll({
-  snap = "start",
-  className,
-  children,
-  ...props
-}: HScrollProps) {
+export const HScroll = React.forwardRef<HTMLDivElement, HScrollProps>(function HScroll(
+  { snap = "start", className, children, ...props },
+  ref,
+) {
   return (
     <div
+      ref={ref}
       className={cn(
         "no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1",
         snap === "none" && "snap-none",
@@ -46,4 +49,4 @@ export function HScroll({
       )}
     </div>
   );
-}
+});
