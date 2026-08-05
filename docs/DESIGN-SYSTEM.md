@@ -89,9 +89,10 @@ action, `--danger` for alert and overdue.
   top header. Page content scrolls between them with `pb-24` so nothing hides
   behind the bar. The notification bell is in the header, not a tab.
 - **Desktop (>= 768px):** the left sidebar returns; the bottom bar and mobile
-  header are hidden. Dashboard screens (Home / Team / Menu) should render as a
-  single centered column, roughly `max-w-[480px]`. Data-heavy screens may go
-  wider.
+  header are hidden. The shell still renders a small Back link above content on
+  sub-pages where the mobile header would show a back chevron. Dashboard screens
+  (Home / Team / Menu) should render as a single centered column, roughly
+  `max-w-[480px]`. Data-heavy screens may go wider.
 - Page canvas is `bg-canvas` (light gray). Cards are white, rounded, with
   `shadow-card`, separated by 16px gaps, inside 16px page padding.
 
@@ -112,8 +113,9 @@ import { SectionCard, ListRow, StatTile, ProgressBar } from "@/components/mobile
 ### AppShell
 
 Responsive shell. Renders the mobile header + bottom tab bar under `md`, the
-sidebar at `md+`, and the page content in the main slot. Mounted once by
-`app/(app)/layout.tsx`; screens do not render it.
+sidebar at `md+`, a desktop Back link for backable sub-pages, and the page
+content in the main slot. Mounted once by `app/(app)/layout.tsx`; screens do not
+render it.
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |

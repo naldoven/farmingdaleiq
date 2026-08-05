@@ -2,8 +2,10 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mockNavigation = vi.hoisted(() => ({ pathname: "/" }));
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/",
+  usePathname: () => mockNavigation.pathname,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
@@ -11,7 +13,10 @@ import { AppShell } from "./app-shell";
 
 const user = { name: "Dana Cruz", email: "dana@example.com", roleName: "Team Lead" };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  mockNavigation.pathname = "/";
+});
 
 describe("AppShell responsive nav", () => {
   it("renders the bottom tab bar (and no desktop sidebar) in mobile layout", () => {
@@ -51,5 +56,29 @@ describe("AppShell responsive nav", () => {
     // "Farmingdale" also appears in the wordmark, so scope to the unique address.
     expect(screen.getByText(/1991 Broadhollow Rd/)).toBeInTheDocument();
     expect(screen.getAllByText("Farmingdale").length).toBeGreaterThan(0);
+  });
+
+  it("renders a desktop back link for sub-pages that mobile already treats as backable", () => {
+    mockNavigation.pathname = "/checklists/templates";
+
+    render(
+      <AppShell user={user} layout="desktop">
+        <p>content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/checklists");
+  });
+
+  it("does not add a desktop back link on primary tab routes", () => {
+    mockNavigation.pathname = "/tasks";
+
+    render(
+      <AppShell user={user} layout="desktop">
+        <p>content</p>
+      </AppShell>,
+    );
+
+    expect(screen.queryByRole("link", { name: "Back" })).not.toBeInTheDocument();
   });
 });
