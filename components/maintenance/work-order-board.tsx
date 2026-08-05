@@ -51,8 +51,10 @@ function columnLabel(status: string): string {
 }
 
 function cardCaption(wo: WorkOrderRow): string {
-  const assignee = wo.assigned_user_name ?? wo.vendor_name;
-  return [wo.equipment_name, assignee ? `Assigned to ${assignee}` : "Unassigned"].filter(Boolean).join(" · ");
+  // A vendor gets its own badge (below) instead of being named again here --
+  // an in-house assignee doesn't get a badge, so it's still named in text.
+  const assignmentText = wo.vendor_name ? null : wo.assigned_user_name ? `Assigned to ${wo.assigned_user_name}` : "Unassigned";
+  return [wo.equipment_name, assignmentText].filter(Boolean).join(" · ");
 }
 
 export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
@@ -169,10 +171,18 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
                             <GripVertical className="h-4 w-4 shrink-0 text-muted-ink" aria-hidden="true" />
                           )}
                         </div>
-                        {(wo.priority === "high" || wo.priority === "urgent") && (
-                          <StatusBadge tone={wo.priority === "urgent" ? "danger" : "warning"}>
-                            {wo.priority}
-                          </StatusBadge>
+                        {(wo.priority === "high" || wo.priority === "urgent" || wo.vendor_name) && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {(wo.priority === "high" || wo.priority === "urgent") && (
+                              <StatusBadge tone={wo.priority === "urgent" ? "danger" : "warning"}>
+                                {wo.priority}
+                              </StatusBadge>
+                            )}
+                            {/* Whoever's handling this at a glance -- Clayton
+                                Fixtures, Parts Town, CFL, etc. -- without
+                                opening the card. */}
+                            {wo.vendor_name && <StatusBadge tone="info">{wo.vendor_name}</StatusBadge>}
+                          </div>
                         )}
                         <p className="mt-1 text-[13px] text-muted-ink">{cardCaption(wo)}</p>
                       </div>
