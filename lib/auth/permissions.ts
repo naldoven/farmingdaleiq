@@ -102,16 +102,24 @@ export class PermissionError extends Error {
  * (including "not signed in") so callers fail closed.
  */
 export async function hasPermission(key: PermissionKey): Promise<boolean> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("has_permission", {
-    permission_key: key,
-  });
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("has_permission", {
+      permission_key: key,
+    });
 
-  if (error) {
+    if (error) {
+      return false;
+    }
+
+    return Boolean(data);
+  } catch {
+    // A thrown transport/session error must fail closed too. Menu and shell
+    // pages fan out several permission checks; allowing one rejected request
+    // to escape would take down the entire page instead of merely hiding the
+    // destinations whose access could not be verified.
     return false;
   }
-
-  return Boolean(data);
 }
 
 /**
