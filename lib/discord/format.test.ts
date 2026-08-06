@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDiscordMessage } from "./format";
+import { DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
 
 describe("buildDiscordMessage", () => {
+  it("does not advertise dormant feature routes", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("broadcast");
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("break_overdue");
+  });
+
   it("builds a message with title and detail", () => {
     const msg = buildDiscordMessage("maint_request", {
       title: "Walk-in freezer won't cool",

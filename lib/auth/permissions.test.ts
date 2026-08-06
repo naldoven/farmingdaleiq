@@ -8,7 +8,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: createClientMock,
 }));
 
-import { PERMISSION_KEYS, hasPermission } from "./permissions";
+import { ALL_PERMISSION_KEYS, PERMISSION_KEYS, hasPermission } from "./permissions";
 
 beforeEach(() => {
   createClientMock.mockReset();
@@ -26,9 +26,25 @@ describe("PERMISSION_KEYS", () => {
       expect(key).toMatch(/^[a-z_]+\.[a-z_]+$/);
     }
   });
+
+  it("keeps dormant feature permissions out of the role editor", () => {
+    expect(ALL_PERMISSION_KEYS).toContain("feed.post_broadcast");
+    expect(ALL_PERMISSION_KEYS).toContain("breaks.view");
+    expect(ALL_PERMISSION_KEYS).toContain("setups.view");
+    expect(PERMISSION_KEYS).not.toContain("feed.post_broadcast");
+    expect(PERMISSION_KEYS).not.toContain("breaks.view");
+    expect(PERMISSION_KEYS).not.toContain("setups.view");
+  });
 });
 
 describe("hasPermission", () => {
+  it("fails dormant feature permissions without querying Supabase", async () => {
+    await expect(hasPermission("feed.post_broadcast")).resolves.toBe(false);
+    await expect(hasPermission("breaks.view")).resolves.toBe(false);
+    await expect(hasPermission("setups.view")).resolves.toBe(false);
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
   it("returns the RPC grant when the permission check succeeds", async () => {
     createClientMock.mockResolvedValue({
       rpc: vi.fn().mockResolvedValue({ data: true, error: null }),

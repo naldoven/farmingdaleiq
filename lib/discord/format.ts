@@ -1,5 +1,6 @@
 import type { EventKey, EventPayload } from "@/lib/events/bus";
 import type { DiscordWebhookMessage } from "@/lib/discord/client";
+import { enabledEventKeys } from "@/lib/features";
 
 /**
  * Event keys Discord auto-posts (ARCHITECTURE.md "Discord integration" >
@@ -7,7 +8,7 @@ import type { DiscordWebhookMessage } from "@/lib/discord/client";
  * the full set of `discord_event_routes` rows S10 seeds/manages via
  * `/settings/discord`.
  */
-export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = [
+export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Overdue & incomplete -> leaders channel
   "task_overdue",
   "checklist_missed",
@@ -33,7 +34,7 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = [
   // discord_event_routes table, an admin just has to opt in explicitly.
   "infraction_issued",
   "disciplinary_triggered",
-];
+]);
 
 /**
  * Privacy rule (ARCHITECTURE.md "Discord integration" > Privacy rule):

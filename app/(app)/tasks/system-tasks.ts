@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { emitEvent } from "@/lib/events/bus";
 import { buildTaskAssignedEvent } from "@/app/(app)/tasks/events";
 import type { Database, Json } from "@/lib/db/types";
+import { enabledEventKeys, isEventFeatureEnabled } from "@/lib/features";
 
 /**
  * Event-bus consumer that turns cross-module events into system-created
@@ -39,11 +40,11 @@ import type { Database, Json } from "@/lib/db/types";
 
 export type SystemTaskEventKey = "reward_claim" | "follow_up_assigned" | "setup_posted";
 
-export const SYSTEM_TASK_EVENT_KEYS: SystemTaskEventKey[] = [
+export const SYSTEM_TASK_EVENT_KEYS: SystemTaskEventKey[] = enabledEventKeys([
   "reward_claim",
   "follow_up_assigned",
   "setup_posted",
-];
+]);
 
 export interface AppEventRow {
   id: string;
@@ -272,7 +273,10 @@ export async function processTaskEvents(
   if (eventsError) {
     throw new Error(`processTaskEvents: could not load events: ${eventsError.message}`);
   }
-  if (!events || events.length === 0) {
+  const activeEvents = ((events ?? []) as AppEventRow[]).filter((event) =>
+    isEventFeatureEnabled(event.event_key),
+  );
+  if (activeEvents.length === 0) {
     return { created: 0, skipped: 0 };
   }
 
@@ -282,7 +286,7 @@ export async function processTaskEvents(
   // traceable instead of a generic "Follow-up needed".
   const followUpByAnswerId = await resolveFollowUps(
     supabase,
-    (events as AppEventRow[])
+    activeEvents
       .filter((e) => e.event_key === "follow_up_assigned")
       .map((e) => followUpSourceAnswerId((e.payload ?? {}) as Record<string, unknown>))
       .filter((v): v is string => Boolean(v)),
@@ -308,7 +312,7 @@ export async function processTaskEvents(
   let created = 0;
   let skipped = 0;
 
-  for (const event of events as AppEventRow[]) {
+  for (const event of activeEvents) {
     if (alreadyHandled.has(event.id)) {
       skipped += 1;
       continue;

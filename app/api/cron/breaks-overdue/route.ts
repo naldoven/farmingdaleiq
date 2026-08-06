@@ -21,8 +21,13 @@
 import { NextResponse } from "next/server";
 
 import { markOverdueBreaks } from "@/lib/breaks/overdue";
+import { APP_FEATURES } from "@/lib/features";
 
 export async function GET(request: Request) {
+  if (!APP_FEATURES.breaks) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 403 });

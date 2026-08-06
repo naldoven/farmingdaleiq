@@ -9,6 +9,7 @@ import type { LucideIcon } from "lucide-react";
 
 import type { ActionPillTone, ListRowTone } from "@/components/mobile";
 import type { PermissionKey } from "@/lib/auth/permissions";
+import { APP_FEATURES } from "@/lib/features";
 import { findNavItem } from "@/lib/nav/page-map";
 
 /** One tappable "Send" or "Assign" action pill on the Menu hub. */
@@ -76,9 +77,8 @@ export interface MenuViewSection {
 }
 
 /**
- * The "Send" row: quick actions that post something (a recognition, an
- * infraction, a broadcast). Recognition and Broadcast open the forms already
- * on the Team Feed page; Infraction opens the issue form on Accountability.
+ * The "Send" row: quick actions that post something. Recognition opens the
+ * form already on the Team Feed page; Infraction opens Accountability.
  * Gated by the same permissions those pages already use to hide their forms.
  */
 export const SEND_ACTIONS: MenuActionItem[] = [
@@ -98,14 +98,18 @@ export const SEND_ACTIONS: MenuActionItem[] = [
     tone: "infraction",
     permission: "accountability.issue",
   },
-  {
-    key: "broadcast",
-    label: "Broadcast",
-    href: "/team",
-    icon: Megaphone,
-    tone: "broadcast",
-    permission: "feed.post_broadcast",
-  },
+  ...(APP_FEATURES.broadcast
+    ? [
+        {
+          key: "broadcast",
+          label: "Broadcast",
+          href: "/team",
+          icon: Megaphone,
+          tone: "broadcast",
+          permission: "feed.post_broadcast",
+        } satisfies MenuActionItem,
+      ]
+    : []),
 ];
 
 /** The "Assign" row: create/manage checklists and tasks. Always visible. */
@@ -137,8 +141,12 @@ export const ASSIGN_ACTIONS: MenuActionItem[] = [
 export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "settings", label: "Admin / Settings", href: "/settings", icon: "settings", iconTone: "neutral", section: "Admin" },
   { key: "checklists", label: "Checklists", href: "/checklists", icon: "checklists", iconTone: "neutral", section: "Daily Ops" },
-  { key: "setups", label: "Setups", href: "/setups", icon: "setups", iconTone: "neutral", section: "Daily Ops" },
-  { key: "breaks", label: "Breaks", href: "/breaks", icon: "breaks", iconTone: "neutral", section: "Daily Ops" },
+  ...(APP_FEATURES.setups
+    ? [{ key: "setups", label: "Setups", href: "/setups", icon: "setups", iconTone: "neutral", section: "Daily Ops" } satisfies MenuViewItem]
+    : []),
+  ...(APP_FEATURES.breaks
+    ? [{ key: "breaks", label: "Breaks", href: "/breaks", icon: "breaks", iconTone: "neutral", section: "Daily Ops" } satisfies MenuViewItem]
+    : []),
   { key: "ratings", label: "Ratings", href: "/ratings", icon: "ratings", iconTone: "neutral", section: "People & Training" },
   { key: "training", label: "Training", href: "/training", icon: "training", iconTone: "neutral", section: "People & Training" },
   { key: "waste", label: "Waste", href: "/waste", icon: "waste", iconTone: "neutral", section: "Daily Ops" },

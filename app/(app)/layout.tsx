@@ -4,6 +4,7 @@ import { AppShell } from "@/components/mobile/app-shell";
 import { hasPermission } from "@/lib/auth/permissions";
 import { navPermissionKeys } from "@/lib/nav/page-map";
 import { createClient } from "@/lib/supabase/server";
+import { isEventFeatureEnabled } from "@/lib/features";
 
 export default async function AuthenticatedLayout({
   children,
@@ -49,12 +50,16 @@ export default async function AuthenticatedLayout({
   // Header bell unread dot (components/mobile/notification-bell.tsx). Same
   // `notifications` table + RLS (user_id = auth.uid()) the notification
   // center itself reads (app/(app)/notifications/page.tsx); a `head: true`
-  // count avoids fetching rows just to know whether any are unread.
-  const { count: unreadCount } = await supabase
+  // Fetch only unread kinds, then exclude events owned by dormant features so
+  // a hidden historical notification cannot leave an unexplained red dot.
+  const { data: unreadNotifications } = await supabase
     .from("notifications")
-    .select("id", { count: "exact", head: true })
+    .select("kind")
     .eq("user_id", user.id)
     .is("read_at", null);
+  const hasVisibleUnread = (unreadNotifications ?? []).some((notification) =>
+    isEventFeatureEnabled(notification.kind),
+  );
 
   // Nav gating (S4): resolve which permission-gated nav items this user can
   // actually reach, using the same has_permission() helper each destination
@@ -67,7 +72,7 @@ export default async function AuthenticatedLayout({
   return (
     <AppShell
       user={currentUser}
-      hasUnread={Boolean(unreadCount)}
+      hasUnread={hasVisibleUnread}
       navPermissions={navPermissions}
     >
       {children}

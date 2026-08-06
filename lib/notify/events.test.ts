@@ -98,7 +98,7 @@ describe("processAppEvents", () => {
     expect(db.rowsOf("notifications")).toHaveLength(1);
   });
 
-  it("skips events with no resolvable recipient rather than throwing", async () => {
+  it("ignores events owned by dormant features", async () => {
     const { client } = makeClient({
       app_events: [{ id: "evt-1", event_key: "broadcast", payload: { title: "Store closes early Friday" } }],
       notifications: [],
@@ -107,7 +107,7 @@ describe("processAppEvents", () => {
     });
 
     const result = await processAppEvents(200, client);
-    expect(result.scanned).toBe(1);
+    expect(result.scanned).toBe(0);
     expect(result.notificationsCreated).toBe(0);
   });
 
@@ -245,7 +245,7 @@ describe("processAppEvents", () => {
     expect(recipients).toEqual(["u1", "u2", "u3"]);
   });
 
-  it("fans a broadcast (no explicit recipient) out to every active profile", async () => {
+  it("does not fan a dormant broadcast out to active profiles", async () => {
     const { db, client } = makeClient({
       app_events: [
         { id: "evt-1", event_key: "broadcast", created_at: "2026-07-07T10:00:00.000Z", payload: { title: "Store closes early Friday" } },
@@ -262,9 +262,9 @@ describe("processAppEvents", () => {
 
     const result = await processAppEvents(200, client);
 
-    expect(result.notificationsCreated).toBe(2);
+    expect(result.notificationsCreated).toBe(0);
     const recipients = db.rowsOf("notifications").map((n) => n.user_id).sort();
-    expect(recipients).toEqual(["u1", "u2"]);
+    expect(recipients).toEqual([]);
   });
 
   it("honors a per-instance discord_channel_id override over the global route (parity #8)", async () => {
@@ -335,7 +335,7 @@ describe("processAppEvents", () => {
       app_events: [
         {
           id: "evt-1",
-          event_key: "broadcast",
+          event_key: "task_assigned",
           created_at: "2026-07-07T10:00:00.000Z",
           payload: { user_ids: ["u-good", "u-poison"], title: "All hands" },
         },

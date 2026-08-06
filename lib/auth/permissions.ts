@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isPermissionFeatureEnabled } from "@/lib/features";
 
 /**
  * Every permission key seeded by supabase/migrations. Grouped by module so
@@ -6,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
  * RLS + requirePermission() below are what actually enforce it (see
  * ARCHITECTURE.md "Technical architecture" — has_permission(key) SQL helper).
  */
-export const PERMISSION_KEYS = [
+export const ALL_PERMISSION_KEYS = [
   // People & teams
   "people.manage",
   "people.view",
@@ -84,7 +85,12 @@ export const PERMISSION_KEYS = [
   "notifications.view",
 ] as const;
 
-export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+export type PermissionKey = (typeof ALL_PERMISSION_KEYS)[number];
+
+/** Keys exposed in the role editor; dormant modules stay out of the UI. */
+export const PERMISSION_KEYS: PermissionKey[] = ALL_PERMISSION_KEYS.filter(
+  isPermissionFeatureEnabled,
+);
 
 export class PermissionError extends Error {
   key: PermissionKey;
@@ -102,6 +108,8 @@ export class PermissionError extends Error {
  * (including "not signed in") so callers fail closed.
  */
 export async function hasPermission(key: PermissionKey): Promise<boolean> {
+  if (!isPermissionFeatureEnabled(key)) return false;
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("has_permission", {

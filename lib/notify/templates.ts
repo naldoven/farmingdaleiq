@@ -1,4 +1,5 @@
 import type { EventKey, EventPayload } from "@/lib/events/bus";
+import { enabledEventKeys } from "@/lib/features";
 
 export interface NotificationContent {
   title: string;
@@ -24,7 +25,7 @@ export interface NotificationContent {
  * in-app/push notification of their own request's outcome. Adding the keys
  * here makes the notification drain resolve that requester recipient.
  */
-export const NOTIFIABLE_EVENT_KEYS: EventKey[] = [
+export const NOTIFIABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   "task_assigned",
   "setup_posted",
   "infraction_issued",
@@ -41,7 +42,7 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = [
   "top_performer",
   "maint_request",
   "work_order_status",
-];
+]);
 
 /**
  * Accountability privacy rule (ARCHITECTURE.md "Discord integration" >

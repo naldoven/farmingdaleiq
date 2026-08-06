@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNotificationContent } from "./templates";
+import { NOTIFIABLE_EVENT_KEYS, buildNotificationContent } from "./templates";
 
 describe("buildNotificationContent", () => {
+  it("does not fan out dormant feature notifications", () => {
+    expect(NOTIFIABLE_EVENT_KEYS).not.toContain("broadcast");
+    expect(NOTIFIABLE_EVENT_KEYS).not.toContain("setup_posted");
+  });
+
   it("prefers payload title/body/link over defaults", () => {
     const content = buildNotificationContent("task_assigned", {
       title: "Clean the fryer",
