@@ -34,6 +34,7 @@ import {
 import { summarizeBreaks, summarizeToDos, type BreakSummaryInput, type DueSoonSource } from "@/app/(app)/team/dashboard-logic";
 import { hasPermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt } from "@/lib/breaks/entitlement";
+import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
 
 // NOTE: "today" is resolved against the STORE's timezone below, not
@@ -78,8 +79,7 @@ function AssignLink({ href, label }: { href: string; label: string }) {
 /**
  * /team -- the Team daypart dashboard (KitchenIQ mobile redesign,
  * docs/DESIGN-SYSTEM.md). Replaces the old feed-only /team; the feed itself
- * moved to /team/feed (kept fully working, actions untouched) and is
- * summarized here by the Broadcasts card.
+ * moved to /team/feed.
  *
  * Every section is permission-gated the same way its source page already is
  * (setups.view, tasks.complete/checklists.complete, accountability.manage/
@@ -123,14 +123,18 @@ export default async function TeamPage({
     canViewOwnAccountability,
     canViewBreaks,
   ] = await Promise.all([
-    hasPermission("setups.view"),
+    APP_FEATURES.setups
+      ? hasPermission("setups.view")
+      : Promise.resolve(false),
     hasPermission("tasks.complete"),
     hasPermission("checklists.complete"),
     hasPermission("waste.manage"),
     hasPermission("reports.view"),
     hasPermission("accountability.manage"),
     hasPermission("accountability.view_own"),
-    hasPermission("breaks.view"),
+    APP_FEATURES.breaks
+      ? hasPermission("breaks.view")
+      : Promise.resolve(false),
   ]);
   // Same tiering as /waste's own rollup tab (app/(app)/waste/page.tsx):
   // waste.manage or the one-tier-lower reports.view.
@@ -173,7 +177,14 @@ export default async function TeamPage({
   if (canDoTasks || canDoChecklists) {
     const [{ data: tasks }, { data: runs }, { data: templates }] = await Promise.all([
       canDoTasks
-        ? supabase.from("tasks").select("id, title, due_at, status").eq("date", today).neq("status", "cancelled")
+        ? (APP_FEATURES.setups
+            ? supabase.from("tasks").select("id, title, due_at, status").eq("date", today).neq("status", "cancelled")
+            : supabase
+                .from("tasks")
+                .select("id, title, due_at, status")
+                .eq("date", today)
+                .neq("status", "cancelled")
+                .neq("kind", "lead_duty"))
         : Promise.resolve({ data: [] as { id: string; title: string; due_at: string | null; status: string }[] }),
       canDoChecklists
         ? supabase.from("checklist_runs").select("id, template_id, day_part_id, status").eq("run_date", today)
@@ -319,12 +330,14 @@ export default async function TeamPage({
 
   // Broadcasts: recent broadcast-kind feed posts only (recognitions still
   // live on the full /team/feed).
-  const { data: broadcastPosts } = await supabase
-    .from("feed_posts")
-    .select("id, author_id, body, created_at")
-    .eq("kind", "broadcast")
-    .order("created_at", { ascending: false })
-    .limit(3);
+  const { data: broadcastPosts } = APP_FEATURES.broadcast
+    ? await supabase
+        .from("feed_posts")
+        .select("id, author_id, body, created_at")
+        .eq("kind", "broadcast")
+        .order("created_at", { ascending: false })
+        .limit(3)
+    : { data: [] as { id: string; author_id: string | null; body: string | null; created_at: string }[] };
   const broadcastAuthorIds = [
     ...new Set((broadcastPosts ?? []).map((p) => p.author_id).filter((id): id is string => Boolean(id))),
   ];
@@ -499,23 +512,25 @@ export default async function TeamPage({
         </SectionCard>
       )}
 
-      <SectionCard title="Broadcasts" expandHref="/team/feed">
-        {(broadcastPosts ?? []).length === 0 ? (
-          <p className="text-[13px] text-muted-ink">No broadcasts yet.</p>
-        ) : (
-          <div className="-mx-4 flex flex-col divide-y divide-line">
-            {(broadcastPosts ?? []).map((post) => (
-              <ListRow
-                key={post.id}
-                icon={Megaphone}
-                iconTone="warning"
-                title={post.author_id ? (broadcastAuthorNameById.get(post.author_id) ?? "A leader") : "A leader"}
-                description={post.body ?? undefined}
-              />
-            ))}
-          </div>
-        )}
-      </SectionCard>
+      {APP_FEATURES.broadcast && (
+        <SectionCard title="Broadcasts" expandHref="/team/feed">
+          {(broadcastPosts ?? []).length === 0 ? (
+            <p className="text-[13px] text-muted-ink">No broadcasts yet.</p>
+          ) : (
+            <div className="-mx-4 flex flex-col divide-y divide-line">
+              {(broadcastPosts ?? []).map((post) => (
+                <ListRow
+                  key={post.id}
+                  icon={Megaphone}
+                  iconTone="warning"
+                  title={post.author_id ? (broadcastAuthorNameById.get(post.author_id) ?? "A leader") : "A leader"}
+                  description={post.body ?? undefined}
+                />
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
 
       {canViewBreaks && (
         <SectionCard title="Breaks" expandHref="/breaks">

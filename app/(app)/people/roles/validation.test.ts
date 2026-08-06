@@ -33,6 +33,15 @@ describe("setRolePermissionSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects permissions belonging to dormant features", () => {
+    for (const permissionKey of ["feed.post_broadcast", "breaks.view", "setups.view"]) {
+      expect(
+        setRolePermissionSchema.safeParse({ roleId, permissionKey, granted: true }).success,
+        permissionKey,
+      ).toBe(false);
+    }
+  });
+
   it("rejects a non-uuid roleId", () => {
     const result = setRolePermissionSchema.safeParse({
       roleId: "team-leader",

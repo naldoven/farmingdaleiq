@@ -43,7 +43,7 @@ describe("visibleActions", () => {
       "accountability.issue": true,
       "feed.post_broadcast": true,
     });
-    expect(result.map((a) => a.key)).toEqual(["recognition", "infraction", "broadcast"]);
+    expect(result.map((a) => a.key)).toEqual(["recognition", "infraction"]);
   });
 });
 
@@ -105,8 +105,6 @@ describe("menu data", () => {
     expect(keys).toEqual([
       "settings",
       "checklists",
-      "setups",
-      "breaks",
       "ratings",
       "training",
       "waste",
@@ -121,6 +119,12 @@ describe("menu data", () => {
       "reporting",
       "notifications",
     ]);
+  });
+
+  it("does not expose dormant features", () => {
+    expect(SEND_ACTIONS.map((item) => item.key)).not.toContain("broadcast");
+    expect(VIEW_ITEMS.map((item) => item.key)).not.toContain("setups");
+    expect(VIEW_ITEMS.map((item) => item.key)).not.toContain("breaks");
   });
 
   it("files every module under a known section", () => {
@@ -160,9 +164,9 @@ describe("groupViewItems", () => {
     expect(grouped.map((g) => g.section)).toEqual([...MENU_SECTIONS]);
   });
 
-  it("turns 17 rows into a handful of headings", () => {
+  it("turns the module list into a handful of headings", () => {
     const grouped = groupViewItems(VIEW_ITEMS);
-    expect(grouped.length).toBeLessThan(VIEW_ITEMS.length / 3);
+    expect(grouped.length).toBeLessThanOrEqual(5);
   });
 
   it("drops a section whose modules are all gated away", () => {

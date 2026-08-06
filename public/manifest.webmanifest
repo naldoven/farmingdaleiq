@@ -2,7 +2,7 @@
   "id": "/",
   "name": "FarmingdaleIQ",
   "short_name": "FarmingdaleIQ",
-  "description": "Store operations app for the Farmingdale Chick-fil-A: checklists, tasks, setups, breaks, ratings, training, tokens, and more.",
+  "description": "Store operations app for the Farmingdale Chick-fil-A: checklists, tasks, ratings, training, tokens, and more.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

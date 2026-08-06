@@ -13,6 +13,7 @@ import {
 
 import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
+import { APP_FEATURES } from "@/lib/features";
 
 /**
  * /settings — Admin hub (ARCHITECTURE.md page map: "Day-parts, earning
@@ -24,13 +25,9 @@ import { requirePermission } from "@/lib/auth/permissions";
  *
  * Visual/layout only — this hub creates no new business logic, tables, or
  * permissions. `settings.manage` gates the hub itself the same as before;
- * each destination re-checks its own permission on arrival. Day-parts and
- * break rules (S3's Setups & Shifts stream) have no admin editor anywhere
- * in the app yet — they're seeded, read-only data (supabase/migrations/
- * 20260707001900_seed_store_config.sql) — so those two rows are flagged
- * "Coming soon" rather than linked to a page that doesn't exist. Areas
- * (position groups) and Setups (templates) both live on `/setups/templates`
- * and `/setups`, which already exist, so those stay real links. Token
+ * each destination re-checks its own permission on arrival. Day-parts have
+ * no admin editor yet, so that row is flagged "Coming soon" rather than
+ * linked to a page that doesn't exist. Token
  * earning rules already have a real admin editor — `EarningRulesAdmin` on
  * `/tokens` (app/(app)/tokens/page.tsx) — so that row links there instead of
  * repeating the old placeholder (PLAN.md hard boundary: this stream doesn't
@@ -52,22 +49,24 @@ export default async function SettingsPage() {
             description="Infraction types, the disciplinary ladder, and period settings."
             href="/accountability"
           />
-          <ListRow
-            icon={Layers}
-            iconTone="info"
-            title="Areas"
-            description="Position groups and the store layout editor."
-            href="/setups/templates"
-          />
-          <ListRow
-            icon={Coffee}
-            iconTone="neutral"
-            title="Break Rules"
-            description="Rest and meal break entitlements by shift length."
-            trailing={
-              <StatusBadge tone="neutral">Coming soon</StatusBadge>
-            }
-          />
+          {APP_FEATURES.setups && (
+            <ListRow
+              icon={Layers}
+              iconTone="info"
+              title="Areas"
+              description="Position groups and the store layout editor."
+              href="/setups/templates"
+            />
+          )}
+          {APP_FEATURES.breaks && (
+            <ListRow
+              icon={Coffee}
+              iconTone="neutral"
+              title="Break Rules"
+              description="Rest and meal break entitlements by shift length."
+              trailing={<StatusBadge tone="neutral">Coming soon</StatusBadge>}
+            />
+          )}
           <ListRow
             icon={Clock}
             iconTone="neutral"
@@ -91,13 +90,15 @@ export default async function SettingsPage() {
             description="Roles, permissions, and account access."
             href="/people/roles"
           />
-          <ListRow
-            icon={LayoutGrid}
-            iconTone="info"
-            title="Setups"
-            description="Today's setup board and shift assignments."
-            href="/setups"
-          />
+          {APP_FEATURES.setups && (
+            <ListRow
+              icon={LayoutGrid}
+              iconTone="info"
+              title="Setups"
+              description="Today's setup board and shift assignments."
+              href="/setups"
+            />
+          )}
           <ListRow
             icon={Users2}
             iconTone="success"

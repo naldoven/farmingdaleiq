@@ -8,6 +8,7 @@
  */
 
 import type { PermissionKey } from "@/lib/auth/permissions";
+import { APP_FEATURES } from "@/lib/features";
 
 export interface NavItem {
   href: string;
@@ -56,6 +57,39 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+const SETUPS_AND_SHIFTS_ITEMS: NavItem[] = [
+  ...(APP_FEATURES.setups
+    ? [
+        {
+          href: "/setups",
+          permission: "setups.view" as const,
+          label: "Setup board",
+          description:
+            "Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes.",
+          owner: "S3",
+        },
+        {
+          href: "/setups/templates",
+          permission: "setups.manage" as const,
+          label: "Setup templates",
+          description: "Manage setup templates, groups, positions, and the store layout editor.",
+          owner: "S3",
+        },
+      ]
+    : []),
+  ...(APP_FEATURES.breaks
+    ? [
+        {
+          href: "/breaks",
+          permission: "breaks.view" as const,
+          label: "Breaks",
+          description: "Break manager: today's entitlements, sequence, authorize/start/complete, overdue alerts.",
+          owner: "S3",
+        },
+      ]
+    : []),
+];
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Home",
@@ -77,7 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/menu",
         label: "Menu",
         description:
-          "Mobile nav hub behind the bottom Menu tab: send recognitions/infractions/broadcasts, assign checklists/tasks, and browse every module.",
+          "Mobile nav hub behind the bottom Menu tab: send recognition and accountability actions, assign checklists/tasks, and browse available modules.",
         owner: "P2 wiring",
       },
     ],
@@ -115,34 +149,9 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  {
-    label: "Setups & Shifts",
-    icon: "setups",
-    items: [
-      {
-        href: "/setups",
-        permission: "setups.view",
-        label: "Setup board",
-        description:
-          "Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes.",
-        owner: "S3",
-      },
-      {
-        href: "/setups/templates",
-        permission: "setups.manage",
-        label: "Setup templates",
-        description: "Manage setup templates, groups, positions, and the store layout editor.",
-        owner: "S3",
-      },
-      {
-        href: "/breaks",
-        permission: "breaks.view",
-        label: "Breaks",
-        description: "Break manager: today's entitlements, sequence, authorize/start/complete, overdue alerts.",
-        owner: "S3",
-      },
-    ],
-  },
+  ...(SETUPS_AND_SHIFTS_ITEMS.length > 0
+    ? [{ label: "Setups & Shifts", icon: "setups" as const, items: SETUPS_AND_SHIFTS_ITEMS }]
+    : []),
   {
     label: "Ratings",
     icon: "ratings",
@@ -206,7 +215,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         href: "/team",
         label: "Team Feed",
-        description: "Feed (recognitions, top performers, broadcasts), likes/comments.",
+        description: "Feed (recognitions and top performers), likes/comments.",
         owner: "S7",
       },
     ],

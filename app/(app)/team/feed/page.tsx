@@ -5,18 +5,17 @@ import { BroadcastForm } from "@/components/feed/broadcast-form";
 import { PostCard, type FeedPostData } from "@/components/feed/post-card";
 import { RecognitionForm } from "@/components/feed/recognition-form";
 import { hasPermission } from "@/lib/auth/permissions";
+import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * /team/feed -- the full Team Feed (recognitions, top performers,
- * broadcasts), likes/comments (ARCHITECTURE.md page map). No direct/group
+ * /team/feed -- the full Team Feed (recognitions and top performers),
+ * likes/comments (ARCHITECTURE.md page map). No direct/group
  * chat -- out of scope per "Team Feed" section.
  *
  * This is the redesign-era home of what used to live at /team directly
  * (KitchenIQ mobile redesign, docs/DESIGN-SYSTEM.md): /team is now the
- * daypart dashboard, with a "Broadcasts" summary card linking here for the
- * full feed. All the actual feed logic (recognitions, broadcasts, likes,
- * comments) is untouched -- only the page shell moved.
+ * daypart dashboard. Feed interaction logic remains on this page.
  */
 export default async function TeamFeedPage() {
   const supabase = await createClient();
@@ -30,15 +29,22 @@ export default async function TeamFeedPage() {
 
   const [canRecognize, canBroadcast] = await Promise.all([
     hasPermission("tokens.award"),
-    hasPermission("feed.post_broadcast"),
+    APP_FEATURES.broadcast
+      ? hasPermission("feed.post_broadcast")
+      : Promise.resolve(false),
   ]);
 
+  let postsQuery = supabase
+    .from("feed_posts")
+    .select("id, kind, author_id, subject_user_id, body, tokens_awarded, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (!APP_FEATURES.broadcast) {
+    postsQuery = postsQuery.neq("kind", "broadcast");
+  }
+
   const [{ data: posts }, { data: recognitionSubjects }] = await Promise.all([
-    supabase
-      .from("feed_posts")
-      .select("id, kind, author_id, subject_user_id, body, tokens_awarded, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50),
+    postsQuery,
     canRecognize
       ? supabase.from("profiles").select("id, name").eq("active", true).neq("id", user.id).order("name")
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
@@ -119,7 +125,9 @@ export default async function TeamFeedPage() {
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
-      <p className="text-[15px] text-muted-ink">Recognitions, Top Performer shoutouts, and broadcasts.</p>
+      <p className="text-[15px] text-muted-ink">
+        Recognitions and Top Performer shoutouts.
+      </p>
 
       {canRecognize && (
         <section className="flex flex-col gap-3">

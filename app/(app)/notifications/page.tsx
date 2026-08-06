@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { NotificationList } from "@/components/notifications/notification-list";
 import { PushOptIn } from "@/components/notifications/push-opt-in";
+import { isEventFeatureEnabled } from "@/lib/features";
 
 /**
  * /notifications — notification center (ARCHITECTURE.md page map:
@@ -35,10 +36,14 @@ export default async function NotificationsPage() {
         .limit(100)
     : { data: [] };
 
+  const visibleNotifications = (notifications ?? []).filter((notification) =>
+    isEventFeatureEnabled(notification.kind),
+  );
+
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
       <PushOptIn />
-      <NotificationList notifications={notifications ?? []} />
+      <NotificationList notifications={visibleNotifications} />
     </div>
   );
 }

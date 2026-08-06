@@ -3,6 +3,7 @@ import { resolveAssigneeLabel, type TaskRowView } from "@/components/tasks/task-
 import { type TaskTemplateRowView } from "@/components/tasks/task-templates-table";
 import type { NamedOption } from "@/components/tasks/delegate-task-control";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -31,6 +32,17 @@ export default async function TasksPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  let tasksQuery = supabase
+    .from("tasks")
+    .select(
+      "id, kind, title, day_part_id, due_at, assigned_user_id, assigned_position_id, status, token_value, ref",
+    )
+    .eq("date", today)
+    .order("due_at", { ascending: true, nullsFirst: false });
+  if (!APP_FEATURES.setups) {
+    tasksQuery = tasksQuery.neq("kind", "lead_duty");
+  }
+
   const [
     { data: tasks },
     { data: templates },
@@ -38,13 +50,7 @@ export default async function TasksPage() {
     { data: positions },
     { data: dayParts },
   ] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select(
-        "id, kind, title, day_part_id, due_at, assigned_user_id, assigned_position_id, status, token_value, ref",
-      )
-      .eq("date", today)
-      .order("due_at", { ascending: true, nullsFirst: false }),
+    tasksQuery,
     supabase
       .from("task_templates")
       .select(

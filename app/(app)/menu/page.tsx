@@ -15,7 +15,7 @@ import { MenuViewSections } from "./view-sections";
 
 /**
  * /menu -- the mobile nav hub behind the bottom "Menu" tab, matching the
- * KitchenIQ Menu screen: a "Send" row (recognition/infraction/broadcast), an
+ * KitchenIQ Menu screen: a "Send" row (recognition/infraction), an
  * "Assign" row (checklist/task), and a "View" list linking to every module.
  * Visual/layout only: reuses the same permission checks the Team Feed and
  * Accountability pages already use to decide whether to show their forms, and
@@ -24,16 +24,14 @@ import { MenuViewSections } from "./view-sections";
 export const metadata = { title: "Menu" };
 
 export default async function MenuPage() {
-  const [canRecognize, canIssueInfraction, canBroadcast] = await Promise.all([
+  const [canRecognize, canIssueInfraction] = await Promise.all([
     hasPermission("tokens.award"),
     hasPermission("accountability.issue"),
-    hasPermission("feed.post_broadcast"),
   ]);
 
   const permissions = {
     "tokens.award": canRecognize,
     "accountability.issue": canIssueInfraction,
-    "feed.post_broadcast": canBroadcast,
   } as const;
 
   const sendActions = visibleActions(SEND_ACTIONS, permissions);

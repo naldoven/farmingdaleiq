@@ -7,6 +7,7 @@ import { isDeadSubscriptionError, sendWebPush } from "@/lib/notify/push";
 import { DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "@/lib/discord/format";
 import { getDiscordRoute } from "@/lib/discord/routes";
 import { enqueueDiscordMessage } from "@/lib/discord/outbox";
+import { isEventFeatureEnabled } from "@/lib/features";
 
 type SupabaseLike = ReturnType<typeof createServiceRoleClient>;
 
@@ -238,6 +239,10 @@ export async function processAppEvents(
   // beyond the normal drain, and does NOT change the cursor-advance semantics
   // beyond letting the batch complete.
   for (const evt of scannedEvents) {
+    // Defense in depth for stale/custom clients: dormant-module events are
+    // ignored even if a backend returns rows outside HANDLED_EVENT_KEYS.
+    if (!isEventFeatureEnabled(evt.event_key)) continue;
+
     result.scanned += 1;
     const key = evt.event_key as EventKey;
     const payload = (evt.payload && typeof evt.payload === "object" ? evt.payload : {}) as EventPayload;

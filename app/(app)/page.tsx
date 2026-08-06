@@ -12,6 +12,7 @@ import {
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
+import { APP_FEATURES, isEventFeatureEnabled } from "@/lib/features";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -159,10 +160,16 @@ export default async function HomePage() {
     ] = await Promise.all([
       supabase.from("checklist_runs").select("status").eq("run_date", today),
       supabase.from("disciplinary_actions").select("status").eq("user_id", user.id),
-      supabase
+      (APP_FEATURES.setups
+        ? supabase
+            .from("tasks")
+            .select("title, status, assigned_user_id, created_by")
+            .eq("date", today)
+        : supabase
         .from("tasks")
         .select("title, status, assigned_user_id, created_by")
-        .eq("date", today),
+        .eq("date", today)
+        .neq("kind", "lead_duty")),
       supabase.from("notifications").select("kind, read_at").eq("user_id", user.id),
       getBalance(user.id, supabase),
       getRecentTransactions(user.id, 5, supabase),
@@ -180,7 +187,11 @@ export default async function HomePage() {
     toYou = summarizeTaskScope(assignedToMe);
     byYou = summarizeTaskScope(createdByMe);
 
-    activity = summarizeActivity(notifications ?? []);
+    activity = summarizeActivity(
+      (notifications ?? []).filter((notification) =>
+        isEventFeatureEnabled(notification.kind),
+      ),
+    );
     balance = balanceResult;
     tokenActivity = summarizeTokenActivity(recentTransactions ?? []);
   }

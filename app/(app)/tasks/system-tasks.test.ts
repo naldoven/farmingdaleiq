@@ -404,6 +404,6 @@ describe("processTaskEvents", () => {
 
     const result = await processTaskEvents(supabase);
 
-    expect(result).toEqual({ created: 0, skipped: 1 });
+    expect(result).toEqual({ created: 0, skipped: 0 });
   });
 });
