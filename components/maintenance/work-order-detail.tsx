@@ -204,36 +204,49 @@ function AssignForm({
   const [assignedUserId, setAssignedUserId] = useState(workOrder.assigned_user_id ?? NONE_VALUE);
   const [vendorId, setVendorId] = useState(workOrder.vendor_id ?? NONE_VALUE);
 
+  // Auto-saves on every change -- no separate "Save assignment" step (leader
+  // request, 2026-08-06). assignedUserId/vendorId are mutually exclusive by
+  // convention elsewhere in this module (e.g. the "Assigned" display line
+  // and the personal-task sync in app/(app)/tasks/maintenance-sync.ts both
+  // prefer the in-house assignee over a vendor), so picking a real value in
+  // one field clears the other; picking back to "Unassigned"/"No vendor"
+  // leaves the other field alone.
+  function save(nextAssignedUserId: string, nextVendorId: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await assignWorkOrder({
+        workOrderId: workOrder.id,
+        assignedUserId: nextAssignedUserId === NONE_VALUE ? undefined : nextAssignedUserId,
+        vendorId: nextVendorId === NONE_VALUE ? undefined : nextVendorId,
+        // Scheduled visit / due date are no longer tracked (leader
+        // decision, 2026-08-05) -- omitting these leaves any old stored
+        // value untouched rather than clearing it (see assignWorkOrder
+        // in actions.ts), so this form simply never sets them again.
+        scheduledFor: undefined,
+        dueAt: undefined,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        startTransition(async () => {
-          const result = await assignWorkOrder({
-            workOrderId: workOrder.id,
-            assignedUserId: assignedUserId === NONE_VALUE ? undefined : assignedUserId,
-            vendorId: vendorId === NONE_VALUE ? undefined : vendorId,
-            // Scheduled visit / due date are no longer tracked (leader
-            // decision, 2026-08-05) -- omitting these leaves any old stored
-            // value untouched rather than clearing it (see assignWorkOrder
-            // in actions.ts), so this form simply never sets them again.
-            scheduledFor: undefined,
-            dueAt: undefined,
-          });
-          if (!result.ok) {
-            setError(result.error);
-            return;
-          }
-          router.refresh();
-        });
-      }}
-    >
+    <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label>Assigned to (in-house)</Label>
-          <Select value={assignedUserId} onValueChange={setAssignedUserId}>
+          <Select
+            value={assignedUserId}
+            onValueChange={(value) => {
+              const nextVendorId = value === NONE_VALUE ? vendorId : NONE_VALUE;
+              setAssignedUserId(value);
+              setVendorId(nextVendorId);
+              save(value, nextVendorId);
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Unassigned" />
             </SelectTrigger>
@@ -249,7 +262,15 @@ function AssignForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Or vendor</Label>
-          <Select value={vendorId} onValueChange={setVendorId}>
+          <Select
+            value={vendorId}
+            onValueChange={(value) => {
+              const nextAssignedUserId = value === NONE_VALUE ? assignedUserId : NONE_VALUE;
+              setVendorId(value);
+              setAssignedUserId(nextAssignedUserId);
+              save(nextAssignedUserId, value);
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder="No vendor" />
             </SelectTrigger>
@@ -264,11 +285,9 @@ function AssignForm({
           </Select>
         </div>
       </div>
+      {isPending && <p className="text-xs text-muted-foreground">Saving...</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" variant="secondary" disabled={isPending}>
-        {isPending ? "Saving..." : "Save assignment"}
-      </Button>
-    </form>
+    </div>
   );
 }
 
