@@ -28,20 +28,21 @@ export type EquipmentStatus = (typeof EQUIPMENT_STATUSES)[number];
  * "Work orders": "statuses open -> in progress -> on hold -> complete (or
  * cancelled)"; cancelling was removed as a leader decision (2026-08-05) --
  * every work order that gets created must now be carried through to
- * Complete, so `cancelled` no longer appears as a target of any status
- * below. `cancelled` itself stays in WorkOrderStatus/WORK_ORDER_STATUSES
- * (the DB check constraint and existing historical rows still use it; see
- * work_order_photos-era migrations) -- this only closes off moving INTO it
- * going forward, exactly like `open` was already unreachable as a target.
- * `complete` and `cancelled` are terminal: no transition out. A transition
- * to the CURRENT status is handled by the caller as a no-op (idempotent
- * double-submit), not as a "valid transition" here, so it never needs to
- * appear in this matrix.
+ * Complete. Leaders also need to drag a card straight into Complete from the
+ * kanban board without first routing it through intermediate columns, so every
+ * active status can complete directly. `cancelled` itself stays in
+ * WorkOrderStatus/WORK_ORDER_STATUSES (the DB check constraint and existing
+ * historical rows still use it; see work_order_photos-era migrations) -- this
+ * only closes off moving INTO it going forward, exactly like `open` was already
+ * unreachable as a target. `complete` and `cancelled` are terminal: no
+ * transition out. A transition to the CURRENT status is handled by the caller
+ * as a no-op (idempotent double-submit), not as a "valid transition" here, so
+ * it never needs to appear in this matrix.
  */
 const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-  open: ["in_progress", "on_hold"],
+  open: ["in_progress", "on_hold", "complete"],
   in_progress: ["on_hold", "complete"],
-  on_hold: ["in_progress"],
+  on_hold: ["in_progress", "complete"],
   complete: [],
   cancelled: [],
 };

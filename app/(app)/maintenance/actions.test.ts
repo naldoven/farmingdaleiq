@@ -194,6 +194,38 @@ describe("work_order_status requester notification (N4)", () => {
     });
   });
 
+  it("completeWorkOrder can complete an open work order directly from the board", async () => {
+    perRequestClient = createFakeClient(
+      {
+        work_orders: [
+          {
+            data: {
+              id: WORK_ORDER_ID,
+              status: "open",
+              assigned_user_id: null,
+              equipment_id: null,
+              notify_discord: false,
+              discord_channel_id: null,
+              request_id: null,
+            },
+            error: null,
+          },
+          { data: { id: WORK_ORDER_ID }, error: null },
+        ],
+      },
+      (t) => tableCalls.push(t),
+    );
+
+    const result = await completeWorkOrder({ workOrderId: WORK_ORDER_ID });
+
+    expect(result.ok).toBe(true);
+    expect(emitEventMock).toHaveBeenCalledWith("work_order_status", {
+      workOrderId: WORK_ORDER_ID,
+      status: "complete",
+    });
+    expect(tableCalls).not.toContain("maintenance_requests");
+  });
+
   it("omits the recipient for a directly-created work order that has no originating request", async () => {
     perRequestClient = createFakeClient(
       {

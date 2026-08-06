@@ -401,10 +401,11 @@ async function canWriteWorkOrder(
 }
 
 /**
- * Moves a work order through open -> in_progress -> on_hold -> cancelled.
+ * Moves a work order between active statuses.
  * "complete" is intentionally excluded here — completeWorkOrder() below is
- * the only path to "complete" so cost/invoice are always captured together
- * with the status flip.
+ * the only path to "complete". The kanban board can call completeWorkOrder()
+ * directly with blank cost/invoice fields, while the detail page can pass the
+ * richer cost/invoice form values.
  *
  * Idempotent: requesting the CURRENT status is a no-op success (safe to
  * double-click "Start" or "Hold"). The actual transition is a
@@ -519,7 +520,7 @@ export async function completeWorkOrder(input: CompleteWorkOrderInput): Promise<
 
     const currentStatus = workOrder.status as WorkOrderStatus;
     if (!isValidWorkOrderTransition(currentStatus, "complete")) {
-      return { ok: false, error: `A ${currentStatus} work order must be in progress before it can be completed.` };
+      return { ok: false, error: `A ${currentStatus} work order cannot be completed.` };
     }
 
     const {

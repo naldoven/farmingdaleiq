@@ -6,16 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GripVertical } from "lucide-react";
 
-import {
-  KanbanGhostCard,
-  StatusBadge,
-  useKanbanDrag,
-} from "@/components/mobile";
-import { updateWorkOrderStatus } from "@/app/(app)/maintenance/actions";
-import {
-  isValidWorkOrderTransition,
-  type WorkOrderStatus,
-} from "@/app/(app)/maintenance/logic";
+import { KanbanGhostCard, StatusBadge, useKanbanDrag } from "@/components/mobile";
+import { completeWorkOrder, updateWorkOrderStatus } from "@/app/(app)/maintenance/actions";
+import { isValidWorkOrderTransition, type WorkOrderStatus } from "@/app/(app)/maintenance/logic";
 
 export interface WorkOrderRow {
   id: string;
@@ -34,13 +27,13 @@ export interface WorkOrderRow {
  * touch, click-drag on desktop) or link into the detail page, where the
  * same moves are also available as buttons.
  *
- * "Complete" is never a plain drag-drop: completing a work order always
- * requires recording a cost (completeWorkOrder, not updateWorkOrderStatus),
- * so dropping a card on that column opens the order instead of silently
- * failing. Terminal statuses (complete, cancelled) aren't draggable at all --
- * there's no valid transition out of either. Cancelled work orders don't
- * get a column (leader preference, 2026-08-05): a cancelled order simply
- * drops off the board; its page stays reachable from equipment history.
+ * Dropping an active card on Complete completes it directly with blank
+ * cost/invoice fields; the detail page still has the fuller completion form
+ * when a cost or invoice photo needs to be recorded. Terminal statuses
+ * (complete, cancelled) aren't draggable at all -- there's no valid transition
+ * out of either. Cancelled work orders don't get a column (leader preference,
+ * 2026-08-05): a cancelled order simply drops off the board; its page stays
+ * reachable from equipment history.
  */
 
 const COLUMNS: { status: string; label: string; dotClass: string }[] = [
@@ -55,19 +48,13 @@ const COLUMNS: { status: string; label: string; dotClass: string }[] = [
 const DRAGGABLE_STATUSES = new Set(["open", "in_progress", "on_hold"]);
 
 function columnLabel(status: string): string {
-  return (
-    COLUMNS.find((c) => c.status === status)?.label ?? status.replace("_", " ")
-  );
+  return COLUMNS.find((c) => c.status === status)?.label ?? status.replace("_", " ");
 }
 
 function cardCaption(wo: WorkOrderRow): string {
   // A vendor gets its own badge (below) instead of being named again here --
   // an in-house assignee doesn't get a badge, so it's still named in text.
-  const assignmentText = wo.vendor_name
-    ? null
-    : wo.assigned_user_name
-      ? `Assigned to ${wo.assigned_user_name}`
-      : "Unassigned";
+  const assignmentText = wo.vendor_name ? null : wo.assigned_user_name ? `Assigned to ${wo.assigned_user_name}` : "Unassigned";
   return [wo.equipment_name, assignmentText].filter(Boolean).join(" · ");
 }
 
@@ -130,40 +117,41 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
       if (!current || current.status === column) return;
 
       if (column === "complete") {
-        // Completing always needs a cost, so it's never a bare status flip
-        // -- open the order's own Complete form instead of failing quietly.
-        router.push(`/maintenance/${cardId}`);
+        if (!isValidWorkOrderTransition(current.status as WorkOrderStatus, "complete")) {
+          setError(`Can't move a ${columnLabel(current.status)} order to Complete.`);
+          return;
+        }
+
+        setError(null);
+        const previousStatus = current.status;
+        setOrders((prev) => prev.map((wo) => (wo.id === cardId ? { ...wo, status: "complete" } : wo)));
+
+        completeWorkOrder({ workOrderId: cardId }).then((result) => {
+          if (!result.ok) {
+            setOrders((prev) => prev.map((wo) => (wo.id === cardId ? { ...wo, status: previousStatus } : wo)));
+            setError(result.error);
+            return;
+          }
+          router.refresh();
+        });
         return;
       }
 
-      if (
-        !isValidWorkOrderTransition(
-          current.status as WorkOrderStatus,
-          column as WorkOrderStatus,
-        )
-      ) {
-        setError(
-          `Can't move a ${columnLabel(current.status)} order to ${columnLabel(column)}.`,
-        );
+      if (!isValidWorkOrderTransition(current.status as WorkOrderStatus, column as WorkOrderStatus)) {
+        setError(`Can't move a ${columnLabel(current.status)} order to ${columnLabel(column)}.`);
         return;
       }
 
       setError(null);
       const previousStatus = current.status;
-      setOrders((prev) =>
-        prev.map((wo) => (wo.id === cardId ? { ...wo, status: column } : wo)),
-      );
+      setOrders((prev) => prev.map((wo) => (wo.id === cardId ? { ...wo, status: column } : wo)));
 
       updateWorkOrderStatus({
         workOrderId: cardId,
         status: column as "open" | "in_progress" | "on_hold",
       }).then((result) => {
         if (!result.ok) {
-          setOrders((prev) =>
-            prev.map((wo) =>
-              wo.id === cardId ? { ...wo, status: previousStatus } : wo,
-            ),
-          );
+          setOrders((prev) => prev.map((wo) => (wo.id === cardId ? { ...wo, status: previousStatus } : wo)));
           setError(result.error);
           return;
         }
@@ -175,17 +163,11 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
   return (
     <div className="flex flex-col gap-2">
       {error && (
-        <p
-          className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger"
-          role="alert"
-        >
+        <p className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger" role="alert">
           {error}
         </p>
       )}
-      <div
-        ref={containerRef}
-        className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2"
-      >
+      <div ref={containerRef} className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2">
         {COLUMNS.map((column) => {
           const cards = orders.filter((wo) => wo.status === column.status);
           const isOver = drag.overColumn === column.status;
@@ -199,16 +181,9 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
               }`}
             >
               <div className="flex items-center gap-2 px-1.5 pb-2">
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${column.dotClass}`}
-                  aria-hidden="true"
-                />
-                <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">
-                  {column.label}
-                </h3>
-                <span className="shrink-0 text-[13px] text-muted-ink">
-                  {cards.length}
-                </span>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${column.dotClass}`} aria-hidden="true" />
+                <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{column.label}</h3>
+                <span className="shrink-0 text-[13px] text-muted-ink">{cards.length}</span>
               </div>
               <div className="flex flex-col gap-2 lg:max-h-[65vh] lg:overflow-y-auto lg:pr-1">
                 {cards.length === 0 ? (
@@ -218,10 +193,7 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
                     const draggable = DRAGGABLE_STATUSES.has(wo.status);
                     const { onPointerDown } = drag.cardHandlers(
                       wo.id,
-                      <KanbanGhostCard
-                        title={wo.title}
-                        caption={cardCaption(wo)}
-                      />,
+                      <KanbanGhostCard title={wo.title} caption={cardCaption(wo)} />,
                       { disabled: !draggable },
                     );
                     return (
@@ -240,45 +212,24 @@ export function WorkOrderBoard({ workOrders }: { workOrders: WorkOrderRow[] }) {
                             {wo.title}
                           </Link>
                           {draggable && (
-                            <GripVertical
-                              className="h-4 w-4 shrink-0 text-muted-ink"
-                              aria-hidden="true"
-                            />
+                            <GripVertical className="h-4 w-4 shrink-0 text-muted-ink" aria-hidden="true" />
                           )}
                         </div>
-                        {(wo.priority === "high" ||
-                          wo.priority === "urgent" ||
-                          wo.vendor_name) && (
+                        {(wo.priority === "high" || wo.priority === "urgent" || wo.vendor_name) && (
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {(wo.priority === "high" ||
-                              wo.priority === "urgent") && (
-                              <StatusBadge
-                                tone={
-                                  wo.priority === "urgent"
-                                    ? "danger"
-                                    : "warning"
-                                }
-                              >
+                            {(wo.priority === "high" || wo.priority === "urgent") && (
+                              <StatusBadge tone={wo.priority === "urgent" ? "danger" : "warning"}>
                                 {wo.priority}
                               </StatusBadge>
                             )}
                             {/* Whoever's handling this at a glance -- Clayton
                                 Fixtures, Parts Town, CFL, etc. -- without
                                 opening the card. */}
-                            {wo.vendor_name && (
-                              <StatusBadge tone="info">
-                                {wo.vendor_name}
-                              </StatusBadge>
-                            )}
+                            {wo.vendor_name && <StatusBadge tone="info">{wo.vendor_name}</StatusBadge>}
                           </div>
                         )}
-                        <WorkOrderPhotoPreview
-                          title={wo.title}
-                          photos={wo.photo_urls}
-                        />
-                        <p className="mt-1 text-[13px] text-muted-ink">
-                          {cardCaption(wo)}
-                        </p>
+                        <WorkOrderPhotoPreview title={wo.title} photos={wo.photo_urls} />
+                        <p className="mt-1 text-[13px] text-muted-ink">{cardCaption(wo)}</p>
                       </div>
                     );
                   })
