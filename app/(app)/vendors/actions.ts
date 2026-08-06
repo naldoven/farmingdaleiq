@@ -29,13 +29,14 @@ function vendorColumns(parsed: VendorInput) {
     phone: parsed.phone ?? null,
     email: parsed.email ?? null,
     account_number: parsed.accountNumber ?? null,
-    delivery_days: parsed.deliveryDays.length > 0 ? parsed.deliveryDays : null,
     website: parsed.website ?? null,
     notes: parsed.notes ?? null,
   };
 }
 
-export async function createVendor(input: VendorInput): Promise<ActionResult<{ id: string }>> {
+export async function createVendor(
+  input: VendorInput,
+): Promise<ActionResult<{ id: string }>> {
   try {
     await requirePermission("vendors.manage");
     const parsed = vendorSchema.parse(input);
@@ -48,7 +49,10 @@ export async function createVendor(input: VendorInput): Promise<ActionResult<{ i
       .single();
 
     if (error || !data) {
-      return { ok: false, error: error?.message ?? "Could not create the vendor." };
+      return {
+        ok: false,
+        error: error?.message ?? "Could not create the vendor.",
+      };
     }
 
     revalidatePath("/vendors");
@@ -58,7 +62,9 @@ export async function createVendor(input: VendorInput): Promise<ActionResult<{ i
   }
 }
 
-export async function updateVendor(input: UpdateVendorInput): Promise<ActionResult> {
+export async function updateVendor(
+  input: UpdateVendorInput,
+): Promise<ActionResult> {
   try {
     await requirePermission("vendors.manage");
     const parsed = updateVendorSchema.parse(input);
@@ -86,7 +92,9 @@ export async function updateVendor(input: UpdateVendorInput): Promise<ActionResu
  * removing the row outright would either cascade-delete history or fail on
  * the FK. Deactivating just hides it from active pickers.
  */
-export async function setVendorActive(input: SetVendorActiveInput): Promise<ActionResult> {
+export async function setVendorActive(
+  input: SetVendorActiveInput,
+): Promise<ActionResult> {
   try {
     await requirePermission("vendors.manage");
     const parsed = setVendorActiveSchema.parse(input);

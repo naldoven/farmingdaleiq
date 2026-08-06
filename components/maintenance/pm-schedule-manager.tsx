@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
+import { ListRow, StatusBadge } from "@/components/mobile";
 import {
   createPmSchedule,
   setPmScheduleActive,
@@ -257,57 +257,55 @@ export function PmScheduleManager({
       {schedules.length === 0 ? (
         <p className="text-[13px] text-muted-ink">No PM schedules yet.</p>
       ) : (
-        <SectionCard flush>
-          <div className="divide-y divide-line">
-            {schedules.map((schedule) => (
-              <ListRow
-                key={schedule.id}
-                title={schedule.title}
-                description={`Every ${schedule.interval_days}d · Next due ${schedule.next_due_on ?? "—"}`}
-                trailing={
-                  <div className="flex items-center gap-2">
-                    <StatusBadge tone={schedule.active ? "success" : "neutral"} dot={schedule.active}>
-                      {schedule.active ? "Active" : "Paused"}
-                    </StatusBadge>
-                    {canManage && (
-                      <>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            setEditingId(schedule.id);
-                            setEditForm(formFromRow(schedule));
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={isPending}
-                          onClick={() => {
-                            startTransition(async () => {
-                              const result = await setPmScheduleActive({ id: schedule.id, active: !schedule.active });
-                              if (!result.ok) {
-                                setError(result.error);
-                                return;
-                              }
-                              router.refresh();
-                            });
-                          }}
-                        >
-                          {schedule.active ? "Pause" : "Resume"}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                }
-              />
-            ))}
-          </div>
-        </SectionCard>
+        <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+          {schedules.map((schedule) => (
+            <ListRow
+              key={schedule.id}
+              title={schedule.title}
+              description={`Every ${schedule.interval_days}d - Next due ${schedule.next_due_on ?? "-"}`}
+              trailing={
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone={schedule.active ? "success" : "neutral"} dot={schedule.active}>
+                    {schedule.active ? "Active" : "Paused"}
+                  </StatusBadge>
+                  {canManage && (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setEditingId(schedule.id);
+                          setEditForm(formFromRow(schedule));
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isPending}
+                        onClick={() => {
+                          startTransition(async () => {
+                            const result = await setPmScheduleActive({ id: schedule.id, active: !schedule.active });
+                            if (!result.ok) {
+                              setError(result.error);
+                              return;
+                            }
+                            router.refresh();
+                          });
+                        }}
+                      >
+                        {schedule.active ? "Pause" : "Resume"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              }
+            />
+          ))}
+        </div>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

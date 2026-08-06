@@ -1,8 +1,16 @@
-import { ListRow, SectionCard, StatusBadge, type StatusTone } from "@/components/mobile";
+import {
+  ListRow,
+  SectionCard,
+  StatusBadge,
+  type StatusTone,
+} from "@/components/mobile";
 import { MaintenanceTabs } from "@/components/maintenance/maintenance-tabs";
 import { RequestForm } from "@/components/maintenance/request-form";
 import { TriageQueue } from "@/components/maintenance/triage-queue";
-import { WorkOrderBoard, type WorkOrderRow } from "@/components/maintenance/work-order-board";
+import {
+  WorkOrderBoard,
+  type WorkOrderRow,
+} from "@/components/maintenance/work-order-board";
 import { CreateWorkOrderForm } from "@/app/(app)/maintenance/create-work-order-form";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +20,18 @@ const REQUEST_STATUS_TONE: Record<string, StatusTone> = {
   approved: "success",
   declined: "danger",
 };
+
+function mergePhotoUrls(
+  ...groups: Array<string[] | null | undefined>
+): string[] {
+  return Array.from(
+    new Set(
+      groups
+        .flatMap((group) => group ?? [])
+        .filter((url): url is string => Boolean(url)),
+    ),
+  );
+}
 
 /**
  * /maintenance — submit a request, triage the queue, and see the work order
@@ -52,15 +72,27 @@ export default async function MaintenancePage() {
     supabase.from("equipment").select("id, name").order("name"),
     supabase
       .from("work_orders")
-      .select("id, title, status, priority, equipment_id, assigned_user_id, vendor_id, created_at")
+      .select(
+        "id, request_id, title, status, priority, equipment_id, assigned_user_id, vendor_id, photo_urls, created_at",
+      )
       .order("created_at", { ascending: false }),
     supabase
       .from("maintenance_requests")
-      .select("id, title, description, area, suggested_priority, photo_urls, submitted_at")
+      .select(
+        "id, title, description, area, suggested_priority, photo_urls, submitted_at",
+      )
       .eq("status", "pending")
       .order("submitted_at"),
-    supabase.from("profiles").select("id, name").eq("active", true).order("name"),
-    supabase.from("vendors").select("id, name").eq("active", true).order("name"),
+    supabase
+      .from("profiles")
+      .select("id, name")
+      .eq("active", true)
+      .order("name"),
+    supabase
+      .from("vendors")
+      .select("id, name")
+      .eq("active", true)
+      .order("name"),
     // Requester-facing resolution view (ARCHITECTURE.md "Requests": "any
     // team member submits a maintenance request and is notified as its
     // status changes"): unlike the triage queue above (pending only), this
@@ -69,28 +101,64 @@ export default async function MaintenancePage() {
     user
       ? supabase
           .from("maintenance_requests")
-          .select("id, title, status, declined_reason, submitted_at, work_order_id")
+          .select(
+            "id, title, status, declined_reason, submitted_at, work_order_id",
+          )
           .eq("submitted_by", user.id)
           .order("submitted_at", { ascending: false })
           .limit(50)
       : Promise.resolve({ data: [] }),
   ]);
 
-  const equipmentNameById = new Map((equipment ?? []).map((e) => [e.id, e.name]));
+  const equipmentNameById = new Map(
+    (equipment ?? []).map((e) => [e.id, e.name]),
+  );
   const profileNameById = new Map((profiles ?? []).map((p) => [p.id, p.name]));
   const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
+  const workOrderRequestIds = Array.from(
+    new Set(
+      (workOrders ?? [])
+        .map((wo) => wo.request_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const { data: workOrderRequests } =
+    workOrderRequestIds.length > 0
+      ? await supabase
+          .from("maintenance_requests")
+          .select("id, photo_urls")
+          .in("id", workOrderRequestIds)
+      : { data: [] };
+  const requestPhotosById = new Map(
+    (workOrderRequests ?? []).map((request) => [
+      request.id,
+      request.photo_urls ?? [],
+    ]),
+  );
 
   const workOrderRows: WorkOrderRow[] = (workOrders ?? []).map((wo) => ({
     id: wo.id,
     title: wo.title,
     status: wo.status,
     priority: wo.priority,
-    equipment_name: wo.equipment_id ? (equipmentNameById.get(wo.equipment_id) ?? null) : null,
-    assigned_user_name: wo.assigned_user_id ? (profileNameById.get(wo.assigned_user_id) ?? null) : null,
-    vendor_name: wo.vendor_id ? (vendorNameById.get(wo.vendor_id) ?? null) : null,
+    equipment_name: wo.equipment_id
+      ? (equipmentNameById.get(wo.equipment_id) ?? null)
+      : null,
+    assigned_user_name: wo.assigned_user_id
+      ? (profileNameById.get(wo.assigned_user_id) ?? null)
+      : null,
+    vendor_name: wo.vendor_id
+      ? (vendorNameById.get(wo.vendor_id) ?? null)
+      : null,
+    photo_urls: mergePhotoUrls(
+      wo.photo_urls,
+      wo.request_id ? requestPhotosById.get(wo.request_id) : null,
+    ),
   }));
 
-  const openCount = workOrderRows.filter((wo) => wo.status !== "complete" && wo.status !== "cancelled").length;
+  const openCount = workOrderRows.filter(
+    (wo) => wo.status !== "complete" && wo.status !== "cancelled",
+  ).length;
   const requestRows = myRequests ?? [];
 
   const tabs = [
@@ -100,8 +168,12 @@ export default async function MaintenancePage() {
       content: (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 px-1">
-            <p className="text-[13px] font-semibold text-muted-ink">{openCount} open</p>
-            {canTriage && <CreateWorkOrderForm equipmentOptions={equipment ?? []} />}
+            <p className="text-[13px] font-semibold text-muted-ink">
+              {openCount} open
+            </p>
+            {canTriage && (
+              <CreateWorkOrderForm equipmentOptions={equipment ?? []} />
+            )}
           </div>
           <WorkOrderBoard workOrders={workOrderRows} />
         </div>
@@ -140,7 +212,9 @@ export default async function MaintenancePage() {
       label: `My requests (${requestRows.length})`,
       content:
         requestRows.length === 0 ? (
-          <p className="px-1 text-[13px] text-muted-ink">You haven&apos;t submitted any requests yet.</p>
+          <p className="px-1 text-[13px] text-muted-ink">
+            You haven&apos;t submitted any requests yet.
+          </p>
         ) : (
           <SectionCard flush className="mx-auto w-full lg:max-w-[480px]">
             <div className="divide-y divide-line">
@@ -157,7 +231,9 @@ export default async function MaintenancePage() {
                     title={request.title}
                     description={detail}
                     trailing={
-                      <StatusBadge tone={REQUEST_STATUS_TONE[request.status] ?? "neutral"}>
+                      <StatusBadge
+                        tone={REQUEST_STATUS_TONE[request.status] ?? "neutral"}
+                      >
                         {request.status}
                       </StatusBadge>
                     }
