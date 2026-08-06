@@ -12,14 +12,32 @@ export default async function EquipmentPage() {
 
   const supabase = await createClient();
 
-  const [{ data: equipment }, { data: vendors }] = await Promise.all([
-    supabase.from("equipment").select("id, name, category, area, status, service_vendor_id").order("name"),
-    supabase.from("vendors").select("id, name").eq("active", true).order("name"),
+  const [equipmentResult, vendorsResult] = await Promise.all([
+    supabase
+      .from("equipment")
+      .select("id, name, category, area, status, service_vendor_id")
+      .order("name"),
+    supabase
+      .from("vendors")
+      .select("id, name")
+      .eq("active", true)
+      .order("name"),
   ]);
 
-  const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
+  if (equipmentResult.error) {
+    throw new Error(
+      `Could not load equipment: ${equipmentResult.error.message}`,
+    );
+  }
+  if (vendorsResult.error) {
+    throw new Error(`Could not load vendors: ${vendorsResult.error.message}`);
+  }
 
-  const rows = (equipment ?? []).map((eq) => ({
+  const equipment = equipmentResult.data ?? [];
+  const vendors = vendorsResult.data ?? [];
+  const vendorNameById = new Map(vendors.map((v) => [v.id, v.name]));
+
+  const rows = equipment.map((eq) => ({
     id: eq.id,
     name: eq.name,
     category: eq.category,
@@ -30,7 +48,7 @@ export default async function EquipmentPage() {
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
-      <EquipmentList equipment={rows} vendorOptions={vendors ?? []} canManage={canManage} />
+      <EquipmentList equipment={rows} vendorOptions={vendors} canManage={canManage} />
     </div>
   );
 }

@@ -115,6 +115,7 @@ describe("menu data", () => {
       "people",
       "vendors",
       "maintenance",
+      "equipment",
       "catering",
       "reporting",
       "notifications",
@@ -137,6 +138,13 @@ describe("menu data", () => {
     expect(VIEW_ITEMS.find((item) => item.key === "catering")?.section).toBe(
       "Daily Ops",
     );
+  });
+
+  it("keeps Equipment reachable from the mobile Menu hub", () => {
+    expect(VIEW_ITEMS.find((item) => item.key === "equipment")).toMatchObject({
+      href: "/maintenance/equipment",
+      section: "Operations",
+    });
   });
 });
 

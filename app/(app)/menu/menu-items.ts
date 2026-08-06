@@ -25,7 +25,7 @@ export interface MenuActionItem {
 
 /**
  * The View list is grouped into these sections so the Menu tab is a short
- * index of five collapsible headings instead of one 17-row scroll. Order here
+ * index of five collapsible headings instead of one long scroll. Order here
  * is the order they render in.
  */
 export const MENU_SECTIONS = [
@@ -157,6 +157,7 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "people", label: "People", href: "/people", icon: "people", iconTone: "neutral", section: "People & Training" },
   { key: "vendors", label: "Vendors", href: "/vendors", icon: "vendors", iconTone: "neutral", section: "Operations" },
   { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Operations" },
+  { key: "equipment", label: "Equipment", href: "/maintenance/equipment", icon: "maintenance", iconTone: "neutral", section: "Operations" },
   { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Daily Ops" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
