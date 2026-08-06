@@ -609,7 +609,12 @@ export function resolveHeader(pathname: string): ResolvedHeader {
   }
 
   if (best) {
-    return { variant: "subpage", title: best.item.label, backHref, showBack: true };
+    return {
+      variant: "subpage",
+      title: best.item.label,
+      backHref: best.item.href,
+      showBack: true,
+    };
   }
 
   return { variant: "subpage", title: "FarmingdaleIQ", backHref, showBack: true };

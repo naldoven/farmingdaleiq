@@ -70,6 +70,12 @@ describe("resolveHeader", () => {
     expect(resolved.backHref).toBe("/maintenance");
   });
 
+  it("uses the nearest nav destination as the fallback for detail routes without an index parent", () => {
+    const resolved = resolveHeader("/catering/orders/order-123");
+    expect(resolved.title).toBe("Pipeline");
+    expect(resolved.backHref).toBe("/catering");
+  });
+
   it("does not treat the home route as a prefix of every page", () => {
     expect(resolveHeader("/vendors").title).toBe("Vendors");
   });
