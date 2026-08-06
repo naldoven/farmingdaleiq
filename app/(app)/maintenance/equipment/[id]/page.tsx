@@ -32,6 +32,10 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
   const [
     { data: vendorRow },
     { data: files },
+    { data: supportContacts },
+    { data: referenceSections },
+    { data: parts },
+    { data: pmTasks },
     { data: downtime },
     { data: workOrders },
     { data: pmSchedules },
@@ -41,7 +45,31 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
     equipment.service_vendor_id
       ? supabase.from("vendors").select("name").eq("id", equipment.service_vendor_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("equipment_files").select("id, file_url, label").eq("equipment_id", id),
+    supabase
+      .from("equipment_files")
+      .select("id, file_url, label")
+      .eq("equipment_id", id)
+      .order("sort_order"),
+    supabase
+      .from("equipment_support_contacts")
+      .select("id, label, value, href")
+      .eq("equipment_id", id)
+      .order("sort_order"),
+    supabase
+      .from("equipment_reference_sections")
+      .select("id, section_type, title, body, source_page")
+      .eq("equipment_id", id)
+      .order("sort_order"),
+    supabase
+      .from("equipment_parts")
+      .select("id, name, part_number, order_url, url_type, source_page")
+      .eq("equipment_id", id)
+      .order("sort_order"),
+    supabase
+      .from("equipment_pm_tasks")
+      .select("id, title, details")
+      .eq("equipment_id", id)
+      .order("sort_order"),
     supabase
       .from("equipment_downtime")
       .select("id, started_at, ended_at")
@@ -81,6 +109,10 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
           notes: equipment.notes,
         }}
         files={files ?? []}
+        supportContacts={supportContacts ?? []}
+        referenceSections={referenceSections ?? []}
+        parts={parts ?? []}
+        pmTasks={pmTasks ?? []}
         downtime={downtime ?? []}
         workOrders={workOrders ?? []}
         pmSchedules={pmSchedules ?? []}

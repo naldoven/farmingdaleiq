@@ -1135,22 +1135,174 @@ export type Database = {
           file_url: string
           id: string
           label: string | null
+          sort_order: number
         }
         Insert: {
           equipment_id: string
           file_url: string
           id?: string
           label?: string | null
+          sort_order?: number
         }
         Update: {
           equipment_id?: string
           file_url?: string
           id?: string
           label?: string | null
+          sort_order?: number
         }
         Relationships: [
           {
             foreignKeyName: "equipment_files_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_parts: {
+        Row: {
+          equipment_id: string
+          id: string
+          name: string
+          notes: string | null
+          order_url: string
+          part_number: string | null
+          sort_order: number
+          source_page: number | null
+          url_type: string
+        }
+        Insert: {
+          equipment_id: string
+          id?: string
+          name: string
+          notes?: string | null
+          order_url: string
+          part_number?: string | null
+          sort_order?: number
+          source_page?: number | null
+          url_type?: string
+        }
+        Update: {
+          equipment_id?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          order_url?: string
+          part_number?: string | null
+          sort_order?: number
+          source_page?: number | null
+          url_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_parts_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_pm_tasks: {
+        Row: {
+          details: string | null
+          equipment_id: string
+          id: string
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          details?: string | null
+          equipment_id: string
+          id?: string
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          details?: string | null
+          equipment_id?: string
+          id?: string
+          sort_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_pm_tasks_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_reference_sections: {
+        Row: {
+          body: string
+          equipment_id: string
+          id: string
+          section_type: string
+          sort_order: number
+          source_page: number | null
+          title: string
+        }
+        Insert: {
+          body: string
+          equipment_id: string
+          id?: string
+          section_type: string
+          sort_order?: number
+          source_page?: number | null
+          title: string
+        }
+        Update: {
+          body?: string
+          equipment_id?: string
+          id?: string
+          section_type?: string
+          sort_order?: number
+          source_page?: number | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_reference_sections_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_support_contacts: {
+        Row: {
+          equipment_id: string
+          href: string | null
+          id: string
+          label: string
+          sort_order: number
+          value: string
+        }
+        Insert: {
+          equipment_id: string
+          href?: string | null
+          id?: string
+          label: string
+          sort_order?: number
+          value: string
+        }
+        Update: {
+          equipment_id?: string
+          href?: string | null
+          id?: string
+          label?: string
+          sort_order?: number
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_support_contacts_equipment_id_fkey"
             columns: ["equipment_id"]
             isOneToOne: false
             referencedRelation: "equipment"
@@ -3315,7 +3467,6 @@ export type Database = {
           account_number: string | null
           active: boolean
           category: string | null
-          delivery_days: string[] | null
           email: string | null
           id: string
           name: string
@@ -3328,7 +3479,6 @@ export type Database = {
           account_number?: string | null
           active?: boolean
           category?: string | null
-          delivery_days?: string[] | null
           email?: string | null
           id?: string
           name: string
@@ -3341,7 +3491,6 @@ export type Database = {
           account_number?: string | null
           active?: boolean
           category?: string | null
-          delivery_days?: string[] | null
           email?: string | null
           id?: string
           name?: string

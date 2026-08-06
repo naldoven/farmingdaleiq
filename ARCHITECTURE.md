@@ -213,7 +213,7 @@ not a second model.
   board reads like the restaurant. List view remains as a fallback.
 
 ### Vendors
-- Directory: vendor name, category, rep contact info, account number, delivery days,
+- Directory: vendor name, category, rep contact info, account number, website, and
   notes. Read access for everyone; manage access gated by permission.
 
 ### Maintenance (modeled on UpKeep)
@@ -442,7 +442,7 @@ Courses (referenced by passport items):
 - `course_feedback` (id, course_id, user_id, rating, feedback, created_at)
 
 Vendors:
-- `vendors` (id, name, category, rep_name, phone, email, account_number, delivery_days, website, notes, active)
+- `vendors` (id, name, category, rep_name, phone, email, account_number, website, notes, active)
 
 Maintenance:
 - `equipment` (id, name, category, area, model, serial, service_vendor_id, installed_on, warranty_expires_on, status: operational|down, photo_url, notes)

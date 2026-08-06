@@ -7,26 +7,19 @@ describe("vendorSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts a minimal vendor with defaulted delivery days", () => {
+  it("accepts a minimal vendor", () => {
     const result = vendorSchema.safeParse({ name: "Ecolab" });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.deliveryDays).toEqual([]);
+      expect(result.data.name).toBe("Ecolab");
     }
   });
 
   it("rejects an invalid email", () => {
-    const result = vendorSchema.safeParse({ name: "Acme", email: "not-an-email" });
+    const result = vendorSchema.safeParse({
+      name: "Acme",
+      email: "not-an-email",
+    });
     expect(result.success).toBe(false);
-  });
-
-  it("rejects a delivery day outside the allowed set", () => {
-    const result = vendorSchema.safeParse({ name: "Acme", deliveryDays: ["Someday"] });
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts valid delivery days", () => {
-    const result = vendorSchema.safeParse({ name: "Acme", deliveryDays: ["Mon", "Wed", "Fri"] });
-    expect(result.success).toBe(true);
   });
 });

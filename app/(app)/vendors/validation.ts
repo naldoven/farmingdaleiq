@@ -1,34 +1,39 @@
 import { z } from "zod";
 
-import { DAYS_OF_WEEK } from "./constants";
-
 /**
  * Input validation for the Vendors server actions
  * (app/(app)/vendors/actions.ts). ARCHITECTURE.md "Vendors": "Directory:
- * vendor name, category, rep contact info, account number, delivery days,
- * notes."
+ * vendor name, category, rep contact info, account number, website, notes."
  */
 
-const optionalText = z.string().trim().optional().or(z.literal("")).transform((v) => (v ? v : undefined));
-
-// Re-exported so server/action code can keep importing it from here; client
-// components import it directly from ./constants to stay zod-free.
-export { DAYS_OF_WEEK };
+const optionalText = z
+  .string()
+  .trim()
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => (v ? v : undefined));
 
 export const vendorSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   category: optionalText,
   repName: optionalText,
   phone: optionalText,
-  email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email")
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => (v ? v : undefined)),
   accountNumber: optionalText,
-  deliveryDays: z.array(z.enum(DAYS_OF_WEEK)).optional().default([]),
   website: optionalText,
   notes: optionalText,
 });
 export type VendorInput = z.infer<typeof vendorSchema>;
 
-export const updateVendorSchema = vendorSchema.extend({ id: z.string().uuid() });
+export const updateVendorSchema = vendorSchema.extend({
+  id: z.string().uuid(),
+});
 export type UpdateVendorInput = z.infer<typeof updateVendorSchema>;
 
 export const setVendorActiveSchema = z.object({

@@ -23,8 +23,11 @@ import {
   SectionCard,
   StatusBadge,
 } from "@/components/mobile";
-import { createVendor, setVendorActive, updateVendor } from "@/app/(app)/vendors/actions";
-import { DAYS_OF_WEEK } from "@/app/(app)/vendors/constants";
+import {
+  createVendor,
+  setVendorActive,
+  updateVendor,
+} from "@/app/(app)/vendors/actions";
 
 export interface VendorRow {
   id: string;
@@ -34,13 +37,11 @@ export interface VendorRow {
   phone: string | null;
   email: string | null;
   account_number: string | null;
-  delivery_days: string[] | null;
   website: string | null;
   notes: string | null;
   active: boolean;
 }
 
-type DayOfWeek = (typeof DAYS_OF_WEEK)[number];
 type StatusFilter = "all" | "active" | "inactive";
 
 interface VendorFormState {
@@ -50,7 +51,6 @@ interface VendorFormState {
   phone: string;
   email: string;
   accountNumber: string;
-  deliveryDays: DayOfWeek[];
   website: string;
   notes: string;
 }
@@ -63,7 +63,6 @@ function emptyForm(): VendorFormState {
     phone: "",
     email: "",
     accountNumber: "",
-    deliveryDays: [],
     website: "",
     notes: "",
   };
@@ -77,10 +76,6 @@ function formFromRow(vendor: VendorRow): VendorFormState {
     phone: vendor.phone ?? "",
     email: vendor.email ?? "",
     accountNumber: vendor.account_number ?? "",
-    // Trusted cast: delivery_days is only ever written by createVendor/
-    // updateVendor below, which validate against DAYS_OF_WEEK via
-    // vendorSchema before insert/update.
-    deliveryDays: (vendor.delivery_days ?? []) as DayOfWeek[],
     website: vendor.website ?? "",
     notes: vendor.notes ?? "",
   };
@@ -166,31 +161,6 @@ function VendorFormFields({
         />
       </div>
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <Label>Delivery days</Label>
-        <div className="flex flex-wrap gap-2">
-          {DAYS_OF_WEEK.map((day) => {
-            const active = form.deliveryDays.includes(day);
-            return (
-              <FilterChip
-                key={day}
-                type="button"
-                active={active}
-                onClick={() =>
-                  onChange({
-                    ...form,
-                    deliveryDays: active
-                      ? form.deliveryDays.filter((d) => d !== day)
-                      : [...form.deliveryDays, day],
-                  })
-                }
-              >
-                {day}
-              </FilterChip>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
         <Label htmlFor="vendor-notes">Notes</Label>
         <Textarea
           id="vendor-notes"
@@ -211,7 +181,13 @@ function VendorFormFields({
  * moved into that dialog's footer since the row itself no longer has a
  * per-item action column.
  */
-export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; canManage: boolean }) {
+export function VendorManager({
+  vendors,
+  canManage,
+}: {
+  vendors: VendorRow[];
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -245,7 +221,11 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
 
   const groups = groupByLetter(filtered);
   const filterLabel =
-    statusFilter === "active" ? "Active" : statusFilter === "inactive" ? "Inactive" : "All";
+    statusFilter === "active"
+      ? "Active"
+      : statusFilter === "inactive"
+        ? "Inactive"
+        : "All";
 
   return (
     <div className="flex flex-col gap-4">
@@ -273,13 +253,22 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
       </div>
 
       <ChipRow>
-        <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
+        <FilterChip
+          active={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")}
+        >
           All
         </FilterChip>
-        <FilterChip active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+        <FilterChip
+          active={statusFilter === "active"}
+          onClick={() => setStatusFilter("active")}
+        >
           Active
         </FilterChip>
-        <FilterChip active={statusFilter === "inactive"} onClick={() => setStatusFilter("inactive")}>
+        <FilterChip
+          active={statusFilter === "inactive"}
+          onClick={() => setStatusFilter("inactive")}
+        >
           Inactive
         </FilterChip>
       </ChipRow>
@@ -296,7 +285,9 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
         <div className="flex flex-col gap-3">
           {groups.map(([letter, group]) => (
             <div key={letter} className="flex flex-col gap-1.5">
-              <p className="px-1 text-[13px] font-bold text-muted-ink">{letter}</p>
+              <p className="px-1 text-[13px] font-bold text-muted-ink">
+                {letter}
+              </p>
               <SectionCard flush>
                 <div className="divide-y divide-line">
                   {group.map((vendor) => (
@@ -305,7 +296,10 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
                       title={vendor.name}
                       description={vendor.category ?? "No category"}
                       trailing={
-                        <StatusBadge tone={vendor.active ? "success" : "neutral"} dot={vendor.active}>
+                        <StatusBadge
+                          tone={vendor.active ? "success" : "neutral"}
+                          dot={vendor.active}
+                        >
                           {vendor.active ? "Active" : "Inactive"}
                         </StatusBadge>
                       }
@@ -359,7 +353,10 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editingId !== null} onOpenChange={(open) => !open && setEditingId(null)}>
+      <Dialog
+        open={editingId !== null}
+        onOpenChange={(open) => !open && setEditingId(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit vendor</DialogTitle>
@@ -400,7 +397,10 @@ export function VendorManager({ vendors, canManage }: { vendors: VendorRow[]; ca
                 onClick={() => {
                   if (!editingId) return;
                   startTransition(async () => {
-                    const result = await setVendorActive({ id: editingId, active: !editingActive });
+                    const result = await setVendorActive({
+                      id: editingId,
+                      active: !editingActive,
+                    });
                     if (!result.ok) {
                       setError(result.error);
                       return;
