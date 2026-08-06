@@ -14,14 +14,20 @@ import { AppShell } from "./app-shell";
 
 const user = { name: "Dana Cruz", email: "dana@example.com", roleName: "Team Lead" };
 
+function pushAppHistoryEntry(url: string): void {
+  act(() => {
+    window.history.pushState({ __NA: true }, "", url);
+  });
+}
+
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
   mockNavigation.pathname = "/";
   mockBack.mockClear();
   // JSDOM's window.history is a single global shared across every test in
-  // this file; without resetting it, a later test would see whatever idx
-  // an earlier test's pushState left behind (see useSmartBack.ts).
+  // this file; without resetting it, a later test would see whatever app
+  // history marker an earlier test's pushState left behind (see useSmartBack.ts).
   window.history.replaceState(null, "");
 });
 
@@ -90,10 +96,6 @@ describe("AppShell responsive nav", () => {
   });
 
   it("uses real browser history for Back when in-app history exists, instead of the computed parent link", () => {
-    // Simulates having actually navigated within the app this tab (see
-    // useSmartBack.ts: idx > 0 is the signal there's somewhere real to
-    // return to, rather than only a guessed parent URL).
-    window.history.pushState({ idx: 1 }, "");
     mockNavigation.pathname = "/checklists/templates";
 
     render(
@@ -101,6 +103,7 @@ describe("AppShell responsive nav", () => {
         <p>content</p>
       </AppShell>,
     );
+    pushAppHistoryEntry("/checklists/templates");
 
     const back = screen.getByRole("button", { name: "Back" });
     expect(back).not.toHaveAttribute("href");
@@ -122,7 +125,6 @@ describe("AppShell responsive nav", () => {
   });
 
   it("also uses real browser history for the mobile header's back chevron", () => {
-    window.history.pushState({ idx: 2 }, "");
     mockNavigation.pathname = "/checklists/templates";
 
     render(
@@ -130,6 +132,7 @@ describe("AppShell responsive nav", () => {
         <p>content</p>
       </AppShell>,
     );
+    pushAppHistoryEntry("/checklists/templates");
 
     const back = screen.getByRole("button", { name: "Back" });
     fireEvent.click(back);
@@ -138,7 +141,6 @@ describe("AppShell responsive nav", () => {
 
   it("lets mobile users long-press the Menu tab to go back from a sub-page", () => {
     vi.useFakeTimers();
-    window.history.pushState({ idx: 2 }, "");
     mockNavigation.pathname = "/catering/history";
 
     render(
@@ -146,6 +148,7 @@ describe("AppShell responsive nav", () => {
         <p>content</p>
       </AppShell>,
     );
+    pushAppHistoryEntry("/catering/history");
 
     const menu = screen.getByRole("link", { name: "Menu" });
     fireEvent.pointerDown(menu);
@@ -161,7 +164,6 @@ describe("AppShell responsive nav", () => {
 
   it("keeps a normal mobile Menu tap as navigation, not Back", () => {
     vi.useFakeTimers();
-    window.history.pushState({ idx: 2 }, "");
     mockNavigation.pathname = "/catering/history";
 
     render(
@@ -169,6 +171,7 @@ describe("AppShell responsive nav", () => {
         <p>content</p>
       </AppShell>,
     );
+    pushAppHistoryEntry("/catering/history");
 
     const menu = screen.getByRole("link", { name: "Menu" });
     fireEvent.pointerDown(menu);
