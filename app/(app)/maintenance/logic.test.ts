@@ -39,8 +39,10 @@ describe("isValidWorkOrderTransition", () => {
     expect(isValidWorkOrderTransition("on_hold", "in_progress")).toBe(true);
   });
 
-  it("rejects open -> complete (must pass through in_progress)", () => {
-    expect(isValidWorkOrderTransition("open", "complete")).toBe(false);
+  it("allows active work orders to move directly to complete", () => {
+    expect(isValidWorkOrderTransition("open", "complete")).toBe(true);
+    expect(isValidWorkOrderTransition("in_progress", "complete")).toBe(true);
+    expect(isValidWorkOrderTransition("on_hold", "complete")).toBe(true);
   });
 
   it("rejects any transition out of a terminal complete state", () => {

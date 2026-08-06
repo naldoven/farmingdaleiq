@@ -128,15 +128,6 @@ function CompleteForm({
   const [markEquipmentUp, setMarkEquipmentUp] = useState(true);
 
   if (workOrder.status === "complete" || workOrder.status === "cancelled") return null;
-  // Matches the in_progress -> complete-only transition enforced server-side
-  // in updateWorkOrderStatus/completeWorkOrder (app/(app)/maintenance/actions.ts).
-  if (workOrder.status !== "in_progress") {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Move this work order to &quot;In progress&quot; before completing it.
-      </p>
-    );
-  }
 
   return (
     <form
