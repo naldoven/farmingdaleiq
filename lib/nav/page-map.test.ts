@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   NAV_GROUPS,
+  PRIMARY_TABS,
   activeNavGroupLabel,
   activeNavHref,
   avatarColor,
@@ -79,6 +80,15 @@ describe("resolveHeader", () => {
       title: "Menu",
       backHref: "/",
     });
+  });
+
+  it("marks every non-primary nav destination as backable", () => {
+    const primaryHrefs = new Set(PRIMARY_TABS.map((tab) => tab.href));
+    for (const item of NAV_GROUPS.flatMap((group) => group.items)) {
+      expect(resolveHeader(item.href).showBack, `${item.href} backability`).toBe(
+        !primaryHrefs.has(item.href),
+      );
+    }
   });
 });
 

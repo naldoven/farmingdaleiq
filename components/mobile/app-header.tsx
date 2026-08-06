@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -6,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { AvatarInitials } from "@/components/mobile/avatar-initials";
 import { NotificationBell } from "@/components/mobile/notification-bell";
 import { StoreLocationPill } from "@/components/mobile/store-location-pill";
+import { useSmartBack } from "@/components/mobile/use-smart-back";
 
 /** FarmingdaleIQ wordmark: "IQ" in the accent for a bit of character. */
 export function Wordmark({ className }: { className?: string }) {
@@ -53,6 +56,10 @@ export function AppHeader({
   hasUnread = false,
   className,
 }: AppHeaderProps) {
+  const { canGoBack, goBack } = useSmartBack();
+  const backButtonClassName =
+    "-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink hover:bg-secondary";
+
   return (
     <header
       className={cn(
@@ -83,15 +90,16 @@ export function AppHeader({
         </>
       ) : (
         <>
-          {showBack && (
-            <Link
-              href={backHref}
-              aria-label="Back"
-              className="-ml-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink hover:bg-secondary"
-            >
-              <ChevronLeft className="h-6 w-6" aria-hidden="true" />
-            </Link>
-          )}
+          {showBack &&
+            (canGoBack ? (
+              <button type="button" onClick={goBack} aria-label="Back" className={backButtonClassName}>
+                <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+              </button>
+            ) : (
+              <Link href={backHref} aria-label="Back" className={backButtonClassName}>
+                <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+              </Link>
+            ))}
           <h1
             className={cn(
               "min-w-0 flex-1 truncate text-[26px] font-bold text-ink",

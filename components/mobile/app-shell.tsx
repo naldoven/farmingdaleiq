@@ -8,6 +8,7 @@ import { ChevronLeft } from "lucide-react";
 import { AppHeader } from "@/components/mobile/app-header";
 import { BottomTabBar } from "@/components/mobile/bottom-tab-bar";
 import { Sidebar } from "@/components/mobile/sidebar";
+import { useSmartBack } from "@/components/mobile/use-smart-back";
 import { resolveHeader } from "@/lib/nav/page-map";
 import { cn } from "@/lib/utils";
 
@@ -56,9 +57,12 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname() ?? "/";
   const header = resolveHeader(pathname);
+  const { canGoBack, goBack } = useSmartBack();
 
   const showSidebar = layout === "responsive" || layout === "desktop";
   const showMobile = layout === "responsive" || layout === "mobile";
+  const backPillClassName =
+    "inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink shadow-card transition-colors hover:bg-secondary hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
 
   return (
     <div className="flex min-h-svh bg-canvas">
@@ -86,14 +90,17 @@ export function AppShell({
         <main className={cn("flex-1 p-4 md:p-8", showMobile && "pb-28 md:pb-8")}>
           {showSidebar && header.showBack && (
             <div className="mb-4 hidden md:flex">
-              <Link
-                href={header.backHref}
-                aria-label="Back"
-                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink shadow-card transition-colors hover:bg-secondary hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                Back
-              </Link>
+              {canGoBack ? (
+                <button type="button" onClick={goBack} aria-label="Back" className={backPillClassName}>
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Back
+                </button>
+              ) : (
+                <Link href={header.backHref} aria-label="Back" className={backPillClassName}>
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Back
+                </Link>
+              )}
             </div>
           )}
           {children}
