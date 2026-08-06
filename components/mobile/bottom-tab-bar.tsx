@@ -5,8 +5,9 @@ import Link from "next/link";
 import { ClipboardList, Home, Users, Menu as MenuIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { PRIMARY_TABS, type PrimaryTabId } from "@/lib/nav/page-map";
+import { PRIMARY_TABS, resolveHeader, type PrimaryTabId } from "@/lib/nav/page-map";
 import { cn } from "@/lib/utils";
+import { useSmartBack } from "@/components/mobile/use-smart-back";
 
 const ICONS: Record<string, LucideIcon> = {
   home: Home,
@@ -21,10 +22,26 @@ export interface TabItemProps {
   active?: boolean;
   href?: string;
   onClick?: React.MouseEventHandler<HTMLElement>;
+  onContextMenu?: React.MouseEventHandler<HTMLElement>;
+  onPointerCancel?: React.PointerEventHandler<HTMLElement>;
+  onPointerDown?: React.PointerEventHandler<HTMLElement>;
+  onPointerLeave?: React.PointerEventHandler<HTMLElement>;
+  onPointerUp?: React.PointerEventHandler<HTMLElement>;
 }
 
 /** One bottom-bar destination: icon over label, active in accent red. */
-export function TabItem({ icon: Icon, label, active, href, onClick }: TabItemProps) {
+export function TabItem({
+  icon: Icon,
+  label,
+  active,
+  href,
+  onClick,
+  onContextMenu,
+  onPointerCancel,
+  onPointerDown,
+  onPointerLeave,
+  onPointerUp,
+}: TabItemProps) {
   const body = (
     <>
       <Icon
@@ -42,13 +59,33 @@ export function TabItem({ icon: Icon, label, active, href, onClick }: TabItemPro
 
   if (href) {
     return (
-      <Link href={href} className={cls} aria-current={active ? "page" : undefined}>
+      <Link
+        href={href}
+        className={cls}
+        aria-current={active ? "page" : undefined}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        onPointerCancel={onPointerCancel}
+        onPointerDown={onPointerDown}
+        onPointerLeave={onPointerLeave}
+        onPointerUp={onPointerUp}
+      >
         {body}
       </Link>
     );
   }
   return (
-    <button type="button" onClick={onClick} className={cls} aria-current={active ? "page" : undefined}>
+    <button
+      type="button"
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      onPointerCancel={onPointerCancel}
+      onPointerDown={onPointerDown}
+      onPointerLeave={onPointerLeave}
+      onPointerUp={onPointerUp}
+      className={cls}
+      aria-current={active ? "page" : undefined}
+    >
       {body}
     </button>
   );
@@ -76,6 +113,38 @@ function activeTabFor(pathname: string): PrimaryTabId | null {
  */
 export function BottomTabBar({ pathname, className }: BottomTabBarProps) {
   const activeTab = activeTabFor(pathname);
+  const header = resolveHeader(pathname);
+  const { canGoBack, goBack } = useSmartBack();
+  const menuBackTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuBackFired = React.useRef(false);
+  const menuCanBack = header.showBack && canGoBack;
+
+  const clearMenuBackTimer = React.useCallback(() => {
+    if (menuBackTimer.current) {
+      clearTimeout(menuBackTimer.current);
+      menuBackTimer.current = null;
+    }
+  }, []);
+
+  const startMenuBackTimer = React.useCallback(() => {
+    if (!menuCanBack) return;
+    clearMenuBackTimer();
+    menuBackFired.current = false;
+    menuBackTimer.current = setTimeout(() => {
+      menuBackFired.current = true;
+      goBack();
+    }, 500);
+  }, [clearMenuBackTimer, goBack, menuCanBack]);
+
+  const handleMenuClick = React.useCallback<React.MouseEventHandler<HTMLElement>>((event) => {
+    clearMenuBackTimer();
+    if (menuBackFired.current) {
+      event.preventDefault();
+      menuBackFired.current = false;
+    }
+  }, [clearMenuBackTimer]);
+
+  React.useEffect(() => clearMenuBackTimer, [clearMenuBackTimer]);
 
   return (
     <nav
@@ -86,15 +155,24 @@ export function BottomTabBar({ pathname, className }: BottomTabBarProps) {
       )}
     >
       <div className="flex items-stretch">
-        {PRIMARY_TABS.map((tab) => (
-          <TabItem
-            key={tab.id}
-            icon={ICONS[tab.icon]}
-            label={tab.label}
-            active={activeTab === tab.id}
-            href={tab.href}
-          />
-        ))}
+        {PRIMARY_TABS.map((tab) => {
+          const isMenu = tab.id === "menu";
+          return (
+            <TabItem
+              key={tab.id}
+              icon={ICONS[tab.icon]}
+              label={tab.label}
+              active={activeTab === tab.id}
+              href={tab.href}
+              onClick={isMenu ? handleMenuClick : undefined}
+              onContextMenu={isMenu && menuCanBack ? (event) => event.preventDefault() : undefined}
+              onPointerCancel={isMenu ? clearMenuBackTimer : undefined}
+              onPointerDown={isMenu ? startMenuBackTimer : undefined}
+              onPointerLeave={isMenu ? clearMenuBackTimer : undefined}
+              onPointerUp={isMenu ? clearMenuBackTimer : undefined}
+            />
+          );
+        })}
       </div>
     </nav>
   );
