@@ -4,6 +4,7 @@ import {
   StatusBadge,
   type StatusTone,
 } from "@/components/mobile";
+import { EquipmentList } from "@/components/maintenance/equipment-list";
 import { MaintenanceTabs } from "@/components/maintenance/maintenance-tabs";
 import { RequestForm } from "@/components/maintenance/request-form";
 import { TriageQueue } from "@/components/maintenance/triage-queue";
@@ -49,7 +50,10 @@ export const metadata = { title: "Maintenance" };
 
 export default async function MaintenancePage() {
   await requirePermission("maintenance.request");
-  const canTriage = await hasPermission("maintenance.triage");
+  const [canTriage, canManageEquipment] = await Promise.all([
+    hasPermission("maintenance.triage"),
+    hasPermission("maintenance.manage"),
+  ]);
 
   const supabase = await createClient();
 
@@ -62,14 +66,17 @@ export default async function MaintenancePage() {
   // seeded role — so it's fetched unconditionally; only the Triage tab's UI
   // is gated on canTriage.
   const [
-    { data: equipment },
-    { data: workOrders },
-    { data: pendingRequests },
-    { data: profiles },
-    { data: vendors },
-    { data: myRequests },
+    equipmentResult,
+    workOrdersResult,
+    pendingRequestsResult,
+    profilesResult,
+    vendorsResult,
+    myRequestsResult,
   ] = await Promise.all([
-    supabase.from("equipment").select("id, name").order("name"),
+    supabase
+      .from("equipment")
+      .select("id, name, category, area, status, service_vendor_id")
+      .order("name"),
     supabase
       .from("work_orders")
       .select(
@@ -107,28 +114,64 @@ export default async function MaintenancePage() {
           .eq("submitted_by", user.id)
           .order("submitted_at", { ascending: false })
           .limit(50)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const equipmentNameById = new Map(
-    (equipment ?? []).map((e) => [e.id, e.name]),
-  );
+  const loadError = [
+    equipmentResult.error,
+    workOrdersResult.error,
+    pendingRequestsResult.error,
+    profilesResult.error,
+    vendorsResult.error,
+    myRequestsResult.error,
+  ].find(Boolean);
+  if (loadError) {
+    throw new Error(`Could not load maintenance data: ${loadError.message}`);
+  }
+
+  const equipment = equipmentResult.data ?? [];
+  const workOrders = workOrdersResult.data ?? [];
+  const pendingRequests = pendingRequestsResult.data ?? [];
+  const profiles = profilesResult.data ?? [];
+  const vendors = vendorsResult.data ?? [];
+  const myRequests = myRequestsResult.data ?? [];
+
+  const equipmentOptions = equipment.map((eq) => ({
+    id: eq.id,
+    name: eq.name,
+  }));
+  const vendorNameById = new Map(vendors.map((v) => [v.id, v.name]));
+  const equipmentRows = equipment.map((eq) => ({
+    id: eq.id,
+    name: eq.name,
+    category: eq.category,
+    area: eq.area,
+    status: eq.status,
+    service_vendor_name: eq.service_vendor_id
+      ? (vendorNameById.get(eq.service_vendor_id) ?? null)
+      : null,
+  }));
+  const equipmentNameById = new Map(equipmentOptions.map((e) => [e.id, e.name]));
   const profileNameById = new Map((profiles ?? []).map((p) => [p.id, p.name]));
-  const vendorNameById = new Map((vendors ?? []).map((v) => [v.id, v.name]));
   const workOrderRequestIds = Array.from(
     new Set(
-      (workOrders ?? [])
+      workOrders
         .map((wo) => wo.request_id)
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  const { data: workOrderRequests } =
+  const { data: workOrderRequests, error: workOrderRequestsError } =
     workOrderRequestIds.length > 0
       ? await supabase
           .from("maintenance_requests")
           .select("id, photo_urls")
           .in("id", workOrderRequestIds)
-      : { data: [] };
+      : { data: [], error: null };
+  if (workOrderRequestsError) {
+    throw new Error(
+      `Could not load work order request photos: ${workOrderRequestsError.message}`,
+    );
+  }
   const requestPhotosById = new Map(
     (workOrderRequests ?? []).map((request) => [
       request.id,
@@ -136,30 +179,22 @@ export default async function MaintenancePage() {
     ]),
   );
 
-  const workOrderRows: WorkOrderRow[] = (workOrders ?? []).map((wo) => ({
+  const workOrderRows: WorkOrderRow[] = workOrders.map((wo) => ({
     id: wo.id,
     title: wo.title,
     status: wo.status,
     priority: wo.priority,
-    equipment_name: wo.equipment_id
-      ? (equipmentNameById.get(wo.equipment_id) ?? null)
-      : null,
-    assigned_user_name: wo.assigned_user_id
-      ? (profileNameById.get(wo.assigned_user_id) ?? null)
-      : null,
-    vendor_name: wo.vendor_id
-      ? (vendorNameById.get(wo.vendor_id) ?? null)
-      : null,
+    equipment_name: wo.equipment_id ? (equipmentNameById.get(wo.equipment_id) ?? null) : null,
+    assigned_user_name: wo.assigned_user_id ? (profileNameById.get(wo.assigned_user_id) ?? null) : null,
+    vendor_name: wo.vendor_id ? (vendorNameById.get(wo.vendor_id) ?? null) : null,
     photo_urls: mergePhotoUrls(
       wo.photo_urls,
       wo.request_id ? requestPhotosById.get(wo.request_id) : null,
     ),
   }));
 
-  const openCount = workOrderRows.filter(
-    (wo) => wo.status !== "complete" && wo.status !== "cancelled",
-  ).length;
-  const requestRows = myRequests ?? [];
+  const openCount = workOrderRows.filter((wo) => wo.status !== "complete" && wo.status !== "cancelled").length;
+  const requestRows = myRequests;
 
   const tabs = [
     {
@@ -168,14 +203,25 @@ export default async function MaintenancePage() {
       content: (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 px-1">
-            <p className="text-[13px] font-semibold text-muted-ink">
-              {openCount} open
-            </p>
+            <p className="text-[13px] font-semibold text-muted-ink">{openCount} open</p>
             {canTriage && (
-              <CreateWorkOrderForm equipmentOptions={equipment ?? []} />
+              <CreateWorkOrderForm equipmentOptions={equipmentOptions} />
             )}
           </div>
           <WorkOrderBoard workOrders={workOrderRows} />
+        </div>
+      ),
+    },
+    {
+      id: "equipment",
+      label: `Equipment (${equipmentRows.length})`,
+      content: (
+        <div className="mx-auto w-full lg:max-w-[480px]">
+          <EquipmentList
+            equipment={equipmentRows}
+            vendorOptions={vendors}
+            canManage={canManageEquipment}
+          />
         </div>
       ),
     },
@@ -202,7 +248,7 @@ export default async function MaintenancePage() {
       content: (
         <div className="mx-auto w-full lg:max-w-[480px]">
           <SectionCard title="Submit a maintenance request">
-            <RequestForm equipmentOptions={equipment ?? []} />
+            <RequestForm equipmentOptions={equipmentOptions} />
           </SectionCard>
         </div>
       ),
@@ -212,9 +258,7 @@ export default async function MaintenancePage() {
       label: `My requests (${requestRows.length})`,
       content:
         requestRows.length === 0 ? (
-          <p className="px-1 text-[13px] text-muted-ink">
-            You haven&apos;t submitted any requests yet.
-          </p>
+          <p className="px-1 text-[13px] text-muted-ink">You haven&apos;t submitted any requests yet.</p>
         ) : (
           <SectionCard flush className="mx-auto w-full lg:max-w-[480px]">
             <div className="divide-y divide-line">
@@ -231,9 +275,7 @@ export default async function MaintenancePage() {
                     title={request.title}
                     description={detail}
                     trailing={
-                      <StatusBadge
-                        tone={REQUEST_STATUS_TONE[request.status] ?? "neutral"}
-                      >
+                      <StatusBadge tone={REQUEST_STATUS_TONE[request.status] ?? "neutral"}>
                         {request.status}
                       </StatusBadge>
                     }
