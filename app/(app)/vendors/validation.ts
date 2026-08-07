@@ -41,3 +41,8 @@ export const setVendorActiveSchema = z.object({
   active: z.boolean(),
 });
 export type SetVendorActiveInput = z.infer<typeof setVendorActiveSchema>;
+
+export const deleteVendorSchema = z.object({
+  id: z.string().uuid(),
+});
+export type DeleteVendorInput = z.infer<typeof deleteVendorSchema>;

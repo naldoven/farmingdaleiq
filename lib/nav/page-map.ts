@@ -292,6 +292,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Vendor directory.",
         owner: "S8",
       },
+      {
+        href: "/vendors-settings",
+        permission: "vendors.view",
+        label: "Vendor Settings",
+        description: "Add, edit, deactivate, reactivate, and delete vendors.",
+        owner: "S8",
+      },
     ],
   },
   {
