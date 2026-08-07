@@ -31,9 +31,13 @@ const PUBLIC_PATHS = [
   "/api/cron",
   "/api/jobs",
   "/api/tasks/sync",
+  // The unlisted maintenance beta deliberately accepts anonymous submissions
+  // and has server-side validation on both public endpoints.
+  "/maintenance-log",
+  "/api/public/maintenance",
 ];
 
-function isPublicPath(pathname: string) {
+export function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
     pathname.startsWith("/_next") ||

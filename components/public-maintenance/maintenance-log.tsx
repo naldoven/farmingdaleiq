@@ -22,7 +22,6 @@ export interface PublicWorkOrder {
   priority: "low" | "medium" | "high" | "urgent";
   area: string | null;
   equipmentName: string | null;
-  photoUrls: string[];
   createdAt: string;
 }
 
@@ -233,16 +232,6 @@ function WorkOrderRow({ order }: { order: PublicWorkOrder }) {
         <StatusBadge tone={statusForPriority(order.priority)} className="w-fit">
           {order.priority} priority
         </StatusBadge>
-      )}
-      {order.photoUrls.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {order.photoUrls.map((url) => (
-            <a key={url} href={url} target="_blank" rel="noreferrer" className="h-20 w-20 overflow-hidden rounded-lg border border-line">
-              {/* eslint-disable-next-line @next/next/no-img-element -- public maintenance photo. */}
-              <img src={url} alt={`Photo for ${order.title}`} loading="lazy" className="h-full w-full object-cover" />
-            </a>
-          ))}
-        </div>
       )}
     </article>
   );
