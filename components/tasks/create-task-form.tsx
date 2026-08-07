@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/select";
 import { createTask } from "@/app/(app)/tasks/actions";
 import type { NamedOption } from "@/components/tasks/delegate-task-control";
+import { storeLocalDate } from "@/lib/time";
 
 const UNSET = "unset";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return storeLocalDate();
 }
 
 /** Ad hoc task creation. Leaves it unassigned (pool) unless a person or
@@ -69,7 +70,7 @@ export function CreateTaskForm({
             date,
             dayPartId: dayPartId === UNSET ? "" : dayPartId,
             startTime,
-            // due_at is a full timestamp; combine the task's date with the due
+            // due_at is interpreted by the server as a New York wall-clock
             // time. Left empty when no due time is set (task never goes overdue).
             dueAt: dueTime ? `${date}T${dueTime}` : "",
             assignedUserId: kind === "user" ? id : "",

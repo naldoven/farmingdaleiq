@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 import type { ActionResult } from "@/app/(app)/maintenance/action-types";
 import { closeOpenDowntimeSpan, openDowntimeSpan } from "@/app/(app)/maintenance/downtime";
 import { addDays } from "@/app/(app)/maintenance/logic";
@@ -177,7 +178,7 @@ export async function createPmSchedule(
     const parsed = pmScheduleSchema.parse(input);
     const supabase = await createClient();
 
-    const nextDueOn = parsed.nextDueOn ?? addDays(new Date().toISOString().slice(0, 10), parsed.intervalDays);
+    const nextDueOn = parsed.nextDueOn ?? addDays(storeLocalDate(), parsed.intervalDays);
 
     const { data, error } = await supabase
       .from("pm_schedules")

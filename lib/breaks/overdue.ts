@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { isMissed } from "@/lib/breaks/entitlement";
 import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { storeDateTimeInputToIso } from "@/lib/time";
 
 /**
  * Scans authorized breaks past the overdue grace window and flips them to
@@ -108,8 +109,9 @@ async function markMissedBreaks(
     const endTime = setup?.day_part_id ? endTimeByDayPart.get(setup.day_part_id) : null;
     if (!setup || !endTime) continue; // no day-part end to compute "missed at day-part end" from
 
-    const shiftEnd = new Date(`${setup.date}T${endTime}`);
-    if (Number.isNaN(shiftEnd.getTime())) continue;
+    const shiftEndIso = storeDateTimeInputToIso(`${setup.date}T${endTime}`);
+    const shiftEnd = shiftEndIso ? new Date(shiftEndIso) : null;
+    if (!shiftEnd || Number.isNaN(shiftEnd.getTime())) continue;
     if (!isMissed({ status: breakRow.status, authorized_at: null }, shiftEnd, now)) continue;
 
     const { data: claimed, error } = await supabase

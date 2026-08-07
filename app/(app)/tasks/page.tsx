@@ -5,6 +5,7 @@ import type { NamedOption } from "@/components/tasks/delegate-task-control";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 
 /**
  * /tasks — ARCHITECTURE.md "Tasks (To-Dos)" + PLAN.md S2 brief: "My tasks +
@@ -30,7 +31,7 @@ export default async function TasksPage() {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id ?? null;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = storeLocalDate();
 
   let tasksQuery = supabase
     .from("tasks")

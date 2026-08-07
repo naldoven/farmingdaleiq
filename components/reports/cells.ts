@@ -1,4 +1,5 @@
 import type { CsvValue } from "@/app/(app)/reports/csv";
+import { formatStoreDate, formatStoreDateTime } from "@/lib/time";
 
 /**
  * Serializable cell/column descriptors shared by the /reports page (a React
@@ -23,8 +24,8 @@ import type { CsvValue } from "@/app/(app)/reports/csv";
  * `ReportCell.value` accordingly:
  *  - `text`    : a pre-resolved string/number, rendered as-is.
  *  - `number`  : a numeric value, rendered as-is.
- *  - `datetime`: an ISO timestamp (or null), rendered via `toLocaleString`.
- *  - `date`    : an ISO date (or null), rendered via `toLocaleDateString`.
+ *  - `datetime`: an ISO timestamp (or null), rendered in the store timezone.
+ *  - `date`    : an ISO date (or null), rendered in the store timezone.
  *  - `percent` : a 0..1 ratio, rendered as a whole-number percentage.
  *  - `badge`   : a status token, rendered as an outline badge (CSV: raw token).
  *  - `overdue` : a boolean, rendered as a destructive "Overdue" badge or a dash.
@@ -56,14 +57,12 @@ const EMPTY = "—";
 
 export function formatDateTime(value: CellPrimitive): string {
   if (value == null || value === "") return EMPTY;
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? EMPTY : date.toLocaleString();
+  return formatStoreDateTime(String(value), EMPTY);
 }
 
 export function formatDate(value: CellPrimitive): string {
   if (value == null || value === "") return EMPTY;
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? EMPTY : date.toLocaleDateString();
+  return formatStoreDate(String(value), EMPTY);
 }
 
 export function formatPercent(value: CellPrimitive): string {

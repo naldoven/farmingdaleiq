@@ -194,12 +194,19 @@ describe("periodRange", () => {
     expect(periodRange("quarter", now)).toEqual({ from: "2026-07-01", to: "2026-07-15" });
     expect(periodRange("quarter", new Date("2026-02-01T00:00:00Z"))).toEqual({
       from: "2026-01-01",
-      to: "2026-02-01",
+      to: "2026-01-31",
     });
   });
 
   it("returns Jan 1 for 'year'", () => {
     expect(periodRange("year", now)).toEqual({ from: "2026-01-01", to: "2026-07-15" });
+  });
+
+  it("uses the New York calendar before UTC midnight", () => {
+    expect(periodRange("month", new Date("2026-08-01T00:30:00Z"))).toEqual({
+      from: "2026-07-01",
+      to: "2026-07-31",
+    });
   });
 });
 
@@ -291,6 +298,10 @@ describe("currentWeekDates", () => {
       "2026-07-17",
       "2026-07-18",
     ]);
+  });
+
+  it("keeps the current week on the New York calendar near midnight UTC", () => {
+    expect(currentWeekDates(new Date("2026-08-02T00:30:00Z"))[0]).toBe("2026-07-26");
   });
 });
 

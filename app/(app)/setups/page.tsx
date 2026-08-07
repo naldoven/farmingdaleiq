@@ -9,9 +9,10 @@ import { computeBreakDueAt } from "@/lib/breaks/entitlement";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
 import { loadPositionSuitability, type PositionSuitability } from "@/lib/integration/position-ratings";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { storeHour, storeLocalDate } from "@/lib/time";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return storeLocalDate();
 }
 
 /**
@@ -181,7 +182,7 @@ export default async function SetupsPage({
       const names = (assignments ?? [])
         .filter((a) => {
           if (!a.user_id) return false;
-          const arrivalHour = a.arrival_time ? new Date(a.arrival_time).getHours() : startHour;
+          const arrivalHour = a.arrival_time ? (storeHour(a.arrival_time) ?? startHour) : startHour;
           return arrivalHour <= hour;
         })
         .map((a) => profileNameById.get(a.user_id as string) ?? "Unknown");

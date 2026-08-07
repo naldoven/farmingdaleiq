@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/lib/db/types";
+import { storeLocalDate } from "@/lib/time";
 import type { SystemTaskInsert } from "@/app/(app)/tasks/system-tasks";
 
 /**
@@ -38,8 +39,8 @@ import type { SystemTaskInsert } from "@/app/(app)/tasks/system-tasks";
  * leaving a stale "pending" task sitting in someone's list for work that
  * isn't theirs anymore.
  *
- * "Today" is computed the same way app/(app)/tasks/page.tsx does (server UTC
- * date, not the store's local timezone) for consistency with every other
+ * "Today" is computed in the Farmingdale store's America/New_York timezone,
+ * matching app/(app)/tasks/page.tsx and every other date-scoped task surface.
  * task's `date` -- a maintenance task using a different calendar boundary
  * than its neighbors would be a worse inconsistency than the existing
  * UTC-vs-store-timezone gap. Fixing that gap app-wide is out of scope here.
@@ -150,7 +151,7 @@ export function planMaintenanceTaskSync(
  */
 export async function syncMaintenanceTasks(
   supabase: SupabaseClient<Database>,
-  today: string = new Date().toISOString().slice(0, 10),
+  today: string = storeLocalDate(),
 ): Promise<{ created: number; cancelled: number }> {
   const [{ data: workOrders, error: woError }, { data: existingTasks, error: tasksError }] = await Promise.all([
     supabase

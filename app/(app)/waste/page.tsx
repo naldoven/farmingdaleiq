@@ -12,6 +12,7 @@ import { WasteReports } from "@/components/waste/waste-reports";
 import { WasteViewTabs, type WasteTabKey } from "@/components/waste/waste-view-tabs";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { formatStoreDateTime } from "@/lib/time";
 import { storeDayRangeUtc, type WasteEntryForRollup } from "@/app/(app)/waste/logic";
 import type { WasteUnit } from "@/app/(app)/waste/validation";
 
@@ -275,7 +276,7 @@ export default async function WastePage({
                       description={[
                         noteDetail || null,
                         dayPartName,
-                        new Date(entry.logged_at).toLocaleString(),
+                        formatStoreDateTime(entry.logged_at),
                         loggedByName,
                       ]
                         .filter(Boolean)

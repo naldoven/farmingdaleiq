@@ -37,4 +37,8 @@ describe("weekDates", () => {
     const dates = weekDates(sun);
     expect(dates[0]).toBe("2026-07-06");
   });
+  it("uses the New York calendar near midnight UTC", () => {
+    const dates = weekDates(new Date("2026-08-03T00:30:00Z"));
+    expect(dates[0]).toBe("2026-07-27");
+  });
 });

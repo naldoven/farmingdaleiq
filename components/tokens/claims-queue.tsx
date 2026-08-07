@@ -7,6 +7,7 @@ import { Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/mobile";
 import { cancelClaim, fulfillClaim } from "@/app/(app)/rewards/actions";
+import { formatStoreDateTime } from "@/lib/time";
 
 export interface ClaimQueueRow {
   id: string;
@@ -54,7 +55,7 @@ function ClaimRow({ claim, onChanged }: { claim: ClaimQueueRow; onChanged: () =>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold text-ink">{claim.userName}</p>
           <p className="truncate text-[13px] text-muted-ink">
-            {claim.rewardName} · {claim.cost} tokens · {new Date(claim.claimedAt).toLocaleString()}
+            {claim.rewardName} · {claim.cost} tokens · {formatStoreDateTime(claim.claimedAt)}
           </p>
         </div>
         <StatusBadge tone="warning" dot className="shrink-0">

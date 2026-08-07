@@ -6,6 +6,7 @@ import { ChecklistList, type ChecklistRunItem, type RunStatus } from "@/componen
 import { FollowUpResolveButton } from "@/components/checklists/follow-up-resolve-button";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { formatStoreDateTime, storeLocalDate } from "@/lib/time";
 
 /** Round gear link to /checklists/templates, the sub-page header's "gear" action rendered in page content (the shared AppHeader has no page-level action slot). */
 function ManageTemplatesLink() {
@@ -35,7 +36,7 @@ export default async function ChecklistsPage() {
   const canManageTemplates = await hasPermission("checklists.manage_templates");
 
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = storeLocalDate();
 
   const {
     data: { user },
@@ -122,7 +123,7 @@ export default async function ChecklistsPage() {
                 title={followUp.description}
                 description={
                   followUp.due_at
-                    ? `Due ${new Date(followUp.due_at).toLocaleString()} · ${followUp.status.replace("_", " ")}`
+                    ? `Due ${formatStoreDateTime(followUp.due_at)} · ${followUp.status.replace("_", " ")}`
                     : `No due date · ${followUp.status.replace("_", " ")}`
                 }
                 trailing={<FollowUpResolveButton followUpId={followUp.id} />}

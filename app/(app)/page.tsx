@@ -13,9 +13,10 @@ import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
 import { APP_FEATURES, isEventFeatureEnabled } from "@/lib/features";
+import { storeLocalDate } from "@/lib/time";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return storeLocalDate();
 }
 
 export interface HomeTaskSummary {

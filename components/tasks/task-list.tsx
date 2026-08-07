@@ -17,6 +17,7 @@ import { CancelTaskButton } from "@/components/tasks/cancel-task-button";
 import { ClaimTaskButton } from "@/components/tasks/claim-task-button";
 import { CompleteTaskButton } from "@/components/tasks/complete-task-button";
 import { DelegateTaskControl, type NamedOption } from "@/components/tasks/delegate-task-control";
+import { formatStoreTime } from "@/lib/time";
 
 export interface TaskRowView {
   id: string;
@@ -107,9 +108,7 @@ function isActionable(status: string): boolean {
 
 function formatDue(dueAt: string | null): string {
   if (!dueAt) return "No due time";
-  const d = new Date(dueAt);
-  if (Number.isNaN(d.getTime())) return dueAt;
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatStoreTime(dueAt, dueAt);
 }
 
 /** The gray subtitle line: kind, day-part, due time (red when overdue), and

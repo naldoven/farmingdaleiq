@@ -24,7 +24,6 @@ import {
   formatCentsAsUsd,
   rollupByCategory,
   storeDayRangeUtc,
-  storeLocalDate,
   sumCostCents,
   type WasteCategoryForRollup,
   type WasteEntryForRollup,
@@ -36,6 +35,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt } from "@/lib/breaks/entitlement";
 import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
+import { formatStoreTime, storeLocalDate } from "@/lib/time";
 
 // NOTE: "today" is resolved against the STORE's timezone below, not
 // `new Date().toISOString().slice(0, 10)`. The UTC form rolled over at 8pm
@@ -58,9 +58,7 @@ function formatClockTime(time: string): string {
 /** Same convention as components/tasks/task-list.tsx's local formatDue. */
 function formatDueAt(dueAt: string | null): string {
   if (!dueAt) return "No due time";
-  const d = new Date(dueAt);
-  if (Number.isNaN(d.getTime())) return "No due time";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatStoreTime(dueAt, "No due time");
 }
 
 /** The round accent "+" assign button trailing each Due Soon row. */

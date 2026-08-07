@@ -1,3 +1,5 @@
+import { addStoreCalendarDays, storeLocalDate as getStoreLocalDate } from "@/lib/time";
+
 /**
  * Pure business logic for Catering (ARCHITECTURE.md "Catering (modeled on
  * the Avondale Catering Hub)"). Kept free of Supabase/Next imports so it is
@@ -273,8 +275,9 @@ export function planChecklistMaterialization(params: {
   return planned;
 }
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+function localDateParts(date: string): [number, number, number] {
+  const [year, month, day] = date.split("-").map(Number);
+  return [year, month, day];
 }
 
 /**
@@ -286,23 +289,21 @@ export function periodRange(
   period: HistoryPeriod,
   now: Date = new Date(),
 ): { from: string | null; to: string } {
-  const to = toIsoDate(now);
+  const to = getStoreLocalDate(now);
+  const [year, month] = localDateParts(to);
   if (period === "all") return { from: null, to };
 
   if (period === "month") {
-    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    return { from: toIsoDate(from), to };
+    return { from: `${year}-${String(month).padStart(2, "0")}-01`, to };
   }
 
   if (period === "quarter") {
-    const quarterStartMonth = Math.floor(now.getUTCMonth() / 3) * 3;
-    const from = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth, 1));
-    return { from: toIsoDate(from), to };
+    const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
+    return { from: `${year}-${String(quarterStartMonth).padStart(2, "0")}-01`, to };
   }
 
   // year
-  const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-  return { from: toIsoDate(from), to };
+  return { from: `${year}-01-01`, to };
 }
 
 export interface OrderRollupInput {
@@ -459,13 +460,10 @@ export function computeAnalytics(
  * `now`, for the /catering/week "This Week" calendar.
  */
 export function currentWeekDates(now: Date = new Date()): string[] {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start.getTime());
-    d.setUTCDate(d.getUTCDate() + i);
-    return toIsoDate(d);
-  });
+  const today = getStoreLocalDate(now);
+  const dayOfWeek = new Date(`${today}T12:00:00.000Z`).getUTCDay();
+  const start = addStoreCalendarDays(today, -dayOfWeek);
+  return Array.from({ length: 7 }, (_, i) => addStoreCalendarDays(start, i));
 }
 
 /**
@@ -475,9 +473,7 @@ export function currentWeekDates(now: Date = new Date()): string[] {
  * default // SEED-DEFAULT).
  */
 export function defaultFollowUpDueDate(eventDate: string): string {
-  const date = new Date(`${eventDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + 30);
-  return toIsoDate(date);
+  return addStoreCalendarDays(eventDate, 30);
 }
 
 /**

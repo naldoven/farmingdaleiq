@@ -23,6 +23,7 @@ import {
 import { ListRow, SectionCard } from "@/components/mobile";
 import { PhotoStrip } from "@/components/maintenance/photo-upload";
 import { approveRequest, declineRequest } from "@/app/(app)/maintenance/actions";
+import { formatStoreDate } from "@/lib/time";
 
 export interface RequestRow {
   id: string;
@@ -222,7 +223,7 @@ export function TriageQueue({
                 description={[
                   request.area,
                   request.suggested_priority ? `${request.suggested_priority} priority` : null,
-                  new Date(request.submitted_at).toLocaleDateString(),
+                  formatStoreDate(request.submitted_at),
                 ]
                   .filter(Boolean)
                   .join(" · ")}

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 import { materializeTasksForDate } from "@/app/(app)/tasks/materialize";
 import { markOverdueTasks } from "@/app/(app)/tasks/overdue";
 import { processTaskEvents } from "@/app/(app)/tasks/system-tasks";
@@ -34,7 +35,7 @@ async function run(request: NextRequest) {
   }
 
   const supabase = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = storeLocalDate();
 
   const [materialized, overdue, events] = await Promise.all([
     materializeTasksForDate(supabase, today),

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AvatarInitials, StatusBadge } from "@/components/mobile";
 import { addComment, toggleLike } from "@/app/(app)/team/actions";
+import { formatStoreDateTime } from "@/lib/time";
 
 export interface FeedPostComment {
   id: string;
@@ -43,23 +44,12 @@ const KIND_TONE: Record<FeedPostData["kind"], "success" | "warning" | "accent"> 
 
 /**
  * FEED-HYDRATION: this is a "use client" component that is also server-rendered,
- * so `new Date(...).toLocaleString()` produced React #418 -- the server's
- * default locale/timezone string didn't match the browser's at hydration.
- * Pinning BOTH the locale and the timeZone makes the formatted string identical
- * on the server and the client, so there's no mismatch and no layout shift. The
- * store runs on Eastern time (the same America/New_York default the catering
- * day-boundary code falls back to), so timestamps read in store time regardless
- * of where the viewer's browser is.
+ * so browser-local formatting produced React #418 -- the server's default
+ * timezone string didn't match the browser's at hydration. The shared store
+ * formatter keeps server and client output identical in America/New_York.
  */
-const TIMESTAMP_FORMAT = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 function formatTimestamp(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : TIMESTAMP_FORMAT.format(date);
+  return formatStoreDateTime(iso, "");
 }
 
 /**

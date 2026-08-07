@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { createSession } from "@/app/(app)/training/schedule/actions";
 import { SESSION_TAG_OPTIONS } from "@/app/(app)/training/schedule/constants";
+import { storeLocalDate } from "@/lib/time";
 
 const UNSET = "unset";
 
@@ -30,7 +31,7 @@ export function CreateSessionForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(storeLocalDate());
   const [positionId, setPositionId] = useState(UNSET);
   const [trainerId, setTrainerId] = useState(UNSET);
   const [startTime, setStartTime] = useState("");

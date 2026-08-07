@@ -11,6 +11,7 @@ import { PhotoStrip } from "@/components/maintenance/photo-upload";
 import { addEquipmentFile, setEquipmentStatus } from "@/app/(app)/maintenance/equipment/actions";
 import { PmScheduleManager, type PmScheduleRow } from "@/components/maintenance/pm-schedule-manager";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
+import { formatStoreDate, formatStoreDateTime } from "@/lib/time";
 
 export interface EquipmentDetailData {
   id: string;
@@ -485,8 +486,8 @@ export function EquipmentDetail({
             {downtime.map((span) => (
               <ListRow
                 key={span.id}
-                title={new Date(span.started_at).toLocaleString()}
-                description={span.ended_at ? `Ended ${new Date(span.ended_at).toLocaleString()}` : "Ongoing"}
+                title={formatStoreDateTime(span.started_at)}
+                description={span.ended_at ? `Ended ${formatStoreDateTime(span.ended_at)}` : "Ongoing"}
               />
             ))}
           </div>
@@ -503,7 +504,7 @@ export function EquipmentDetail({
                 key={wo.id}
                 href={`/maintenance/${wo.id}`}
                 title={wo.title}
-                description={new Date(wo.created_at).toLocaleDateString()}
+                description={formatStoreDate(wo.created_at)}
                 trailing={<StatusBadge tone="neutral">{wo.status.replace("_", " ")}</StatusBadge>}
               />
             ))}

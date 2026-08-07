@@ -2,6 +2,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 import { ListRow } from "@/components/mobile";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
+import { formatStoreDateTime } from "@/lib/time";
 
 export interface TransactionHistoryRow {
   id: string;
@@ -35,7 +36,7 @@ export function TransactionHistory({ rows }: { rows: TransactionHistoryRow[] }) 
             iconTone={isCredit ? "success" : "danger"}
             title={transactionKindLabel(row.kind)}
             description={
-              row.note ? `${new Date(row.createdAt).toLocaleString()} · ${row.note}` : new Date(row.createdAt).toLocaleString()
+              row.note ? `${formatStoreDateTime(row.createdAt)} · ${row.note}` : formatStoreDateTime(row.createdAt)
             }
             trailing={
               <span className={`text-[15px] font-bold tabular-nums ${isCredit ? "text-success" : "text-danger"}`}>
