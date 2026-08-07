@@ -178,6 +178,7 @@ describe("visibleNavGroups (S4 nav gating)", () => {
 
     // Gated items the user CAN reach show.
     expect(hrefs).toContain("/checklists");
+    expect(hrefs).toContain("/vendors-settings");
     expect(hrefs).toContain("/catering");
     expect(hrefs).toContain("/training/grid");
 
