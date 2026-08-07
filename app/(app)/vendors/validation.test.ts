@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { vendorSchema } from "./validation";
+import { deleteVendorSchema, vendorSchema } from "./validation";
 
 describe("vendorSchema", () => {
   it("requires a name", () => {
@@ -20,6 +20,13 @@ describe("vendorSchema", () => {
       name: "Acme",
       email: "not-an-email",
     });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("deleteVendorSchema", () => {
+  it("requires a vendor id", () => {
+    const result = deleteVendorSchema.safeParse({ id: "not-a-uuid" });
     expect(result.success).toBe(false);
   });
 });
