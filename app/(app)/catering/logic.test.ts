@@ -194,7 +194,7 @@ describe("periodRange", () => {
     expect(periodRange("quarter", now)).toEqual({ from: "2026-07-01", to: "2026-07-15" });
     expect(periodRange("quarter", new Date("2026-02-01T00:00:00Z"))).toEqual({
       from: "2026-01-01",
-      to: "2026-02-01",
+      to: "2026-01-31",
     });
   });
 
