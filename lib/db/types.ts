@@ -1710,6 +1710,7 @@ export type Database = {
           equipment_id: string | null
           id: string
           photo_urls: string[] | null
+          public_submission_id: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           status: string
@@ -1726,6 +1727,7 @@ export type Database = {
           equipment_id?: string | null
           id?: string
           photo_urls?: string[] | null
+          public_submission_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
@@ -1742,6 +1744,7 @@ export type Database = {
           equipment_id?: string | null
           id?: string
           photo_urls?: string[] | null
+          public_submission_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: string
