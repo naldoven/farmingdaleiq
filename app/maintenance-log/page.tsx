@@ -22,7 +22,7 @@ function mergePhotoUrls(...groups: Array<string[] | null | undefined>): string[]
 export default async function PublicMaintenanceLogPage() {
   const supabase = createServiceRoleClient();
   const [equipmentResult, workOrdersResult] = await Promise.all([
-    supabase.from("equipment").select("id, name").order("name"),
+    supabase.from("equipment").select("id, name, area").order("name"),
     supabase
       .from("work_orders")
       .select("id, request_id, title, description, equipment_id, priority, status, photo_urls, created_at")
@@ -39,7 +39,7 @@ export default async function PublicMaintenanceLogPage() {
     : { data: [], error: null };
   if (requestsError) throw new Error(`Could not load maintenance photos: ${requestsError.message}`);
 
-  const equipmentNameById = new Map((equipmentResult.data ?? []).map((equipment) => [equipment.id, equipment.name]));
+  const equipmentById = new Map((equipmentResult.data ?? []).map((equipment) => [equipment.id, equipment]));
   const requestPhotosById = new Map((requests ?? []).map((request) => [request.id, request.photo_urls]));
   const publicWorkOrders: PublicWorkOrder[] = workOrders.map((order) => ({
     id: order.id,
@@ -47,7 +47,8 @@ export default async function PublicMaintenanceLogPage() {
     description: order.description,
     status: order.status as PublicWorkOrder["status"],
     priority: order.priority as PublicWorkOrder["priority"],
-    equipmentName: order.equipment_id ? (equipmentNameById.get(order.equipment_id) ?? null) : null,
+    area: order.equipment_id ? (equipmentById.get(order.equipment_id)?.area ?? null) : null,
+    equipmentName: order.equipment_id ? (equipmentById.get(order.equipment_id)?.name ?? null) : null,
     photoUrls: mergePhotoUrls(order.photo_urls, order.request_id ? requestPhotosById.get(order.request_id) : null),
     createdAt: order.created_at,
   }));

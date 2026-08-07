@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Send, Wrench } from "lucide-react";
+import { Camera, Send, Wrench, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ export interface PublicWorkOrder {
   description: string | null;
   status: "open" | "in_progress" | "on_hold";
   priority: "low" | "medium" | "high" | "urgent";
+  area: string | null;
   equipmentName: string | null;
   photoUrls: string[];
   createdAt: string;
@@ -46,9 +47,9 @@ function PhotoPreview({ url, onRemove }: { url: string; onRemove: () => void }) 
         type="button"
         aria-label="Remove selected photo"
         onClick={onRemove}
-        className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-[16px] leading-none text-white"
+        className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-white"
       >
-        ×
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </div>
   );
@@ -222,7 +223,7 @@ function WorkOrderRow({ order }: { order: PublicWorkOrder }) {
         <div className="min-w-0">
           <h3 className="text-[15px] font-semibold text-ink">{order.title}</h3>
           <p className="mt-0.5 text-[13px] text-muted-ink">
-            {order.equipmentName ?? "General maintenance"} · Reported {formatStoreDate(order.createdAt)}
+            {[order.area, order.equipmentName ?? "General maintenance"].filter(Boolean).join(" - ")} - Reported {formatStoreDate(order.createdAt)}
           </p>
         </div>
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
