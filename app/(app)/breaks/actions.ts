@@ -20,6 +20,7 @@ import {
   type BreakStatus,
 } from "@/lib/breaks/entitlement";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { storeDateTimeInputToIso } from "@/lib/time";
 import type { ActionResult } from "@/app/(app)/breaks/action-types";
 import {
   authorizeBreakSchema,
@@ -34,7 +35,8 @@ function revalidateBreaks() {
 }
 
 function combineDateAndTime(date: string, time: string): Date {
-  return new Date(`${date}T${time}`);
+  const iso = storeDateTimeInputToIso(`${date}T${time}`);
+  return iso ? new Date(iso) : new Date(`${date}T${time}Z`);
 }
 
 /**

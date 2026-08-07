@@ -5,9 +5,10 @@ import { HScroll, SectionCard, StatTile } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt, entitledMinutesForKind } from "@/lib/breaks/entitlement";
 import { createClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return storeLocalDate();
 }
 
 /**

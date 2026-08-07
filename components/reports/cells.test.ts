@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { cellCsvValue, formatDate, formatDateTime, formatPercent } from "./cells";
+import { formatStoreDate, formatStoreDateTime } from "@/lib/time";
 
 /**
  * The reporting CSV export shares one derivation path with the on-screen
@@ -42,8 +43,8 @@ describe("cellCsvValue", () => {
 
   it("exports datetime/date formats as the localized string", () => {
     const iso = "2026-07-07T12:00:00.000Z";
-    expect(cellCsvValue({ value: iso }, "datetime")).toBe(new Date(iso).toLocaleString());
-    expect(cellCsvValue({ value: iso }, "date")).toBe(new Date(iso).toLocaleDateString());
+    expect(cellCsvValue({ value: iso }, "datetime")).toBe(formatStoreDateTime(iso));
+    expect(cellCsvValue({ value: iso }, "date")).toBe(formatStoreDate(iso));
   });
 
   it("renders a null value as an empty cell for text/number", () => {

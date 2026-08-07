@@ -15,6 +15,7 @@ import {
 import { CreateWorkOrderForm } from "@/app/(app)/maintenance/create-work-order-form";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { formatStoreDate } from "@/lib/time";
 
 const REQUEST_STATUS_TONE: Record<string, StatusTone> = {
   pending: "warning",
@@ -268,7 +269,7 @@ export default async function MaintenancePage() {
                     ? request.declined_reason
                     : request.status === "approved" && request.work_order_id
                       ? "Converted to a work order — see Work orders."
-                      : new Date(request.submitted_at).toLocaleDateString();
+                      : formatStoreDate(request.submitted_at);
                 return (
                   <ListRow
                     key={request.id}

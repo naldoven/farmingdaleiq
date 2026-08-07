@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { emitEvent } from "@/lib/events/bus";
+import { storeDateTimeInputToIso } from "@/lib/time";
 import { buildTaskAssignedEvent } from "@/app/(app)/tasks/events";
 import type { Database } from "@/lib/db/types";
 
@@ -47,7 +48,7 @@ export function templatesDueOn(
 
 /** Builds the `tasks` insert row for one template on one date. */
 export function buildTaskInsert(template: TaskTemplateRow, dateStr: string): TaskInsert {
-  const dueAt = template.due_time ? `${dateStr}T${template.due_time}` : null;
+  const dueAt = template.due_time ? storeDateTimeInputToIso(`${dateStr}T${template.due_time}`) : null;
 
   return {
     template_id: template.id,

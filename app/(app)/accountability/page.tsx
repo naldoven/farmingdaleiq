@@ -16,12 +16,12 @@ import { InfractionTypeCreateForm } from "@/components/accountability/infraction
 import { IssueInfractionForm } from "@/components/accountability/issue-infraction-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { formatStoreDate } from "@/lib/time";
 import { computeActivePoints } from "@/app/(app)/accountability/logic";
 import { fetchMyInfractions } from "@/app/(app)/accountability/queries";
 
 function formatDate(value: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString();
+  return formatStoreDate(value);
 }
 
 /**

@@ -15,6 +15,7 @@ import { LayoutGrid, List } from "lucide-react";
 
 import { AvatarInitials, ChipRow, FilterChip, ProgressBar, SectionCard, StatusBadge } from "@/components/mobile";
 import { cn } from "@/lib/utils";
+import { formatStoreDate } from "@/lib/time";
 
 export interface RosterRow {
   enrollmentId: string;
@@ -33,10 +34,7 @@ export interface TrainingRosterProps {
 const ALL = "all";
 
 function formatStarted(iso: string | null): string {
-  if (!iso) return "Training started —";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Training started —";
-  return `Training started ${d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  return `Training started ${formatStoreDate(iso)}`;
 }
 
 function percentOf(completed: number, total: number): number {

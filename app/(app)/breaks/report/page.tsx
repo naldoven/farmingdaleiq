@@ -3,15 +3,14 @@ import { HScroll, SectionCard, StatTile } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { groupBreakComplianceByKey, summarizeBreakCompliance } from "@/lib/breaks/compliance";
 import { createClient } from "@/lib/supabase/server";
+import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return storeLocalDate();
 }
 
 function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return addStoreCalendarDays(storeLocalDate(), -days);
 }
 
 /**

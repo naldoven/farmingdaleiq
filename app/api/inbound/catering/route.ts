@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 import {
   composeDiscordSummary,
   composeOrderNotes,
@@ -40,8 +41,8 @@ function isAuthorized(request: NextRequest): boolean {
   return request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-function todayUtcDate(): string {
-  return new Date().toISOString().slice(0, 10);
+function todayStoreDate(): string {
+  return storeLocalDate();
 }
 
 export async function POST(request: NextRequest) {
@@ -171,7 +172,7 @@ export async function POST(request: NextRequest) {
       guest_name: parsed.guestName ?? "Unparsed catering email",
       phone: parsed.phone ? normalizePhone(parsed.phone) : null,
       email: parsed.email,
-      event_date: parsed.eventDate ?? todayUtcDate(),
+      event_date: parsed.eventDate ?? todayStoreDate(),
       event_time: parsed.eventTime,
       headcount: parsed.headcount,
       amount: parsed.amount,
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
     payload: {
       orderId: order.id,
       guestName: parsed.guestName ?? "Unparsed catering email",
-      eventDate: parsed.eventDate ?? todayUtcDate(),
+      eventDate: parsed.eventDate ?? todayStoreDate(),
       headcount: parsed.headcount,
       message: composeDiscordSummary(parsed),
     },

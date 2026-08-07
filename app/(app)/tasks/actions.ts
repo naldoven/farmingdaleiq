@@ -27,6 +27,7 @@ import { revalidatePath } from "next/cache";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
+import { storeDateTimeInputToIso } from "@/lib/time";
 import { emitEvent } from "@/lib/events/bus";
 import {
   buildTaskAssignedEvent,
@@ -90,7 +91,7 @@ export async function createTask(
         date: parsed.date,
         day_part_id: parsed.dayPartId,
         start_time: parsed.startTime,
-        due_at: parsed.dueAt,
+        due_at: parsed.dueAt ? (storeDateTimeInputToIso(parsed.dueAt) ?? parsed.dueAt) : null,
         assigned_user_id: parsed.assignedUserId,
         assigned_position_id: parsed.assignedUserId ? null : parsed.assignedPositionId,
         token_value: parsed.tokenValue,

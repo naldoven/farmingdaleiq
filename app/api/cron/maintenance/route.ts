@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 import {
   addDays,
   pmChecklistRunInsert,
@@ -62,7 +63,7 @@ async function run(request: NextRequest) {
   }
 
   const supabase = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = storeLocalDate();
 
   const { data: schedules, error: schedulesError } = await supabase
     .from("pm_schedules")

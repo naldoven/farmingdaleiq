@@ -74,7 +74,7 @@ describe("buildTaskInsert", () => {
       kind: "recurring",
       title: t.title,
       date: MONDAY,
-      due_at: `${MONDAY}T14:30:00`,
+      due_at: `${MONDAY}T18:30:00.000Z`,
       assigned_position_id: t.assign_position_id,
       status: "pending",
       token_value: 10,

@@ -26,6 +26,7 @@ import {
 } from "@/app/(app)/maintenance/actions";
 import { WORK_ORDER_TRANSITIONS_FOR_UI, type WorkOrderStatus } from "@/app/(app)/maintenance/logic";
 import type { PersonOption } from "@/components/maintenance/triage-queue";
+import { formatStoreDateTime } from "@/lib/time";
 
 export interface WorkOrderDetailData {
   id: string;
@@ -297,7 +298,7 @@ function CommentThread({ workOrderId, comments }: { workOrderId: string; comment
           <div key={comment.id} className="rounded-md border border-border p-2 text-sm">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{comment.author_name ?? "Someone"}</span>
-              <span>{new Date(comment.created_at).toLocaleString()}</span>
+              <span>{formatStoreDateTime(comment.created_at)}</span>
             </div>
             {comment.body && <p className="mt-1">{comment.body}</p>}
             {comment.photo_url && (
@@ -404,7 +405,7 @@ export function WorkOrderDetail({
         {workOrder.completed_at && (
           <div>
             <dt className="text-muted-foreground">Completed</dt>
-            <dd>{new Date(workOrder.completed_at).toLocaleString()}</dd>
+            <dd>{formatStoreDateTime(workOrder.completed_at)}</dd>
           </div>
         )}
         {workOrder.cost != null && (

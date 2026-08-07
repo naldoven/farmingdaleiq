@@ -1,3 +1,5 @@
+import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
+
 /** Pure helpers for the Trainee week schedule (ARCHITECTURE.md "Trainee
  * lifecycle" > "Trainee schedule"): "Weekly hour totals show per trainee." */
 
@@ -23,13 +25,9 @@ export function totalWeeklyHours(sessions: { start_time: string | null; end_time
 
 /** Monday-start ISO dates for the week containing `date`. */
 export function weekDates(date: Date): string[] {
-  const day = date.getDay(); // 0 = Sunday
+  const today = storeLocalDate(date);
+  const day = new Date(`${today}T12:00:00.000Z`).getUTCDay(); // 0 = Sunday
   const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(date);
-  monday.setDate(date.getDate() + mondayOffset);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
+  const monday = addStoreCalendarDays(today, mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => addStoreCalendarDays(monday, i));
 }

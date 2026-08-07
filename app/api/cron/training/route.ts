@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
 import { isRerateDue } from "@/app/(app)/ratings/logic";
 import { ACTIVELY_WORKED_WINDOW_DAYS, activelyWorkedKeys, shouldCreateReratePrompt } from "@/app/api/cron/training/logic";
 
@@ -39,9 +40,8 @@ async function run(request: NextRequest) {
   const supabase = createServiceRoleClient();
   const now = new Date();
 
-  const activeWorkCutoff = new Date(now);
-  activeWorkCutoff.setDate(activeWorkCutoff.getDate() - ACTIVELY_WORKED_WINDOW_DAYS);
-  const activeWorkCutoffStr = activeWorkCutoff.toISOString().slice(0, 10);
+  const today = storeLocalDate(now);
+  const activeWorkCutoffStr = addStoreCalendarDays(today, -ACTIVELY_WORKED_WINDOW_DAYS);
 
   const [
     { data: currentRatings, error: ratingsError },
@@ -84,7 +84,7 @@ async function run(request: NextRequest) {
     const { error: insertError } = await supabase.from("rerate_prompts").insert({
       user_id: rating.user_id,
       position_id: rating.position_id,
-      due_on: now.toISOString().slice(0, 10),
+      due_on: today,
     });
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
