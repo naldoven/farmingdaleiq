@@ -22,6 +22,7 @@ export interface PublicWorkOrder {
   priority: "low" | "medium" | "high" | "urgent";
   area: string | null;
   equipmentName: string | null;
+  photoUrls: string[];
   createdAt: string;
 }
 
@@ -219,6 +220,8 @@ function PublicRequestForm({ equipmentOptions }: { equipmentOptions: PublicEquip
 }
 
 function WorkOrderCard({ order }: { order: PublicWorkOrder }) {
+  const showPhotos = order.status === "open" || order.status === "on_hold";
+
   return (
     <article className="flex flex-col gap-3 px-4 py-4">
       <div className="min-w-0">
@@ -228,6 +231,21 @@ function WorkOrderCard({ order }: { order: PublicWorkOrder }) {
         </p>
       </div>
       {order.description && <p className="whitespace-pre-wrap text-[15px] text-ink">{order.description}</p>}
+      {showPhotos && order.photoUrls.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {order.photoUrls.map((url, index) => (
+            <a key={url} href={url} target="_blank" rel="noreferrer" className="aspect-square overflow-hidden rounded-md border border-line bg-secondary">
+              {/* eslint-disable-next-line @next/next/no-img-element -- public work-order photos are stored outside Next image domains. */}
+              <img
+                src={url}
+                alt={`Problem photo ${index + 1} for ${order.title}`}
+                loading="lazy"
+                className="h-full w-full object-cover"
+              />
+            </a>
+          ))}
+        </div>
+      )}
       {(order.priority === "high" || order.priority === "urgent") && (
         <StatusBadge tone={statusForPriority(order.priority)} className="w-fit">
           {order.priority} priority
@@ -294,7 +312,7 @@ export function PublicMaintenanceLog({
           <p className="mt-1 text-[15px] text-muted-ink">Report a problem or see what is currently being worked on.</p>
         </header>
 
-        <div className="max-w-2xl">
+        <div className="mx-auto w-full max-w-2xl">
           <PublicRequestForm equipmentOptions={equipmentOptions} />
         </div>
 
