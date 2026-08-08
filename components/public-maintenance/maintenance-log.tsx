@@ -25,11 +25,15 @@ export interface PublicWorkOrder {
   createdAt: string;
 }
 
-const STATUS: Record<PublicWorkOrder["status"], { label: string; tone: "info" | "warning" | "danger" }> = {
-  open: { label: "Open", tone: "info" },
-  in_progress: { label: "In progress", tone: "warning" },
-  on_hold: { label: "Awaiting vendor or parts", tone: "danger" },
-};
+const KANBAN_COLUMNS: Array<{
+  status: PublicWorkOrder["status"];
+  label: string;
+  tone: "info" | "warning" | "danger";
+}> = [
+  { status: "open", label: "Open", tone: "info" },
+  { status: "in_progress", label: "In progress", tone: "warning" },
+  { status: "on_hold", label: "Awaiting vendor or parts", tone: "danger" },
+];
 
 function statusForPriority(priority: PublicWorkOrder["priority"]): "neutral" | "warning" | "danger" {
   if (priority === "urgent") return "danger";
@@ -214,18 +218,14 @@ function PublicRequestForm({ equipmentOptions }: { equipmentOptions: PublicEquip
   );
 }
 
-function WorkOrderRow({ order }: { order: PublicWorkOrder }) {
-  const status = STATUS[order.status];
+function WorkOrderCard({ order }: { order: PublicWorkOrder }) {
   return (
-    <article className="flex flex-col gap-3 border-b border-line px-4 py-4 last:border-b-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-ink">{order.title}</h3>
-          <p className="mt-0.5 text-[13px] text-muted-ink">
-            {[order.area, order.equipmentName ?? "General maintenance"].filter(Boolean).join(" - ")} - Reported {formatStoreDate(order.createdAt)}
-          </p>
-        </div>
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+    <article className="flex flex-col gap-3 px-4 py-4">
+      <div className="min-w-0">
+        <h3 className="text-[15px] font-semibold text-ink">{order.title}</h3>
+        <p className="mt-0.5 text-[13px] text-muted-ink">
+          {[order.area, order.equipmentName ?? "General maintenance"].filter(Boolean).join(" - ")} - Reported {formatStoreDate(order.createdAt)}
+        </p>
       </div>
       {order.description && <p className="whitespace-pre-wrap text-[15px] text-ink">{order.description}</p>}
       {(order.priority === "high" || order.priority === "urgent") && (
@@ -234,6 +234,44 @@ function WorkOrderRow({ order }: { order: PublicWorkOrder }) {
         </StatusBadge>
       )}
     </article>
+  );
+}
+
+function PublicWorkKanban({ workOrders }: { workOrders: PublicWorkOrder[] }) {
+  return (
+    <section aria-labelledby="current-work-heading" className="flex flex-col gap-3">
+      <div className="px-1">
+        <h2 id="current-work-heading" className="text-[20px] font-bold text-ink">Current work ({workOrders.length})</h2>
+      </div>
+      {workOrders.length === 0 ? (
+        <div className="border border-line bg-card px-4 py-6 text-center text-[15px] text-muted-ink">
+          No maintenance work is currently open.
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-3">
+          {KANBAN_COLUMNS.map((column) => {
+            const orders = workOrders.filter((order) => order.status === column.status);
+            const headingId = `work-column-${column.status}`;
+
+            return (
+              <section key={column.status} aria-labelledby={headingId} className="min-w-0 border border-line bg-card">
+                <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+                  <h3 id={headingId} className="text-[15px] font-semibold text-ink">{column.label}</h3>
+                  <StatusBadge tone={column.tone}>{orders.length}</StatusBadge>
+                </header>
+                {orders.length === 0 ? (
+                  <p className="px-4 py-5 text-[14px] text-muted-ink">No work here.</p>
+                ) : (
+                  <div className="divide-y divide-line">
+                    {orders.map((order) => <WorkOrderCard key={order.id} order={order} />)}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -246,8 +284,8 @@ export function PublicMaintenanceLog({
 }) {
   return (
     <main className="min-h-screen bg-canvas px-4 py-8 sm:py-12">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <header className="px-1 pb-1">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <header className="max-w-2xl px-1 pb-1">
           <div className="flex items-center gap-2 text-accent">
             <Wrench className="h-5 w-5" aria-hidden="true" />
             <span className="text-[15px] font-semibold">FarmingdaleIQ</span>
@@ -256,15 +294,11 @@ export function PublicMaintenanceLog({
           <p className="mt-1 text-[15px] text-muted-ink">Report a problem or see what is currently being worked on.</p>
         </header>
 
-        <PublicRequestForm equipmentOptions={equipmentOptions} />
+        <div className="max-w-2xl">
+          <PublicRequestForm equipmentOptions={equipmentOptions} />
+        </div>
 
-        <SectionCard title={`Current work (${workOrders.length})`} flush>
-          {workOrders.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[15px] text-muted-ink">No maintenance work is currently open.</p>
-          ) : (
-            <div>{workOrders.map((order) => <WorkOrderRow key={order.id} order={order} />)}</div>
-          )}
-        </SectionCard>
+        <PublicWorkKanban workOrders={workOrders} />
       </div>
     </main>
   );
