@@ -303,8 +303,8 @@ export function PublicMaintenanceLog({
   return (
     <main className="min-h-screen bg-canvas px-4 py-8 sm:py-12">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-        <header className="max-w-2xl px-1 pb-1">
-          <div className="flex items-center gap-2 text-accent">
+        <header className="mx-auto w-full max-w-2xl px-1 pb-1 text-center">
+          <div className="flex items-center justify-center gap-2 text-accent">
             <Wrench className="h-5 w-5" aria-hidden="true" />
             <span className="text-[15px] font-semibold">FarmingdaleIQ</span>
           </div>
