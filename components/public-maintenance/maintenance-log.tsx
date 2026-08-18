@@ -1,17 +1,24 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Send, Wrench, X } from "lucide-react";
+import { Camera, MessageSquare, Send, Wrench, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionCard, StatusBadge } from "@/components/mobile";
-import { formatStoreDate } from "@/lib/time";
+import { formatStoreDate, formatStoreDateTime } from "@/lib/time";
 
 export interface PublicEquipmentOption {
   id: string;
   name: string;
+}
+
+export interface PublicWorkOrderComment {
+  id: string;
+  body: string | null;
+  photoUrl: string | null;
+  createdAt: string;
 }
 
 export interface PublicWorkOrder {
@@ -23,6 +30,7 @@ export interface PublicWorkOrder {
   area: string | null;
   equipmentName: string | null;
   photoUrls: string[];
+  comments: PublicWorkOrderComment[];
   createdAt: string;
 }
 
@@ -245,6 +253,33 @@ function WorkOrderCard({ order }: { order: PublicWorkOrder }) {
             </a>
           ))}
         </div>
+      )}
+      {order.comments.length > 0 && (
+        <section aria-label={`Updates for ${order.title}`} className="border-t border-line pt-3">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-muted-ink">
+            <MessageSquare className="h-4 w-4" aria-hidden="true" />
+            <span>Updates ({order.comments.length})</span>
+          </div>
+          <div className="mt-3 flex flex-col gap-3">
+            {order.comments.map((comment) => (
+              <div key={comment.id} className="text-[14px] text-ink">
+                <p className="text-[12px] text-muted-ink">{formatStoreDateTime(comment.createdAt)}</p>
+                {comment.body && <p className="mt-1 whitespace-pre-wrap">{comment.body}</p>}
+                {comment.photoUrl && (
+                  <a href={comment.photoUrl} target="_blank" rel="noreferrer" className="mt-2 block aspect-[4/3] overflow-hidden rounded-md border border-line bg-secondary">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- public comment photos are stored outside Next image domains. */}
+                    <img
+                      src={comment.photoUrl}
+                      alt={`Update photo for ${order.title}`}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
       )}
       {(order.priority === "high" || order.priority === "urgent") && (
         <StatusBadge tone={statusForPriority(order.priority)} className="w-fit">
