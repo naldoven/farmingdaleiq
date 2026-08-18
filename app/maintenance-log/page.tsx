@@ -29,19 +29,37 @@ export default async function PublicMaintenanceLogPage() {
   if (loadError) throw new Error(`Could not load the maintenance log: ${loadError.message}`);
 
   const equipmentById = new Map((equipmentResult.data ?? []).map((equipment) => [equipment.id, equipment]));
+  const workOrderIds = (workOrdersResult.data ?? []).map((order) => order.id);
   const requestIds = Array.from(
     new Set((workOrdersResult.data ?? []).map((order) => order.request_id).filter((id): id is string => Boolean(id))),
   );
-  const { data: workOrderRequests, error: workOrderRequestsError } = requestIds.length > 0
-    ? await supabase.from("maintenance_requests").select("id, photo_urls").in("id", requestIds)
-    : { data: [], error: null };
-  if (workOrderRequestsError) {
-    throw new Error(`Could not load work order request photos: ${workOrderRequestsError.message}`);
+  const [workOrderRequestsResult, commentsResult] = await Promise.all([
+    requestIds.length > 0
+      ? supabase.from("maintenance_requests").select("id, photo_urls").in("id", requestIds)
+      : Promise.resolve({ data: [], error: null }),
+    workOrderIds.length > 0
+      ? supabase
+          .from("work_order_comments")
+          .select("id, work_order_id, body, photo_url, created_at")
+          .in("work_order_id", workOrderIds)
+          .order("created_at")
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (workOrderRequestsResult.error) {
+    throw new Error(`Could not load work order request photos: ${workOrderRequestsResult.error.message}`);
   }
+  if (commentsResult.error) throw new Error(`Could not load work order comments: ${commentsResult.error.message}`);
 
   const requestPhotosById = new Map(
-    (workOrderRequests ?? []).map((request) => [request.id, request.photo_urls ?? []]),
+    (workOrderRequestsResult.data ?? []).map((request) => [request.id, request.photo_urls ?? []]),
   );
+  const commentsByWorkOrderId = new Map<string, NonNullable<typeof commentsResult.data>>();
+  for (const comment of commentsResult.data ?? []) {
+    commentsByWorkOrderId.set(comment.work_order_id, [
+      ...(commentsByWorkOrderId.get(comment.work_order_id) ?? []),
+      comment,
+    ]);
+  }
   const publicWorkOrders: PublicWorkOrder[] = (workOrdersResult.data ?? []).map((order) => ({
     id: order.id,
     title: order.title,
@@ -53,6 +71,12 @@ export default async function PublicMaintenanceLogPage() {
     photoUrls: Array.from(
       new Set([...(order.photo_urls ?? []), ...(order.request_id ? (requestPhotosById.get(order.request_id) ?? []) : [])]),
     ).filter((url): url is string => Boolean(url)),
+    comments: (commentsByWorkOrderId.get(order.id) ?? []).map((comment) => ({
+      id: comment.id,
+      body: comment.body,
+      photoUrl: comment.photo_url,
+      createdAt: comment.created_at,
+    })),
     createdAt: order.created_at,
   }));
 
