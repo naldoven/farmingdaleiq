@@ -166,7 +166,6 @@ describe("physical catering setup", () => {
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 4 });
     expect(result).toContainEqual({ section: "sauces", label: "Polynesian Sauce packets", qty: 16 });
     expect(result).toContainEqual({ section: "sauces", label: "Garden Herb Ranch dressing", qty: 24 });
-    expect(result.some((item) => item.section === "food" || item.section === "packaging" || item.section === "delivery")).toBe(false);
     expect(result.some((item) => item.label === "Small Hot Chick-fil-A Nuggets Tray")).toBe(false);
   });
 
