@@ -258,7 +258,6 @@ export const PHYSICAL_SETUP_SECTIONS = [
   "packaging",
   "paper_goods",
   "beverages",
-  "equipment",
   "delivery",
   "final_check",
 ] as const;
@@ -269,7 +268,6 @@ export const PHYSICAL_SETUP_SECTION_LABELS: Record<PhysicalSetupSection, string>
   packaging: "Packaging",
   paper_goods: "Paper goods",
   beverages: "Beverages",
-  equipment: "Equipment",
   delivery: "Delivery",
   final_check: "Final check",
 };
@@ -338,20 +336,20 @@ function addSetupItem(
   if (safeQty > 0) entries.push({ section, label, qty: safeQty });
 }
 
-function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
+function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
   const name = normalizedSetupName(item.name);
   const size = setupSize(item.name);
   const ordered = setupQty(item.qty);
   if (ordered === 0) return;
 
   if (name.includes("grilled chicken bundle")) {
-    addSetupItem(entries, "equipment", "Tongs", 3 * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", 3 * ordered);
     addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", 10 * ordered);
     return;
   }
 
   if (name.includes("chick n mini") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     addSetupItem(
       entries,
       "food",
@@ -362,23 +360,23 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
   }
 
   if (name.includes("mac") && name.includes("cheese") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("fruit tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("kale crunch") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     addSetupItem(entries, "food", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
     return;
   }
 
   if (name.includes("garden salad") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     addSetupItem(entries, "food", "Assorted dressings", sizedQty(size, { small: 6, medium: 0, large: 14 }) * ordered);
     return;
   }
@@ -388,7 +386,7 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
     const veggie = name.includes("southwest veggie");
     addSetupItem(
       entries,
-      "equipment",
+      "paper_goods",
       "Tongs",
       sizedQty(size, spicy ? { small: 1, medium: 2, large: 3 } : veggie ? { small: 1, medium: 1, large: 2 } : { small: 1, medium: 1, large: 2 }) * ordered,
     );
@@ -402,13 +400,13 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
   }
 
   if (name.includes("chilled") && name.includes("chicken sub") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
     addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", sizedQty(size, { small: 6, medium: 12, large: 16 }) * ordered);
     return;
   }
 
   if (name.includes("nugget") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     addSetupItem(
       entries,
       "food",
@@ -419,7 +417,7 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
   }
 
   if (name.includes("chick n strips") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     addSetupItem(
       entries,
       "food",
@@ -434,7 +432,7 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
     name.includes("chocolate fudge brownie tray") ||
     name.includes("cookie and chocolate fudge brownie tray")
   ) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
   }
 }
 
@@ -499,7 +497,7 @@ export function buildPhysicalOrderSetup(input: {
 
   for (const item of items) {
     addSetupItem(entries, isBeverage(item.name) ? "beverages" : "food", item.name.trim(), item.qty);
-    addTrayEquipment(entries, item);
+    addTrayPaperGoods(entries, item);
   }
 
   if (items.length > 0) {

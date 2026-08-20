@@ -22,6 +22,8 @@ export interface OrderSetupItemData {
 }
 
 function sectionForItem(item: OrderSetupItemData): PhysicalSetupSection {
+  if (item.setupSection === "equipment") return "paper_goods";
+
   return PHYSICAL_SETUP_SECTIONS.includes(item.setupSection as PhysicalSetupSection)
     ? (item.setupSection as PhysicalSetupSection)
     : "final_check";

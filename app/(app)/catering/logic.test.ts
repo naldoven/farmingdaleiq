@@ -158,8 +158,8 @@ describe("physical catering setup", () => {
     expect(result).toContainEqual({ section: "paper_goods", label: "Cups", qty: 25 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Cutlery sets", qty: 25 });
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 24 });
-    expect(result).toContainEqual({ section: "equipment", label: "Serving spoons", qty: 4 });
-    expect(result).toContainEqual({ section: "equipment", label: "Tongs", qty: 4 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Serving spoons", qty: 4 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 4 });
     expect(result).toContainEqual({ section: "food", label: "Assorted dressings", qty: 24 });
     expect(result).toContainEqual({
       section: "delivery",
@@ -183,7 +183,7 @@ describe("physical catering setup", () => {
     expect(result.some((item) => item.label === "Cups")).toBe(false);
     expect(result.some((item) => item.label === "Cutlery sets")).toBe(false);
     expect(result.some((item) => item.label === "Drink cups")).toBe(false);
-    expect(result).toContainEqual({ section: "equipment", label: "Serving spoons", qty: 2 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Serving spoons", qty: 2 });
   });
 
   it("uses the tray guide for Southwest Veggie wraps and twelve cups for 96 oz coffee", () => {
@@ -197,7 +197,7 @@ describe("physical catering setup", () => {
       fulfillment: "pickup",
     });
 
-    expect(result).toContainEqual({ section: "equipment", label: "Tongs", qty: 1 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 1 });
     expect(result).toContainEqual({ section: "food", label: "Creamy Salsa dressing", qty: 10 });
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 12 });
   });
