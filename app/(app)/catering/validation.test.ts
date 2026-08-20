@@ -130,6 +130,17 @@ describe("addChecklistItemSchema", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("allows a known physical section only on a setup item", () => {
+    const base = {
+      orderId: "11111111-1111-4111-8111-111111111111",
+      label: "Extra tongs",
+      setupSection: "paper_goods",
+    };
+
+    expect(addChecklistItemSchema.safeParse({ ...base, stage: "setup" }).success).toBe(true);
+    expect(addChecklistItemSchema.safeParse({ ...base, stage: "confirm" }).success).toBe(false);
+  });
 });
 
 describe("updateOrderItemQtySchema", () => {

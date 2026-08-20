@@ -254,24 +254,16 @@ export function formatScaledLabel(item: ScaledLineItem): string {
  * completion history, while sections make the list scannable on a phone.
  */
 export const PHYSICAL_SETUP_SECTIONS = [
-  "food",
-  "packaging",
   "paper_goods",
+  "sauces",
   "beverages",
-  "equipment",
-  "delivery",
-  "final_check",
 ] as const;
 export type PhysicalSetupSection = (typeof PHYSICAL_SETUP_SECTIONS)[number];
 
 export const PHYSICAL_SETUP_SECTION_LABELS: Record<PhysicalSetupSection, string> = {
-  food: "Food",
-  packaging: "Packaging",
   paper_goods: "Paper goods",
+  sauces: "Sauces",
   beverages: "Beverages",
-  equipment: "Equipment",
-  delivery: "Delivery",
-  final_check: "Final check",
 };
 
 export interface PhysicalSetupLineItem {
@@ -284,6 +276,43 @@ export interface PhysicalSetupItem {
   label: string;
   qty: number;
 }
+
+type CateringSauceType = "packet" | "bottle" | "dressing" | "breakfast" | "none";
+
+interface CateringSauceCatalogEntry {
+  label: string;
+  type: CateringSauceType;
+  aliases: readonly string[];
+}
+
+/** The approved catering sauces and dressings photographed at Farmingdale. */
+export const CATERING_SAUCE_CATALOG: readonly CateringSauceCatalogEntry[] = [
+  { label: "BBQ Sauce packets", type: "packet", aliases: ["bbq sauce"] },
+  { label: "Buffalo Sauce packets", type: "packet", aliases: ["buffalo sauce"] },
+  { label: "Chick-fil-A Sauce packets", type: "packet", aliases: ["chick fil a sauce", "cfa sauce"] },
+  { label: "Honey Mustard Sauce packets", type: "packet", aliases: ["honey mustard sauce"] },
+  { label: "Polynesian Sauce packets", type: "packet", aliases: ["polynesian sauce", "poly sauce"] },
+  { label: "Ranch Sauce packets", type: "packet", aliases: ["ranch sauce"] },
+  { label: "Sriracha Sauce packets", type: "packet", aliases: ["sriracha sauce"] },
+  { label: "Honey Roasted BBQ sauce packets", type: "packet", aliases: ["honey roasted bbq"] },
+  { label: "8 oz BBQ Sauce bottles", type: "bottle", aliases: ["bbq bottle", "8 oz bbq", "8oz bbq"] },
+  { label: "8 oz Chick-fil-A Sauce bottles", type: "bottle", aliases: ["cfa bottle", "8 oz chick fil a", "8oz chick fil a"] },
+  { label: "8 oz Honey Mustard Sauce bottles", type: "bottle", aliases: ["honey mustard bottle", "8 oz honey mustard", "8oz honey mustard"] },
+  { label: "8 oz Polynesian Sauce bottles", type: "bottle", aliases: ["poly bottle", "polynesian bottle", "8 oz poly", "8oz poly"] },
+  { label: "8 oz Ranch Sauce bottles", type: "bottle", aliases: ["ranch bottle", "8 oz ranch", "8oz ranch"] },
+  { label: "Avocado Lime Ranch dressing", type: "dressing", aliases: ["avocado lime ranch"] },
+  { label: "Creamy Salsa dressing", type: "dressing", aliases: ["creamy salsa"] },
+  { label: "Garden Herb Ranch dressing", type: "dressing", aliases: ["garden herb ranch"] },
+  { label: "Honey Mustard dressing", type: "dressing", aliases: ["honey mustard dressing"] },
+  { label: "Light Balsamic Vinaigrette dressing", type: "dressing", aliases: ["light balsamic", "balsamic vinaigrette"] },
+  { label: "Lite Italian dressing", type: "dressing", aliases: ["lite italian", "light italian"] },
+  { label: "Zesty Apple Cider Vinaigrette dressing", type: "dressing", aliases: ["zesty apple cider", "apple cider vinaigrette"] },
+  { label: "Honey packets", type: "breakfast", aliases: ["honey packet", "honey packets"] },
+  { label: "Grape jelly", type: "breakfast", aliases: ["grape jelly"] },
+  { label: "Strawberry jelly", type: "breakfast", aliases: ["strawberry jelly", "straw jelly"] },
+  { label: "No sauce", type: "none", aliases: ["no sauce"] },
+  { label: "No dressing", type: "none", aliases: ["no dressing"] },
+];
 
 function normalizedSetupName(name: string): string {
   return name
@@ -324,8 +353,39 @@ function isBeverage(name: string): boolean {
     normalized.includes("bottled lemonade") ||
     normalized.includes("juice") ||
     normalized.includes("milk") ||
-    normalized.includes("bag of ice")
+    normalized.includes("bag of ice") ||
+    normalized.includes("simply orange") ||
+    normalized.includes("sunjoy") ||
+    normalized.includes("pineapple dragonfruit") ||
+    normalized.includes("iced tea") ||
+    normalized.includes("lemonade") ||
+    normalized.includes("dasani")
   );
+}
+
+export function parseRequestedCateringSauces(notes: string | null | undefined): string[] {
+  const normalizedNotes = normalizedSetupName(notes ?? "");
+  if (!normalizedNotes) return [];
+
+  const matches = CATERING_SAUCE_CATALOG
+    .filter(
+      (entry) =>
+        entry.type !== "none" &&
+        entry.aliases.some((alias) => normalizedNotes.includes(normalizedSetupName(alias))),
+    );
+  const bottledBases = new Set(
+    matches
+      .filter((entry) => entry.type === "bottle")
+      .map((entry) => entry.label.replace(/^8 oz /, "").replace(/ bottles$/, "")),
+  );
+
+  return matches
+    .filter(
+      (entry) =>
+        entry.type !== "packet" ||
+        !bottledBases.has(entry.label.replace(/ packets$/, "")),
+    )
+    .map((entry) => entry.label);
 }
 
 function addSetupItem(
@@ -338,94 +398,64 @@ function addSetupItem(
   if (safeQty > 0) entries.push({ section, label, qty: safeQty });
 }
 
-function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
+function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
   const name = normalizedSetupName(item.name);
   const size = setupSize(item.name);
   const ordered = setupQty(item.qty);
   if (ordered === 0) return;
 
   if (name.includes("grilled chicken bundle")) {
-    addSetupItem(entries, "equipment", "Tongs", 3 * ordered);
-    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", 10 * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", 3 * ordered);
     return;
   }
 
   if (name.includes("chick n mini") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
-    addSetupItem(
-      entries,
-      "food",
-      "Jelly, honey, or 1 oz sauce selections",
-      sizedQty(size, { small: 5, medium: 0, large: 10 }) * ordered,
-    );
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     return;
   }
 
   if (name.includes("mac") && name.includes("cheese") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("fruit tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("kale crunch") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
-    addSetupItem(entries, "food", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     return;
   }
 
   if (name.includes("garden salad") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
-    addSetupItem(entries, "food", "Assorted dressings", sizedQty(size, { small: 6, medium: 0, large: 14 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
     return;
   }
 
   if ((name.includes("cool wrap") || name.includes("southwest veggie wrap")) && name.includes("tray")) {
-    const spicy = name.includes("spicy chilled grilled chicken");
-    const veggie = name.includes("southwest veggie");
     addSetupItem(
       entries,
-      "equipment",
+      "paper_goods",
       "Tongs",
-      sizedQty(size, spicy ? { small: 1, medium: 2, large: 3 } : veggie ? { small: 1, medium: 1, large: 2 } : { small: 1, medium: 1, large: 2 }) * ordered,
-    );
-    addSetupItem(
-      entries,
-      "food",
-      spicy || !veggie ? "Avocado Lime Ranch dressing" : "Creamy Salsa dressing",
-      sizedQty(size, { small: 6, medium: 10, large: 14 }) * ordered,
+      sizedQty(size, name.includes("spicy chilled grilled chicken") ? { small: 1, medium: 2, large: 3 } : { small: 1, medium: 1, large: 2 }) * ordered,
     );
     return;
   }
 
   if (name.includes("chilled") && name.includes("chicken sub") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
-    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", sizedQty(size, { small: 6, medium: 12, large: 16 }) * ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("nugget") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
-    addSetupItem(
-      entries,
-      "food",
-      "8 oz sauce bottles or 8-count sauce packets",
-      sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
-    );
+    addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     return;
   }
 
   if (name.includes("chick n strips") && name.includes("tray")) {
-    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
-    addSetupItem(
-      entries,
-      "food",
-      "8 oz sauce bottles or 8-count sauce packets",
-      sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
-    );
+    addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     return;
   }
 
@@ -434,7 +464,85 @@ function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineI
     name.includes("chocolate fudge brownie tray") ||
     name.includes("cookie and chocolate fudge brownie tray")
   ) {
-    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "paper_goods", "Tongs", ordered);
+  }
+}
+
+function selectedCatalogEntries(labels: readonly string[]): CateringSauceCatalogEntry[] {
+  const selected = new Set(labels);
+  return CATERING_SAUCE_CATALOG.filter((entry) => selected.has(entry.label));
+}
+
+function addSelectedSauces(
+  entries: PhysicalSetupItem[],
+  selected: CateringSauceCatalogEntry[],
+  isAllowed: (entry: CateringSauceCatalogEntry) => boolean,
+  qtyFor: (entry: CateringSauceCatalogEntry) => number,
+) {
+  for (const entry of selected) {
+    if (isAllowed(entry)) addSetupItem(entries, "sauces", entry.label, qtyFor(entry));
+  }
+}
+
+function addTraySauces(
+  entries: PhysicalSetupItem[],
+  item: PhysicalSetupLineItem,
+  selected: CateringSauceCatalogEntry[],
+) {
+  const name = normalizedSetupName(item.name);
+  const size = setupSize(item.name);
+  const ordered = setupQty(item.qty);
+  if (ordered === 0) return;
+
+  const addSelected = (
+    isAllowed: (entry: CateringSauceCatalogEntry) => boolean,
+    qtyFor: (entry: CateringSauceCatalogEntry) => number,
+  ) => addSelectedSauces(entries, selected, isAllowed, (entry) => qtyFor(entry) * ordered);
+
+  if (name.includes("grilled chicken bundle")) {
+    addSelected((entry) => entry.label === "Honey Roasted BBQ sauce packets", () => 10);
+    return;
+  }
+  if (name.includes("chick n mini") && name.includes("tray")) {
+    addSelected(
+      (entry) => entry.type === "breakfast" || entry.type === "packet",
+      () => sizedQty(size, { small: 5, medium: 0, large: 10 }),
+    );
+    return;
+  }
+  if (name.includes("kale crunch") && name.includes("tray")) {
+    addSetupItem(entries, "sauces", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
+    return;
+  }
+  if (name.includes("garden salad") && name.includes("tray")) {
+    addSelected((entry) => entry.type === "dressing", () => sizedQty(size, { small: 6, medium: 0, large: 14 }));
+    return;
+  }
+  if ((name.includes("cool wrap") || name.includes("southwest veggie wrap")) && name.includes("tray")) {
+    const requestedDressing = name.includes("southwest veggie")
+      ? "Creamy Salsa dressing"
+      : "Avocado Lime Ranch dressing";
+    addSelected((entry) => entry.label === requestedDressing, () => sizedQty(size, { small: 6, medium: 10, large: 14 }));
+    return;
+  }
+  if (name.includes("chilled") && name.includes("chicken sub") && name.includes("tray")) {
+    addSelected(
+      (entry) => entry.label === "Honey Roasted BBQ sauce packets",
+      () => sizedQty(size, { small: 6, medium: 12, large: 16 }),
+    );
+    return;
+  }
+  if (
+    (name.includes("nugget") && name.includes("tray")) ||
+    (name.includes("chick n strips") && name.includes("tray"))
+  ) {
+    addSelected(
+      (entry) => entry.type === "packet" || entry.type === "bottle",
+      (entry) =>
+        entry.type === "bottle"
+          ? sizedQty(size, { small: 1, medium: 1, large: 2 })
+          : sizedQty(size, { small: 8, medium: 8, large: 16 }),
+    );
   }
 }
 
@@ -485,25 +593,25 @@ function aggregatePhysicalSetupItems(entries: PhysicalSetupItem[]): PhysicalSetu
 
 /**
  * Builds the packing list from the receipt/menu items and Farmingdale's tray
- * guide. Paper goods are strictly opt-in: when the receipt says no, no cups,
- * plates, or cutlery sets are generated.
+ * guide. It contains only paper goods, customer-requested approved sauces,
+ * and beverages. Paper goods are strictly opt-in: when the receipt says no,
+ * no cups, plates, or cutlery sets are generated.
  */
 export function buildPhysicalOrderSetup(input: {
   items: PhysicalSetupLineItem[];
   headcount: number;
   paperGoods: boolean;
   fulfillment: string | null;
+  requestedSauceLabels?: readonly string[];
 }): PhysicalSetupItem[] {
   const entries: PhysicalSetupItem[] = [];
   const items = input.items.filter((item) => item.name.trim() && setupQty(item.qty) > 0);
+  const requestedSauces = selectedCatalogEntries(input.requestedSauceLabels ?? []);
 
   for (const item of items) {
-    addSetupItem(entries, isBeverage(item.name) ? "beverages" : "food", item.name.trim(), item.qty);
-    addTrayEquipment(entries, item);
-  }
-
-  if (items.length > 0) {
-    addSetupItem(entries, "packaging", "Catering bags and labels", 1);
+    if (isBeverage(item.name)) addSetupItem(entries, "beverages", item.name.trim(), item.qty);
+    addTrayPaperGoods(entries, item);
+    addTraySauces(entries, item, requestedSauces);
   }
 
   if (input.paperGoods) {
@@ -521,14 +629,6 @@ export function buildPhysicalOrderSetup(input: {
       }
     }
   }
-
-  if (input.fulfillment === "delivery") {
-    addSetupItem(entries, "delivery", "Delivery address and handoff details", 1);
-  }
-
-  addSetupItem(entries, "final_check", "Compare packed items to the receipt", 1);
-  addSetupItem(entries, "final_check", "Verify sauces and special instructions", 1);
-  addSetupItem(entries, "final_check", "Cold items packed last", 1);
 
   return aggregatePhysicalSetupItems(entries);
 }
