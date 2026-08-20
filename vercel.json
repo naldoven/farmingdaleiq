@@ -9,6 +9,7 @@
     { "path": "/api/tasks/sync", "schedule": "0 4 * * *" },
     { "path": "/api/cron/training", "schedule": "0 5 * * *" },
     { "path": "/api/cron/maintenance", "schedule": "0 5 * * *" },
-    { "path": "/api/cron/accountability", "schedule": "0 5 * * *" }
+    { "path": "/api/cron/accountability", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/catering", "schedule": "* * * * *" }
   ]
 }

@@ -13,6 +13,7 @@ import {
   formatOrderNewMessage,
   formatScaledLabel,
   formatStageChangeMessage,
+  isCateringFollowUpDue,
   isoWeekKey,
   normalizePhone,
   parseComponents,
@@ -210,6 +211,24 @@ describe("physical catering setup", () => {
       { name: "Large Hot Chick-fil-A Nuggets Tray", qty: 1 },
       { name: "8oz Chick-fil-A Sauce", qty: 1 },
     ]);
+  });
+});
+
+describe("isCateringFollowUpDue", () => {
+  const scheduledOrder = {
+    stage: "out",
+    event_date: "2026-08-20",
+    event_time: "14:00:00",
+  };
+
+  it("moves an active handoff at its scheduled New York time", () => {
+    expect(isCateringFollowUpDue(scheduledOrder, new Date("2026-08-20T18:00:00.000Z"))).toBe(true);
+    expect(isCateringFollowUpDue(scheduledOrder, new Date("2026-08-20T17:59:59.999Z"))).toBe(false);
+  });
+
+  it("does not advance other stages or orders without a scheduled time", () => {
+    expect(isCateringFollowUpDue({ ...scheduledOrder, stage: "setup" }, new Date("2026-08-20T19:00:00.000Z"))).toBe(false);
+    expect(isCateringFollowUpDue({ ...scheduledOrder, event_time: null }, new Date("2026-08-20T19:00:00.000Z"))).toBe(false);
   });
 });
 
