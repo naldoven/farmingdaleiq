@@ -1,4 +1,8 @@
-import { addStoreCalendarDays, storeLocalDate as getStoreLocalDate } from "@/lib/time";
+import {
+  addStoreCalendarDays,
+  storeDateTimeInputToIso,
+  storeLocalDate as getStoreLocalDate,
+} from "@/lib/time";
 
 /**
  * Pure business logic for Catering (ARCHITECTURE.md "Catering (modeled on
@@ -90,6 +94,26 @@ export const CHECKLIST_STAGE_LABELS: Record<ChecklistStage, string> = {
 
 export const FULFILLMENT_METHODS = ["pickup", "delivery"] as const;
 export type FulfillmentMethod = (typeof FULFILLMENT_METHODS)[number];
+
+/**
+ * Whether an active pickup/delivery handoff is ready for Follow-up. Event
+ * dates and times are stored separately as Farmingdale wall-clock values, so
+ * convert them with the central America/New_York helper before comparing
+ * instants. Orders without a time stay in Pickup/Delivery for a leader to
+ * resolve manually rather than moving on an inferred schedule.
+ */
+export function isCateringFollowUpDue(
+  order: { stage: string; event_date: string; event_time: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (order.stage !== "out" || !order.event_time) return false;
+
+  const time = order.event_time.slice(0, 8);
+  const scheduledAt = storeDateTimeInputToIso(`${order.event_date}T${time}`);
+  if (!scheduledAt) return false;
+
+  return new Date(scheduledAt).getTime() <= now.getTime();
+}
 
 export const HISTORY_PERIODS = ["month", "quarter", "year", "all"] as const;
 export type HistoryPeriod = (typeof HISTORY_PERIODS)[number];
