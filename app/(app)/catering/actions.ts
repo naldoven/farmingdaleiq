@@ -36,6 +36,7 @@ import {
   formatOrderNewMessage,
   formatStageChangeMessage,
   normalizePhone,
+  parseRequestedCateringSauces,
   parseOrderItemsFromNotes,
   planChecklistMaterialization,
   type OrderStage,
@@ -159,6 +160,7 @@ async function materializePhysicalOrderSetup(
     headcount: order.headcount ?? 0,
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
+    requestedSauceLabels: parseRequestedCateringSauces(order.notes),
   });
   const { error: insertError } = await supabase.from("catering_checklist_items").insert(
     setupItems.map((item, index) => ({
@@ -668,6 +670,7 @@ export async function addChecklistItem(
       order_id: parsed.orderId,
       stage: parsed.stage,
       label: parsed.label,
+      setup_section: parsed.setupSection ?? null,
       sort: nextSort,
     });
 

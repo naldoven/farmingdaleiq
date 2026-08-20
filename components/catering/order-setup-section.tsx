@@ -13,6 +13,7 @@ import { SectionCard, StatusBadge } from "@/components/mobile";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export interface OrderSetupItemData {
   id: string;
@@ -21,18 +22,34 @@ export interface OrderSetupItemData {
   setupSection: string | null;
 }
 
-function sectionForItem(item: OrderSetupItemData): PhysicalSetupSection {
+const LEGACY_SAUCE_LABELS = [
+  "honey roasted bbq sauce packets",
+  "jelly honey or 1 oz sauce selections",
+  "roasted almonds",
+  "assorted dressings",
+  "avocado lime ranch dressing",
+  "creamy salsa dressing",
+  "8 oz sauce bottles or 8 count sauce packets",
+];
+
+function sectionForItem(item: OrderSetupItemData): PhysicalSetupSection | null {
   if (item.setupSection === "equipment") return "paper_goods";
+  if (
+    item.setupSection === "food" &&
+    LEGACY_SAUCE_LABELS.some((label) => item.label.toLowerCase().includes(label))
+  ) {
+    return "sauces";
+  }
 
   return PHYSICAL_SETUP_SECTIONS.includes(item.setupSection as PhysicalSetupSection)
     ? (item.setupSection as PhysicalSetupSection)
-    : "final_check";
+    : null;
 }
 
 /**
  * The one physical setup list for a catering order. Generated rows carry a
- * section; older setup defaults and manager additions stay visible under
- * Final check instead of being discarded.
+ * section. Removed legacy sections stay out of the physical packing list;
+ * legacy serving tools and condiment rows keep their appropriate grouping.
  */
 export function OrderSetupSection({
   orderId,
@@ -48,13 +65,18 @@ export function OrderSetupSection({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newLabel, setNewLabel] = useState("");
+  const [newSection, setNewSection] = useState<PhysicalSetupSection>("paper_goods");
 
   const itemsBySection = new Map<PhysicalSetupSection, OrderSetupItemData[]>();
   for (const section of PHYSICAL_SETUP_SECTIONS) itemsBySection.set(section, []);
-  for (const item of items) itemsBySection.get(sectionForItem(item))?.push(item);
+  for (const item of items) {
+    const section = sectionForItem(item);
+    if (section) itemsBySection.get(section)?.push(item);
+  }
 
-  const doneCount = items.filter((item) => item.done).length;
-  const allDone = items.length > 0 && doneCount === items.length;
+  const visibleItems = Array.from(itemsBySection.values()).flat();
+  const doneCount = visibleItems.filter((item) => item.done).length;
+  const allDone = visibleItems.length > 0 && doneCount === visibleItems.length;
 
   const body = (
     <div className="flex flex-col gap-5">
@@ -115,12 +137,24 @@ export function OrderSetupSection({
         );
       })}
 
-      {items.length === 0 && <p className="text-[13px] text-muted-ink">Setup will appear after confirmation.</p>}
+      {visibleItems.length === 0 && <p className="text-[13px] text-muted-ink">Setup will appear after confirmation.</p>}
 
       {canManage && (
         <div className="flex items-center gap-2 border-t border-line pt-3">
+          <Select value={newSection} onValueChange={(value) => setNewSection(value as PhysicalSetupSection)}>
+            <SelectTrigger className="h-9 w-36 text-[13px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PHYSICAL_SETUP_SECTIONS.map((section) => (
+                <SelectItem key={section} value={section}>
+                  {PHYSICAL_SETUP_SECTION_LABELS[section]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
-            placeholder="Add final check"
+            placeholder="Add setup item"
             value={newLabel}
             onChange={(event) => setNewLabel(event.target.value)}
             className="h-9 text-[15px]"
@@ -134,7 +168,7 @@ export function OrderSetupSection({
               const label = newLabel.trim();
               setNewLabel("");
               startTransition(async () => {
-                await addChecklistItem({ orderId, stage: "setup", label });
+                await addChecklistItem({ orderId, stage: "setup", label, setupSection: newSection });
                 router.refresh();
               });
             }}

@@ -5,6 +5,7 @@ import {
   FULFILLMENT_METHODS,
   HISTORY_PERIODS,
   ORDER_STAGES,
+  PHYSICAL_SETUP_SECTIONS,
 } from "@/app/(app)/catering/logic";
 
 /**
@@ -110,6 +111,15 @@ export const addChecklistItemSchema = z.object({
   orderId: z.string().uuid(),
   stage: z.enum(CHECKLIST_STAGES),
   label: z.string().trim().min(1, "Label is required").max(200),
+  setupSection: z.enum(PHYSICAL_SETUP_SECTIONS).optional(),
+}).superRefine((data, ctx) => {
+  if (data.setupSection && data.stage !== "setup") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A setup section can only be assigned to a setup item",
+      path: ["setupSection"],
+    });
+  }
 });
 export type AddChecklistItemInput = z.infer<typeof addChecklistItemSchema>;
 
