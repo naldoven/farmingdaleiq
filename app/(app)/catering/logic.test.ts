@@ -160,7 +160,7 @@ describe("physical catering setup", () => {
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 24 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Serving spoons", qty: 4 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 4 });
-    expect(result).toContainEqual({ section: "food", label: "Assorted dressings", qty: 24 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "Assorted dressings", qty: 24 });
     expect(result).toContainEqual({
       section: "delivery",
       label: "Delivery address and handoff details",
@@ -198,8 +198,28 @@ describe("physical catering setup", () => {
     });
 
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 1 });
-    expect(result).toContainEqual({ section: "food", label: "Creamy Salsa dressing", qty: 10 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "Creamy Salsa dressing", qty: 10 });
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 12 });
+  });
+
+  it("keeps ordered sauces and tray condiments out of Food", () => {
+    const result = buildPhysicalOrderSetup({
+      items: [
+        { name: "Small Hot Chick-fil-A Nuggets Tray", qty: 1 },
+        { name: "8 oz Chick-fil-A Sauce", qty: 2 },
+        { name: "Chick-fil-A Sauce Flavored Waffle Potato Chips", qty: 1 },
+        { name: "Large Kale Crunch Side Tray", qty: 1 },
+      ],
+      headcount: 20,
+      paperGoods: true,
+      fulfillment: "pickup",
+    });
+
+    expect(result).toContainEqual({ section: "food", label: "Small Hot Chick-fil-A Nuggets Tray", qty: 1 });
+    expect(result).toContainEqual({ section: "food", label: "Chick-fil-A Sauce Flavored Waffle Potato Chips", qty: 1 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "8 oz Chick-fil-A Sauce", qty: 2 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "8 oz sauce bottles or 8-count sauce packets", qty: 1 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "Roasted almonds", qty: 20 });
   });
 
   it("keeps receipt item names available even when the catalog did not match them", () => {

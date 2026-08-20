@@ -257,6 +257,7 @@ export const PHYSICAL_SETUP_SECTIONS = [
   "food",
   "packaging",
   "paper_goods",
+  "sauces_dressings",
   "beverages",
   "delivery",
   "final_check",
@@ -267,6 +268,7 @@ export const PHYSICAL_SETUP_SECTION_LABELS: Record<PhysicalSetupSection, string>
   food: "Food",
   packaging: "Packaging",
   paper_goods: "Paper goods",
+  sauces_dressings: "Sauces & dressings",
   beverages: "Beverages",
   delivery: "Delivery",
   final_check: "Final check",
@@ -326,6 +328,36 @@ function isBeverage(name: string): boolean {
   );
 }
 
+/**
+ * Receipt lines are not restricted to the catering menu catalog. Keep known
+ * sauce, dressing, and tray-condiment names together without moving food
+ * items that happen to contain a similar word into the wrong setup section.
+ */
+function isSauceOrDressing(name: string): boolean {
+  const normalized = normalizedSetupName(name);
+  if (normalized === "no sauce" || normalized === "no dressing") return false;
+  if (normalized.includes("chip")) return false;
+
+  return [
+    "sauce",
+    "dressing",
+    "honey roasted bbq",
+    "polynesian",
+    "sriracha",
+    "honey packet",
+    "grape jelly",
+    "strawberry jelly",
+    "avocado lime ranch",
+    "creamy salsa",
+    "garden herb ranch",
+    "light balsamic",
+    "lite italian",
+    "zesty apple cider",
+    "honey mustard",
+    "roasted almonds",
+  ].some((term) => normalized.includes(term));
+}
+
 function addSetupItem(
   entries: PhysicalSetupItem[],
   section: PhysicalSetupSection,
@@ -344,7 +376,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
 
   if (name.includes("grilled chicken bundle")) {
     addSetupItem(entries, "paper_goods", "Tongs", 3 * ordered);
-    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", 10 * ordered);
+    addSetupItem(entries, "sauces_dressings", "Honey Roasted BBQ sauce packets", 10 * ordered);
     return;
   }
 
@@ -352,7 +384,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
     addSetupItem(entries, "paper_goods", "Tongs", ordered);
     addSetupItem(
       entries,
-      "food",
+      "sauces_dressings",
       "Jelly, honey, or 1 oz sauce selections",
       sizedQty(size, { small: 5, medium: 0, large: 10 }) * ordered,
     );
@@ -371,13 +403,13 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
 
   if (name.includes("kale crunch") && name.includes("tray")) {
     addSetupItem(entries, "paper_goods", "Tongs", ordered);
-    addSetupItem(entries, "food", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
+    addSetupItem(entries, "sauces_dressings", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
     return;
   }
 
   if (name.includes("garden salad") && name.includes("tray")) {
     addSetupItem(entries, "paper_goods", "Tongs", ordered);
-    addSetupItem(entries, "food", "Assorted dressings", sizedQty(size, { small: 6, medium: 0, large: 14 }) * ordered);
+    addSetupItem(entries, "sauces_dressings", "Assorted dressings", sizedQty(size, { small: 6, medium: 0, large: 14 }) * ordered);
     return;
   }
 
@@ -392,7 +424,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
     );
     addSetupItem(
       entries,
-      "food",
+      "sauces_dressings",
       spicy || !veggie ? "Avocado Lime Ranch dressing" : "Creamy Salsa dressing",
       sizedQty(size, { small: 6, medium: 10, large: 14 }) * ordered,
     );
@@ -401,7 +433,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
 
   if (name.includes("chilled") && name.includes("chicken sub") && name.includes("tray")) {
     addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
-    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", sizedQty(size, { small: 6, medium: 12, large: 16 }) * ordered);
+    addSetupItem(entries, "sauces_dressings", "Honey Roasted BBQ sauce packets", sizedQty(size, { small: 6, medium: 12, large: 16 }) * ordered);
     return;
   }
 
@@ -409,7 +441,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
     addSetupItem(entries, "paper_goods", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     addSetupItem(
       entries,
-      "food",
+      "sauces_dressings",
       "8 oz sauce bottles or 8-count sauce packets",
       sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
     );
@@ -420,7 +452,7 @@ function addTrayPaperGoods(entries: PhysicalSetupItem[], item: PhysicalSetupLine
     addSetupItem(entries, "paper_goods", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
     addSetupItem(
       entries,
-      "food",
+      "sauces_dressings",
       "8 oz sauce bottles or 8-count sauce packets",
       sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
     );
@@ -496,7 +528,12 @@ export function buildPhysicalOrderSetup(input: {
   const items = input.items.filter((item) => item.name.trim() && setupQty(item.qty) > 0);
 
   for (const item of items) {
-    addSetupItem(entries, isBeverage(item.name) ? "beverages" : "food", item.name.trim(), item.qty);
+    const section = isBeverage(item.name)
+      ? "beverages"
+      : isSauceOrDressing(item.name)
+        ? "sauces_dressings"
+        : "food";
+    addSetupItem(entries, section, item.name.trim(), item.qty);
     addTrayPaperGoods(entries, item);
   }
 
