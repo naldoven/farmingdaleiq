@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { SectionCard } from "@/components/mobile";
 import { ChecklistSection } from "@/components/catering/checklist-section";
+import { OrderSetupSection } from "@/components/catering/order-setup-section";
 import { StageSelect } from "@/components/catering/stage-select";
+import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { ChecklistStage, OrderStage } from "@/app/(app)/catering/logic";
 
@@ -19,6 +21,7 @@ export async function StageQueue({
   orderStage: OrderStage;
   checklistStage: ChecklistStage;
 }) {
+  const canManage = await hasPermission("catering.manage");
   const supabase = await createClient();
 
   const { data: orders } = await supabase
@@ -31,11 +34,19 @@ export async function StageQueue({
   const { data: checklistItems } = orderIds.length
     ? await supabase
         .from("catering_checklist_items")
-        .select("id, order_id, label, done")
+        .select("id, order_id, label, done, setup_section")
         .in("order_id", orderIds)
         .eq("stage", checklistStage)
         .order("sort")
-    : { data: [] as { id: string; order_id: string; label: string; done: boolean }[] };
+    : {
+        data: [] as {
+          id: string;
+          order_id: string;
+          label: string;
+          done: boolean;
+          setup_section: string | null;
+        }[],
+      };
 
   if ((orders ?? []).length === 0) {
     return <p className="text-[13px] text-muted-ink">No orders in this stage.</p>;
@@ -59,14 +70,30 @@ export async function StageQueue({
               {order.headcount != null ? ` · ${order.headcount} guests` : ""}
               {order.fulfillment ? ` · ${order.fulfillment}` : ""}
             </p>
-            <ChecklistSection
-              orderId={order.id}
-              stage={checklistStage}
-              variant="bare"
-              items={(checklistItems ?? [])
-                .filter((c) => c.order_id === order.id)
-                .map((c) => ({ id: c.id, label: c.label, done: c.done }))}
-            />
+            {checklistStage === "setup" ? (
+              <OrderSetupSection
+                orderId={order.id}
+                canManage={canManage}
+                variant="bare"
+                items={(checklistItems ?? [])
+                  .filter((item) => item.order_id === order.id)
+                  .map((item) => ({
+                    id: item.id,
+                    label: item.label,
+                    done: item.done,
+                    setupSection: item.setup_section,
+                  }))}
+              />
+            ) : (
+              <ChecklistSection
+                orderId={order.id}
+                stage={checklistStage}
+                variant="bare"
+                items={(checklistItems ?? [])
+                  .filter((item) => item.order_id === order.id)
+                  .map((item) => ({ id: item.id, label: item.label, done: item.done }))}
+              />
+            )}
           </div>
         </SectionCard>
       ))}
