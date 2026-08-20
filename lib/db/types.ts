@@ -180,6 +180,7 @@ export type Database = {
           label: string
           order_id: string
           sort: number
+          setup_section: string | null
           stage: string
         }
         Insert: {
@@ -190,6 +191,7 @@ export type Database = {
           label: string
           order_id: string
           sort?: number
+          setup_section?: string | null
           stage: string
         }
         Update: {
@@ -200,6 +202,7 @@ export type Database = {
           label?: string
           order_id?: string
           sort?: number
+          setup_section?: string | null
           stage?: string
         }
         Relationships: [
@@ -374,6 +377,7 @@ export type Database = {
           source: string | null
           stage: string
           stage_changed_at: string | null
+          setup_generated_at: string | null
         }
         Insert: {
           amount?: number | null
@@ -394,6 +398,7 @@ export type Database = {
           source?: string | null
           stage?: string
           stage_changed_at?: string | null
+          setup_generated_at?: string | null
         }
         Update: {
           amount?: number | null
@@ -414,6 +419,7 @@ export type Database = {
           source?: string | null
           stage?: string
           stage_changed_at?: string | null
+          setup_generated_at?: string | null
         }
         Relationships: [
           {

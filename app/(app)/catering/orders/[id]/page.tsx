@@ -5,6 +5,7 @@ import { CancelOrderButton } from "@/components/catering/cancel-order-button";
 import { ChecklistSection } from "@/components/catering/checklist-section";
 import { OrderDetailsForm } from "@/components/catering/order-details-form";
 import { OrderItemEditor } from "@/components/catering/order-item-editor";
+import { OrderSetupSection } from "@/components/catering/order-setup-section";
 import { RescaleButton } from "@/components/catering/rescale-button";
 import { StageSelect } from "@/components/catering/stage-select";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
@@ -65,7 +66,7 @@ export default async function CateringOrderPage({
     supabase.from("catering_menu_items").select("id, name"),
     supabase
       .from("catering_checklist_items")
-      .select("id, stage, label, done")
+      .select("id, stage, label, done, setup_section")
       .eq("order_id", id)
       .order("sort"),
   ]);
@@ -103,6 +104,17 @@ export default async function CateringOrderPage({
     (checklistItems ?? [])
       .filter((c) => c.stage === stage)
       .map((c) => ({ id: c.id, label: c.label, done: c.done }));
+
+  const setupItems = (checklistItems ?? [])
+    .filter((item) => item.stage === "setup")
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      done: item.done,
+      setupSection: item.setup_section,
+    }));
+  const canRefreshSetup =
+    canManage && ["setup", "out", "followup", "closed"].includes(order.stage);
 
   return (
     <div className="flex flex-col gap-4">
@@ -157,12 +169,15 @@ export default async function CateringOrderPage({
         <OrderItemEditor orderId={order.id} items={itemRows} menuItems={activeMenuItems ?? []} />
       </SectionCard>
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-[19px] font-semibold text-ink">Stage checklists</h2>
-        <RescaleButton orderId={order.id} />
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[19px] font-semibold text-ink">Order setup</h2>
+        {canRefreshSetup && <RescaleButton orderId={order.id} />}
       </div>
+      <OrderSetupSection orderId={order.id} items={setupItems} canManage={canManage} />
+
+      <h2 className="text-[19px] font-semibold text-ink">Stage checklists</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {CHECKLIST_STAGES.map((stage) => (
+        {CHECKLIST_STAGES.filter((stage) => stage !== "setup").map((stage) => (
           <ChecklistSection key={stage} orderId={order.id} stage={stage} items={itemsByStage(stage)} />
         ))}
       </div>

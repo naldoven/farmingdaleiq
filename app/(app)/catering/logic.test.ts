@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeAnalytics,
+  buildPhysicalOrderSetup,
   computeContactRollups,
   computeKitchenPrepItems,
   computeScaledSetupItems,
@@ -15,6 +16,7 @@ import {
   isoWeekKey,
   normalizePhone,
   parseComponents,
+  parseOrderItemsFromNotes,
   parseScalingRules,
   periodRange,
   planChecklistMaterialization,
@@ -136,6 +138,81 @@ describe("formatScaledLabel", () => {
   });
 });
 
+describe("physical catering setup", () => {
+  it("uses headcount for paper goods and twelve cups for each gallon drink", () => {
+    const result = buildPhysicalOrderSetup({
+      items: [
+        { name: "Small Hot Chick-fil-A Nuggets Tray", qty: 2 },
+        { name: "Small Mac & Cheese Tray", qty: 2 },
+        { name: "Small Garden Salad Tray", qty: 4 },
+        { name: "Gallon Chick-fil-A Lemonade", qty: 1 },
+        { name: "Gallon Freshly-Brewed Iced Tea Sweetened", qty: 1 },
+      ],
+      headcount: 25,
+      paperGoods: true,
+      fulfillment: "delivery",
+    });
+
+    expect(result).toContainEqual({ section: "paper_goods", label: "Plates", qty: 25 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Cups", qty: 25 });
+    expect(result).toContainEqual({ section: "paper_goods", label: "Cutlery sets", qty: 25 });
+    expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 24 });
+    expect(result).toContainEqual({ section: "equipment", label: "Serving spoons", qty: 4 });
+    expect(result).toContainEqual({ section: "equipment", label: "Tongs", qty: 4 });
+    expect(result).toContainEqual({ section: "food", label: "Assorted dressings", qty: 24 });
+    expect(result).toContainEqual({
+      section: "delivery",
+      label: "Delivery address and handoff details",
+      qty: 1,
+    });
+  });
+
+  it("does not add cups, plates, or cutlery when paper goods are declined", () => {
+    const result = buildPhysicalOrderSetup({
+      items: [
+        { name: "Large Fruit Tray", qty: 1 },
+        { name: "Gallon Chick-fil-A Lemonade", qty: 1 },
+      ],
+      headcount: 100,
+      paperGoods: false,
+      fulfillment: "pickup",
+    });
+
+    expect(result.some((item) => item.label === "Plates")).toBe(false);
+    expect(result.some((item) => item.label === "Cups")).toBe(false);
+    expect(result.some((item) => item.label === "Cutlery sets")).toBe(false);
+    expect(result.some((item) => item.label === "Drink cups")).toBe(false);
+    expect(result).toContainEqual({ section: "equipment", label: "Serving spoons", qty: 2 });
+  });
+
+  it("uses the tray guide for Southwest Veggie wraps and twelve cups for 96 oz coffee", () => {
+    const result = buildPhysicalOrderSetup({
+      items: [
+        { name: "Medium Southwest Veggie Wrap Tray", qty: 1 },
+        { name: "Regular 96 oz Coffee", qty: 1 },
+      ],
+      headcount: 20,
+      paperGoods: true,
+      fulfillment: "pickup",
+    });
+
+    expect(result).toContainEqual({ section: "equipment", label: "Tongs", qty: 1 });
+    expect(result).toContainEqual({ section: "food", label: "Creamy Salsa dressing", qty: 10 });
+    expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 12 });
+  });
+
+  it("keeps receipt item names available even when the catalog did not match them", () => {
+    expect(
+      parseOrderItemsFromNotes(
+        "Auto-created from CFA order #04093 email.\n\nItems:\n- 1x Large Hot Chick-fil-A Nuggets Tray ($167.50)\n- 1x 8oz Chick-fil-A Sauce\n\nSubtotal $167.50",
+      ),
+    ).toEqual([
+      { name: "Large Hot Chick-fil-A Nuggets Tray", qty: 1 },
+      { name: "8oz Chick-fil-A Sauce", qty: 1 },
+    ]);
+  });
+});
+
 describe("planChecklistMaterialization", () => {
   const defaults = [
     { stage: "confirm", label: "Called guest to confirm", sort: 0 },
@@ -151,7 +228,7 @@ describe("planChecklistMaterialization", () => {
     },
   };
 
-  it("includes stage defaults plus auto-scaled setup and kitchen_prep items", () => {
+  it("includes stage defaults and kitchen prep items while waiting for confirmation to build the physical setup", () => {
     const planned = planChecklistMaterialization({
       defaults: defaults.filter((d) => d.label !== "inactive item should not appear"),
       orderItems: [{ menuItemId: "boxed", qty: 10 }],
@@ -162,7 +239,7 @@ describe("planChecklistMaterialization", () => {
     const byStage = (stage: string) => planned.filter((p) => p.stage === stage).map((p) => p.label);
 
     expect(byStage("confirm")).toEqual(["Called guest to confirm"]);
-    expect(byStage("setup")).toEqual(["Serving utensils out", "Napkins — 20"]);
+    expect(byStage("setup")).toEqual([]);
     expect(byStage("kitchen_prep")).toEqual(["Food items prepped", "Chicken Sandwich — 10"]);
     expect(byStage("out")).toEqual(["Tender count confirmed"]);
   });
@@ -174,8 +251,8 @@ describe("planChecklistMaterialization", () => {
       menuItemsById: {},
       headcount: 0,
     });
-    const setupItems = planned.filter((p) => p.stage === "setup");
-    expect(setupItems.map((p) => p.sort)).toEqual([0]);
+    const kitchenItems = planned.filter((p) => p.stage === "kitchen_prep");
+    expect(kitchenItems.map((p) => p.sort)).toEqual([0]);
   });
 });
 

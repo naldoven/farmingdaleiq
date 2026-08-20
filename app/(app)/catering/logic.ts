@@ -224,6 +224,304 @@ export function formatScaledLabel(item: ScaledLineItem): string {
   return `${item.label} — ${item.qty}`;
 }
 
+/**
+ * A physical setup is the one packing list staff work from after the
+ * confirmation call. It intentionally uses the existing checklist rows for
+ * completion history, while sections make the list scannable on a phone.
+ */
+export const PHYSICAL_SETUP_SECTIONS = [
+  "food",
+  "packaging",
+  "paper_goods",
+  "beverages",
+  "equipment",
+  "delivery",
+  "final_check",
+] as const;
+export type PhysicalSetupSection = (typeof PHYSICAL_SETUP_SECTIONS)[number];
+
+export const PHYSICAL_SETUP_SECTION_LABELS: Record<PhysicalSetupSection, string> = {
+  food: "Food",
+  packaging: "Packaging",
+  paper_goods: "Paper goods",
+  beverages: "Beverages",
+  equipment: "Equipment",
+  delivery: "Delivery",
+  final_check: "Final check",
+};
+
+export interface PhysicalSetupLineItem {
+  name: string;
+  qty: number;
+}
+
+export interface PhysicalSetupItem {
+  section: PhysicalSetupSection;
+  label: string;
+  qty: number;
+}
+
+function normalizedSetupName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[®™]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function setupSize(name: string): "small" | "medium" | "large" | null {
+  const normalized = normalizedSetupName(name);
+  if (normalized.includes("small")) return "small";
+  if (normalized.includes("medium")) return "medium";
+  if (normalized.includes("large")) return "large";
+  return null;
+}
+
+function setupQty(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function sizedQty(
+  size: "small" | "medium" | "large" | null,
+  quantities: { small: number; medium: number; large: number },
+): number {
+  if (size === "small") return quantities.small;
+  if (size === "medium") return quantities.medium;
+  if (size === "large") return quantities.large;
+  return 0;
+}
+
+function isBeverage(name: string): boolean {
+  const normalized = normalizedSetupName(name);
+  return (
+    normalized.includes("gallon") ||
+    normalized.includes("96 oz coffee") ||
+    normalized.includes("bottled water") ||
+    normalized.includes("bottled lemonade") ||
+    normalized.includes("juice") ||
+    normalized.includes("milk") ||
+    normalized.includes("bag of ice")
+  );
+}
+
+function addSetupItem(
+  entries: PhysicalSetupItem[],
+  section: PhysicalSetupSection,
+  label: string,
+  qty: number,
+) {
+  const safeQty = setupQty(qty);
+  if (safeQty > 0) entries.push({ section, label, qty: safeQty });
+}
+
+function addTrayEquipment(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
+  const name = normalizedSetupName(item.name);
+  const size = setupSize(item.name);
+  const ordered = setupQty(item.qty);
+  if (ordered === 0) return;
+
+  if (name.includes("grilled chicken bundle")) {
+    addSetupItem(entries, "equipment", "Tongs", 3 * ordered);
+    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", 10 * ordered);
+    return;
+  }
+
+  if (name.includes("chick n mini") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(
+      entries,
+      "food",
+      "Jelly, honey, or 1 oz sauce selections",
+      sizedQty(size, { small: 5, medium: 0, large: 10 }) * ordered,
+    );
+    return;
+  }
+
+  if (name.includes("mac") && name.includes("cheese") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    return;
+  }
+
+  if (name.includes("fruit tray")) {
+    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 0, large: 2 }) * ordered);
+    return;
+  }
+
+  if (name.includes("kale crunch") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "food", "Roasted almonds", sizedQty(size, { small: 10, medium: 0, large: 20 }) * ordered);
+    return;
+  }
+
+  if (name.includes("garden salad") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Tongs", ordered);
+    addSetupItem(entries, "food", "Assorted dressings", sizedQty(size, { small: 6, medium: 0, large: 14 }) * ordered);
+    return;
+  }
+
+  if ((name.includes("cool wrap") || name.includes("southwest veggie wrap")) && name.includes("tray")) {
+    const spicy = name.includes("spicy chilled grilled chicken");
+    const veggie = name.includes("southwest veggie");
+    addSetupItem(
+      entries,
+      "equipment",
+      "Tongs",
+      sizedQty(size, spicy ? { small: 1, medium: 2, large: 3 } : veggie ? { small: 1, medium: 1, large: 2 } : { small: 1, medium: 1, large: 2 }) * ordered,
+    );
+    addSetupItem(
+      entries,
+      "food",
+      spicy || !veggie ? "Avocado Lime Ranch dressing" : "Creamy Salsa dressing",
+      sizedQty(size, { small: 6, medium: 10, large: 14 }) * ordered,
+    );
+    return;
+  }
+
+  if (name.includes("chilled") && name.includes("chicken sub") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 2, large: 2 }) * ordered);
+    addSetupItem(entries, "food", "Honey Roasted BBQ sauce packets", sizedQty(size, { small: 6, medium: 12, large: 16 }) * ordered);
+    return;
+  }
+
+  if (name.includes("nugget") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Serving spoons", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
+    addSetupItem(
+      entries,
+      "food",
+      "8 oz sauce bottles or 8-count sauce packets",
+      sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
+    );
+    return;
+  }
+
+  if (name.includes("chick n strips") && name.includes("tray")) {
+    addSetupItem(entries, "equipment", "Tongs", sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered);
+    addSetupItem(
+      entries,
+      "food",
+      "8 oz sauce bottles or 8-count sauce packets",
+      sizedQty(size, { small: 1, medium: 1, large: 2 }) * ordered,
+    );
+    return;
+  }
+
+  if (
+    name.includes("chocolate chunk cookie tray") ||
+    name.includes("chocolate fudge brownie tray") ||
+    name.includes("cookie and chocolate fudge brownie tray")
+  ) {
+    addSetupItem(entries, "equipment", "Tongs", ordered);
+  }
+}
+
+function addPaperGoodsForTray(entries: PhysicalSetupItem[], item: PhysicalSetupLineItem) {
+  const name = normalizedSetupName(item.name);
+  const size = setupSize(item.name);
+  const ordered = setupQty(item.qty);
+  if (ordered === 0) return;
+
+  if (name.includes("fruit tray")) {
+    const count = sizedQty(size, { small: 12, medium: 0, large: 26 }) * ordered;
+    addSetupItem(entries, "paper_goods", "Plates", count);
+    addSetupItem(entries, "paper_goods", "Cutlery sets", count);
+  }
+
+  if (
+    name.includes("chocolate chunk cookie tray") ||
+    name.includes("chocolate fudge brownie tray") ||
+    name.includes("cookie and chocolate fudge brownie tray")
+  ) {
+    addSetupItem(
+      entries,
+      "paper_goods",
+      "Dessert plates",
+      sizedQty(size, { small: 12, medium: 0, large: 24 }) * ordered,
+    );
+  }
+}
+
+function aggregatePhysicalSetupItems(entries: PhysicalSetupItem[]): PhysicalSetupItem[] {
+  const totals = new Map<string, PhysicalSetupItem>();
+  for (const entry of entries) {
+    const key = `${entry.section}:${entry.label.toLowerCase()}`;
+    const existing = totals.get(key);
+    if (existing) {
+      existing.qty += entry.qty;
+    } else {
+      totals.set(key, { ...entry });
+    }
+  }
+  const sectionOrder = new Map(PHYSICAL_SETUP_SECTIONS.map((section, index) => [section, index]));
+  return Array.from(totals.values()).sort(
+    (a, b) =>
+      (sectionOrder.get(a.section)! - sectionOrder.get(b.section)!) ||
+      a.label.localeCompare(b.label),
+  );
+}
+
+/**
+ * Builds the packing list from the receipt/menu items and Farmingdale's tray
+ * guide. Paper goods are strictly opt-in: when the receipt says no, no cups,
+ * plates, or cutlery sets are generated.
+ */
+export function buildPhysicalOrderSetup(input: {
+  items: PhysicalSetupLineItem[];
+  headcount: number;
+  paperGoods: boolean;
+  fulfillment: string | null;
+}): PhysicalSetupItem[] {
+  const entries: PhysicalSetupItem[] = [];
+  const items = input.items.filter((item) => item.name.trim() && setupQty(item.qty) > 0);
+
+  for (const item of items) {
+    addSetupItem(entries, isBeverage(item.name) ? "beverages" : "food", item.name.trim(), item.qty);
+    addTrayEquipment(entries, item);
+  }
+
+  if (items.length > 0) {
+    addSetupItem(entries, "packaging", "Catering bags and labels", 1);
+  }
+
+  if (input.paperGoods) {
+    const guests = setupQty(input.headcount);
+    addSetupItem(entries, "paper_goods", "Plates", guests);
+    addSetupItem(entries, "paper_goods", "Cups", guests);
+    addSetupItem(entries, "paper_goods", "Cutlery sets", guests);
+    for (const item of items) addPaperGoodsForTray(entries, item);
+
+    // Each gallon drink (and the 96 oz coffee carrier) receives twelve cups.
+    for (const item of items) {
+      const name = normalizedSetupName(item.name);
+      if (name.includes("gallon") || name.includes("96 oz coffee")) {
+        addSetupItem(entries, "beverages", "Drink cups", 12 * setupQty(item.qty));
+      }
+    }
+  }
+
+  if (input.fulfillment === "delivery") {
+    addSetupItem(entries, "delivery", "Delivery address and handoff details", 1);
+  }
+
+  addSetupItem(entries, "final_check", "Compare packed items to the receipt", 1);
+  addSetupItem(entries, "final_check", "Verify sauces and special instructions", 1);
+  addSetupItem(entries, "final_check", "Cold items packed last", 1);
+
+  return aggregatePhysicalSetupItems(entries);
+}
+
+/** Extracts the original receipt items preserved by composeOrderNotes. */
+export function parseOrderItemsFromNotes(notes: string | null | undefined): PhysicalSetupLineItem[] {
+  if (!notes) return [];
+  const itemBlock = notes.match(/(?:^|\n)Items:\n([\s\S]*?)(?:\n\n|$)/);
+  if (!itemBlock) return [];
+  const items: PhysicalSetupLineItem[] = [];
+  for (const line of itemBlock[1].split("\n")) {
+    const match = line.match(/^-\s+(\d+)x\s+(.+?)(?:\s+\(\$[\d,]+\.\d{2}\))?$/);
+    if (match) items.push({ name: match[2].trim(), qty: Number(match[1]) });
+  }
+  return items;
+}
+
 export interface ChecklistDefaultLike {
   stage: string;
   label: string;
@@ -238,9 +536,9 @@ export interface PlannedChecklistItem {
 
 /**
  * Builds the full set of checklist items to materialize for a new order:
- * the active per-stage defaults, plus (for setup/kitchen_prep) the
- * auto-scaled supply and prep quantities computed from the order's line
- * items and headcount.
+ * the active per-stage defaults, plus kitchen-prep quantities computed from
+ * the order's line items. The physical FOH setup is materialized only after
+ * confirmation, not when an order first arrives.
  */
 export function planChecklistMaterialization(params: {
   defaults: ChecklistDefaultLike[];
@@ -252,6 +550,9 @@ export function planChecklistMaterialization(params: {
   const planned: PlannedChecklistItem[] = [];
 
   for (const stage of CHECKLIST_STAGES) {
+    // The physical setup is intentionally generated after the confirmation
+    // call, so a newly arrived order does not get a premature packing list.
+    if (stage === "setup") continue;
     const stageDefaults = defaults
       .filter((d) => d.stage === stage)
       .sort((a, b) => a.sort - b.sort);
@@ -260,11 +561,6 @@ export function planChecklistMaterialization(params: {
       planned.push({ stage, label: d.label, sort: sort++ });
     }
 
-    if (stage === "setup") {
-      for (const scaled of computeScaledSetupItems(orderItems, menuItemsById, headcount)) {
-        planned.push({ stage, label: formatScaledLabel(scaled), sort: sort++ });
-      }
-    }
     if (stage === "kitchen_prep") {
       for (const scaled of computeKitchenPrepItems(orderItems, menuItemsById)) {
         planned.push({ stage, label: formatScaledLabel(scaled), sort: sort++ });

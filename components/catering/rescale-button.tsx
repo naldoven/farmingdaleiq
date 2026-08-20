@@ -7,10 +7,8 @@ import { Button } from "@/components/ui/button";
 import { rescaleOrderSetup } from "@/app/(app)/catering/actions";
 
 /**
- * Regenerates auto-scaled FOH setup / kitchen prep quantity suggestions from
- * the order's current items and headcount, appending them as new checklist
- * rows (see rescaleOrderSetup in app/(app)/catering/actions.ts for the
- * additive-not-idempotent tradeoff).
+ * Rebuilds the generated physical packing list from the order's current
+ * receipt/menu items without touching manager-added final checks.
  */
 export function RescaleButton({ orderId }: { orderId: string }) {
   const router = useRouter();
@@ -29,7 +27,7 @@ export function RescaleButton({ orderId }: { orderId: string }) {
         });
       }}
     >
-      {isPending ? "Recomputing..." : "Recompute suggested quantities"}
+      {isPending ? "Refreshing..." : "Refresh setup"}
     </Button>
   );
 }

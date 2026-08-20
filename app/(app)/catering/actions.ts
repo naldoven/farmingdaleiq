@@ -31,13 +31,13 @@ import type { Json } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
-  CHECKLIST_STAGES,
+  buildPhysicalOrderSetup,
   defaultFollowUpDueDate,
   formatOrderNewMessage,
   formatStageChangeMessage,
   normalizePhone,
+  parseOrderItemsFromNotes,
   planChecklistMaterialization,
-  type ChecklistStage,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
@@ -85,6 +85,101 @@ function revalidateCatering(orderId?: string) {
   revalidatePath("/catering/history");
   revalidatePath("/catering/analytics");
   if (orderId) revalidatePath(`/catering/orders/${orderId}`);
+}
+
+/**
+ * Materializes the one physical packing list after confirmation. The claimed
+ * timestamp is an idempotency guard: two rapid stage changes cannot make two
+ * copies of the setup. A refresh first removes only generated rows, leaving
+ * any manually added setup checks intact.
+ */
+async function materializePhysicalOrderSetup(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orderId: string,
+  options: { replace?: boolean } = {},
+): Promise<ActionResult<{ generated: boolean }>> {
+  const { data: order, error: orderError } = await supabase
+    .from("catering_orders")
+    .select("id, stage, headcount, paper_goods, fulfillment, notes, setup_generated_at")
+    .eq("id", orderId)
+    .single();
+  if (orderError || !order) {
+    return { ok: false, error: orderError?.message ?? "Order not found." };
+  }
+  if (order.stage === "new" || order.stage === "confirm" || order.stage === CANCELLED_STAGE) {
+    return { ok: false, error: "Complete the confirmation call before creating the order setup." };
+  }
+
+  if (options.replace) {
+    const { error: removeError } = await supabase
+      .from("catering_checklist_items")
+      .delete()
+      .eq("order_id", orderId)
+      .not("setup_section", "is", null);
+    if (removeError) return { ok: false, error: removeError.message };
+
+    const { error: resetError } = await supabase
+      .from("catering_orders")
+      .update({ setup_generated_at: null })
+      .eq("id", orderId);
+    if (resetError) return { ok: false, error: resetError.message };
+  } else if (order.setup_generated_at) {
+    return { ok: true, data: { generated: false } };
+  }
+
+  const generatedAt = new Date().toISOString();
+  const { data: claimed, error: claimError } = await supabase
+    .from("catering_orders")
+    .update({ setup_generated_at: generatedAt })
+    .eq("id", orderId)
+    .is("setup_generated_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimError) return { ok: false, error: claimError.message };
+  if (!claimed) return { ok: true, data: { generated: false } };
+
+  const { data: orderItems } = await supabase
+    .from("catering_order_items")
+    .select("menu_item_id, qty")
+    .eq("order_id", orderId);
+  const menuItemIds = (orderItems ?? []).map((item) => item.menu_item_id);
+  const { data: menuItems } = menuItemIds.length
+    ? await supabase.from("catering_menu_items").select("id, name").in("id", menuItemIds)
+    : { data: [] as { id: string; name: string }[] };
+  const menuNameById = new Map((menuItems ?? []).map((item) => [item.id, item.name]));
+  const receiptItems = parseOrderItemsFromNotes(order.notes);
+  const items = receiptItems.length
+    ? receiptItems
+    : (orderItems ?? [])
+        .map((item) => ({ name: menuNameById.get(item.menu_item_id), qty: item.qty }))
+        .filter((item): item is { name: string; qty: number } => Boolean(item.name));
+
+  const setupItems = buildPhysicalOrderSetup({
+    items,
+    headcount: order.headcount ?? 0,
+    paperGoods: order.paper_goods,
+    fulfillment: order.fulfillment,
+  });
+  const { error: insertError } = await supabase.from("catering_checklist_items").insert(
+    setupItems.map((item, index) => ({
+      order_id: orderId,
+      stage: "setup",
+      label: `${item.label} - ${item.qty}`,
+      setup_section: item.section,
+      sort: 1000 + index,
+    })),
+  );
+  if (insertError) {
+    // Let a later confirmation retry rebuild the list if this insert fails.
+    await supabase
+      .from("catering_orders")
+      .update({ setup_generated_at: null })
+      .eq("id", orderId)
+      .eq("setup_generated_at", generatedAt);
+    return { ok: false, error: insertError.message };
+  }
+
+  return { ok: true, data: { generated: true } };
 }
 
 /**
@@ -369,6 +464,11 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
 
     if (updateError) return { ok: false, error: updateError.message };
 
+    if (["setup", "out", "followup", "closed"].includes(parsed.toStage)) {
+      const setupResult = await materializePhysicalOrderSetup(supabase, parsed.orderId);
+      if (!setupResult.ok) return setupResult;
+    }
+
     if (parsed.toStage === "closed") {
       const { data: openFollowUp } = await supabase
         .from("catering_followups")
@@ -650,12 +750,9 @@ export async function removeChecklistItem(
 }
 
 /**
- * Recomputes auto-scaled FOH setup / kitchen prep quantities from the
- * order's *current* line items and headcount, and appends them as new
- * checklist rows. Additive by design (existing manually added/removed items
- * are left alone), so calling it more than once will add duplicate
- * suggestions -- an accepted v1 tradeoff documented here; managers can
- * remove any extra rows via removeChecklistItem.
+ * Rebuilds the generated portion of a confirmed order's physical setup from
+ * its latest receipt/menu items. Manually added setup rows stay in place;
+ * only rows tagged with setup_section are replaced.
  */
 export async function rescaleOrderSetup(
   input: { orderId: string },
@@ -665,47 +762,8 @@ export async function rescaleOrderSetup(
     const { orderId } = orderIdSchema.parse({ orderId: input.orderId });
     const supabase = await createClient();
 
-    const [{ data: order }, { data: orderItems }] = await Promise.all([
-      supabase.from("catering_orders").select("id, headcount").eq("id", orderId).single(),
-      supabase.from("catering_order_items").select("menu_item_id, qty").eq("order_id", orderId),
-    ]);
-
-    if (!order) return { ok: false, error: "Order not found." };
-
-    const menuItemIds = (orderItems ?? []).map((i) => i.menu_item_id);
-    const { data: menuItems } = menuItemIds.length
-      ? await supabase
-          .from("catering_menu_items")
-          .select("id, components, scaling_rules")
-          .in("id", menuItemIds)
-      : { data: [] as { id: string; components: unknown; scaling_rules: unknown }[] };
-
-    const menuItemsById = Object.fromEntries(
-      (menuItems ?? []).map((m) => [m.id, { components: m.components, scaling_rules: m.scaling_rules }]),
-    );
-
-    const planned = planChecklistMaterialization({
-      defaults: [],
-      orderItems: (orderItems ?? []).map((i) => ({ menuItemId: i.menu_item_id, qty: i.qty })),
-      menuItemsById,
-      headcount: order.headcount ?? 0,
-    });
-
-    const additions = planned.filter((p): p is typeof p & { stage: ChecklistStage } =>
-      CHECKLIST_STAGES.includes(p.stage),
-    );
-
-    if (additions.length > 0) {
-      const { error } = await supabase.from("catering_checklist_items").insert(
-        additions.map((p, i) => ({
-          order_id: orderId,
-          stage: p.stage,
-          label: p.label,
-          sort: 1000 + i,
-        })),
-      );
-      if (error) return { ok: false, error: error.message };
-    }
+    const setupResult = await materializePhysicalOrderSetup(supabase, orderId, { replace: true });
+    if (!setupResult.ok) return setupResult;
 
     revalidateCatering(orderId);
     return { ok: true, data: undefined };
