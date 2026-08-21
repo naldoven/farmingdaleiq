@@ -31,11 +31,13 @@ export function ChecklistSection({
   orderId,
   stage,
   items,
+  canManage,
   variant = "card",
 }: {
   orderId: string;
   stage: ChecklistStage;
   items: ChecklistItemData[];
+  canManage: boolean;
   variant?: "card" | "bare";
 }) {
   const router = useRouter();
@@ -51,7 +53,7 @@ export function ChecklistSection({
         <div key={item.id} className="flex items-center gap-2">
           <Checkbox
             checked={item.done}
-            disabled={isPending}
+            disabled={!canManage || isPending}
             onCheckedChange={(checked) => {
               startTransition(async () => {
                 await toggleChecklistItem({ id: item.id, done: checked === true });
@@ -68,7 +70,7 @@ export function ChecklistSection({
           >
             {item.label}
           </span>
-          <Button
+          {canManage && <Button
             type="button"
             variant="ghost"
             size="sm"
@@ -81,11 +83,11 @@ export function ChecklistSection({
             }}
           >
             Remove
-          </Button>
+          </Button>}
         </div>
       ))}
       {items.length === 0 && <p className="text-[13px] text-muted-ink">No items yet.</p>}
-      <div className="flex items-center gap-2 pt-1">
+      {canManage && <div className="flex items-center gap-2 pt-1">
         <Input
           placeholder="Add item"
           value={newLabel}
@@ -108,7 +110,7 @@ export function ChecklistSection({
         >
           Add
         </Button>
-      </div>
+      </div>}
     </div>
   );
 

@@ -20,6 +20,7 @@ import {
   normalizePhone,
   parseComponents,
   parseOrderItemsFromNotes,
+  parseRequestedCondiments,
   parseScalingRules,
   planPreOrderChecklist,
   periodRange,
@@ -163,8 +164,7 @@ describe("physical catering setup", () => {
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 24 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Serving spoons", qty: 4 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 4 });
-    expect(result).toContainEqual({ section: "sauces_dressings", label: "Assorted dressings", qty: 24 });
-    expect(result.some((item) => ["packaging", "delivery", "final_check"].includes(item.section))).toBe(false);
+    expect(result.some((item) => item.section === "sauces_dressings")).toBe(false);
   });
 
   it("does not add cups, plates, or cutlery when paper goods are declined", () => {
@@ -194,14 +194,15 @@ describe("physical catering setup", () => {
       headcount: 20,
       paperGoods: true,
       fulfillment: "pickup",
+      selectedCondiments: [{ name: "Creamy Salsa Dressing", qty: 10 }],
     });
 
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 1 });
-    expect(result).toContainEqual({ section: "sauces_dressings", label: "Creamy Salsa dressing", qty: 10 });
+    expect(result).toContainEqual({ section: "sauces_dressings", label: "Creamy Salsa Dressing", qty: 10 });
     expect(result).toContainEqual({ section: "beverages", label: "Drink cups", qty: 12 });
   });
 
-  it("keeps ordered sauces and tray condiments out of Food", () => {
+  it("uses only exact receipt-selected condiments and keeps food out of the setup", () => {
     const result = buildPhysicalOrderSetup({
       items: [
         { name: "Small Hot Chick-fil-A Nuggets Tray", qty: 1 },
@@ -209,16 +210,28 @@ describe("physical catering setup", () => {
         { name: "Chick-fil-A Sauce Flavored Waffle Potato Chips", qty: 1 },
         { name: "Large Kale Crunch Side Tray", qty: 1 },
       ],
+      selectedCondiments: [{ name: "8 oz Chick-fil-A Sauce", qty: 2 }],
       headcount: 20,
       paperGoods: true,
       fulfillment: "pickup",
     });
 
-    expect(result).toContainEqual({ section: "food", label: "Small Hot Chick-fil-A Nuggets Tray", qty: 1 });
-    expect(result).toContainEqual({ section: "food", label: "Chick-fil-A Sauce Flavored Waffle Potato Chips", qty: 1 });
     expect(result).toContainEqual({ section: "sauces_dressings", label: "8 oz Chick-fil-A Sauce", qty: 2 });
-    expect(result).toContainEqual({ section: "sauces_dressings", label: "8 oz sauce bottles or 8-count sauce packets", qty: 1 });
-    expect(result).toContainEqual({ section: "sauces_dressings", label: "Roasted almonds", qty: 20 });
+    expect(result.some((item) => item.label.includes("8-count sauce packets"))).toBe(false);
+    expect(result.some((item) => item.label === "Roasted almonds")).toBe(false);
+  });
+
+  it("accepts only known condiment receipt lines from stored selections", () => {
+    expect(
+      parseRequestedCondiments([
+        { name: "8oz Garden Herb Ranch Sauce", qty: 1 },
+        { name: "Avocado Lime Ranch Dressing", qty: 2 },
+        { name: "Large Mac & Cheese Tray", qty: 1 },
+      ]),
+    ).toEqual([
+      { name: "8oz Garden Herb Ranch Sauce", qty: 1 },
+      { name: "Avocado Lime Ranch Dressing", qty: 2 },
+    ]);
   });
 
   it("keeps receipt item names available even when the catalog did not match them", () => {

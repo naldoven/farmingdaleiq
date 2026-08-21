@@ -18,9 +18,19 @@ import { changeStage } from "@/app/(app)/catering/actions";
  * by drag or a stage dropdown"). Used on kanban cards and the order detail
  * page.
  */
-export function StageSelect({ orderId, stage }: { orderId: string; stage: OrderStage }) {
+export function StageSelect({
+  orderId,
+  stage,
+  canManage,
+}: {
+  orderId: string;
+  stage: OrderStage;
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  if (!canManage) return null;
 
   return (
     <Select

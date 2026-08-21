@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
  * stage can move to any other), so unlike the maintenance work-order board
  * every column is always a valid drop target.
  */
-export function KanbanBoard({ orders }: { orders: OrderCardData[] }) {
+export function KanbanBoard({ orders, canManage }: { orders: OrderCardData[]; canManage: boolean }) {
   const router = useRouter();
   const [localOrders, setLocalOrders] = useState(orders);
   const [error, setError] = useState<string | null>(null);
@@ -102,17 +102,18 @@ export function KanbanBoard({ orders }: { orders: OrderCardData[] }) {
               </div>
               <div className="flex flex-col gap-3">
                 {stageOrders.map((order) => {
-                  const { onPointerDown } = drag.cardHandlers(
+                  const { onPointerDown } = canManage ? drag.cardHandlers(
                     order.id,
                     <KanbanGhostCard
                       title={order.guestName}
                       caption={`${order.eventDate}${order.eventTime ? ` · ${order.eventTime}` : ""}`}
                     />,
-                  );
+                  ) : { onPointerDown: undefined };
                   return (
                     <OrderCard
                       key={order.id}
                       order={order}
+                      canManage={canManage}
                       onPointerDown={onPointerDown}
                       isDragging={drag.draggingId === order.id}
                     />

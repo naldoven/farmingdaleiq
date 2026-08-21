@@ -111,7 +111,7 @@ export default async function CateringPipelinePage() {
         </SectionCard>
       )}
 
-      <KanbanBoard orders={cards} />
+      <KanbanBoard orders={cards} canManage={canManage} />
     </div>
   );
 }

@@ -34,10 +34,12 @@ export interface OrderCardData {
  */
 export function OrderCard({
   order,
+  canManage,
   onPointerDown,
   isDragging,
 }: {
   order: OrderCardData;
+  canManage: boolean;
   onPointerDown?: (e: ReactPointerEvent) => void;
   isDragging?: boolean;
 }) {
@@ -49,7 +51,7 @@ export function OrderCard({
   return (
     <SectionCard
       onPointerDown={onPointerDown}
-      className={`w-[248px] shrink-0 cursor-grab transition-opacity active:cursor-grabbing ${
+      className={`w-[248px] shrink-0 transition-opacity ${canManage ? "cursor-grab active:cursor-grabbing" : ""} ${
         isDragging ? "opacity-40" : ""
       }`}
     >
@@ -61,7 +63,7 @@ export function OrderCard({
           >
             {order.guestName}
           </Link>
-          <GripVertical className="h-4 w-4 shrink-0 text-muted-ink" aria-hidden="true" />
+          {canManage && <GripVertical className="h-4 w-4 shrink-0 text-muted-ink" aria-hidden="true" />}
         </div>
         <p className="text-[13px] text-muted-ink">
           {order.eventDate}
@@ -77,7 +79,7 @@ export function OrderCard({
           <p className="text-[19px] font-bold text-ink">${order.amount.toFixed(2)}</p>
         )}
         {hasProgress && <ProgressBar value={progressPct} tone="accent" label="Checklists" />}
-        <StageSelect orderId={order.id} stage={order.stage} />
+        <StageSelect orderId={order.id} stage={order.stage} canManage={canManage} />
       </div>
     </SectionCard>
   );

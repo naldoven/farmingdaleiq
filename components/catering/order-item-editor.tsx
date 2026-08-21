@@ -32,10 +32,12 @@ export function OrderItemEditor({
   orderId,
   items,
   menuItems,
+  canManage,
 }: {
   orderId: string;
   items: OrderItemRow[];
   menuItems: MenuItemOption[];
+  canManage: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -57,7 +59,7 @@ export function OrderItemEditor({
             <TableRow key={item.id}>
               <TableCell>{item.menuItemName}</TableCell>
               <TableCell>
-                <Input
+                {canManage ? <Input
                   type="number"
                   min={1}
                   className="h-8 w-20"
@@ -71,9 +73,10 @@ export function OrderItemEditor({
                       router.refresh();
                     });
                   }}
-                />
+                /> : <span>{item.qty}</span>}
               </TableCell>
               <TableCell>
+                {canManage && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -88,6 +91,7 @@ export function OrderItemEditor({
                 >
                   Remove
                 </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -101,7 +105,7 @@ export function OrderItemEditor({
         </TableBody>
       </Table>
 
-      {menuItems.length > 0 && (
+      {canManage && menuItems.length > 0 && (
         <div className="flex items-center gap-2">
           <Select value={newMenuItemId} onValueChange={setNewMenuItemId}>
             <SelectTrigger className="flex-1">

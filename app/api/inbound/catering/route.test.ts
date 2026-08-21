@@ -71,6 +71,8 @@ Price
 $10.83
 Mystery Tray Nobody Sells
 1
+8oz Chick-fil-A Sauce
+1
 Subtotal
 $1353.75
 Tax
@@ -169,6 +171,7 @@ describe("POST /api/inbound/catering happy path", () => {
       source: "email:msg-1",
       contact_id: "contact-1",
       phone: "16313358148",
+      selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 1 }],
     });
     expect(String(orderInsert.notes)).toContain("Not in menu (add manually): Mystery Tray Nobody Sells");
 

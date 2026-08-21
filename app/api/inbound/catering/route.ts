@@ -8,6 +8,7 @@ import {
   parseCateringEmail,
 } from "@/lib/catering/inbound-email";
 import {
+  isRequestedCondiment,
   normalizePhone,
   planChecklistMaterialization,
 } from "@/app/(app)/catering/logic";
@@ -136,6 +137,9 @@ export async function POST(request: NextRequest) {
   // notes either way.
   const matchedItems: { menuItemId: string; qty: number }[] = [];
   const unmatchedNames: string[] = [];
+  const selectedCondiments = parsed.items
+    .filter((item) => isRequestedCondiment(item.name))
+    .map((item) => ({ name: item.name, qty: item.qty }));
   const menuItemsById: Record<string, { components: unknown; scaling_rules: unknown }> = {};
   if (parsed.ok && parsed.items.length > 0) {
     const { data: menuItems } = await supabase
@@ -146,6 +150,9 @@ export async function POST(request: NextRequest) {
       (menuItems ?? []).map((m) => [m.name.trim().toLowerCase(), m]),
     );
     for (const item of parsed.items) {
+      // Exact requested sauces and dressings are receipt child-lines, not
+      // menu items. Persist them on the order for the day-before setup.
+      if (isRequestedCondiment(item.name)) continue;
       const match = byName.get(item.name.trim().toLowerCase());
       if (match) {
         matchedItems.push({ menuItemId: match.id, qty: item.qty });
@@ -183,6 +190,7 @@ export async function POST(request: NextRequest) {
       fulfillment: parsed.fulfillment,
       delivery_address: parsed.deliveryAddress,
       paper_goods: parsed.paperGoods,
+      selected_condiments: selectedCondiments,
       source: sourceKey,
       notes,
       created_by: null,
