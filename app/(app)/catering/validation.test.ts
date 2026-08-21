@@ -197,6 +197,8 @@ describe("menuItemSchema", () => {
   it("accepts valid JSON array text", () => {
     const result = menuItemSchema.safeParse({
       name: "Boxed Meal",
+      pickupPriceText: "43.50",
+      deliveryPriceText: "56.50",
       componentsText: '[{"name":"Sandwich","qty":1}]',
       scalingRulesText: '[{"label":"Napkins","perQty":1}]',
     });
@@ -208,6 +210,11 @@ describe("menuItemSchema", () => {
       name: "Boxed Meal",
       componentsText: "{not valid json",
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects prices with more than two decimal places", () => {
+    const result = menuItemSchema.safeParse({ name: "Boxed Meal", pickupPriceText: "43.505" });
     expect(result.success).toBe(false);
   });
 

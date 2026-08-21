@@ -299,24 +299,30 @@ export type Database = {
           active: boolean
           category: string | null
           components: Json | null
+          delivery_price_cents: number | null
           id: string
           name: string
+          pickup_price_cents: number | null
           scaling_rules: Json | null
         }
         Insert: {
           active?: boolean
           category?: string | null
           components?: Json | null
+          delivery_price_cents?: number | null
           id?: string
           name: string
+          pickup_price_cents?: number | null
           scaling_rules?: Json | null
         }
         Update: {
           active?: boolean
           category?: string | null
           components?: Json | null
+          delivery_price_cents?: number | null
           id?: string
           name?: string
+          pickup_price_cents?: number | null
           scaling_rules?: Json | null
         }
         Relationships: []

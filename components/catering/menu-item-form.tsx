@@ -15,6 +15,8 @@ export interface MenuItemFormData {
   id?: string;
   name: string;
   category: string;
+  pickupPriceText: string;
+  deliveryPriceText: string;
   componentsText: string;
   scalingRulesText: string;
   active: boolean;
@@ -40,6 +42,8 @@ export function MenuItemForm({
 
   const [name, setName] = useState(initial?.name ?? "");
   const [category, setCategory] = useState(initial?.category ?? "");
+  const [pickupPriceText, setPickupPriceText] = useState(initial?.pickupPriceText ?? "");
+  const [deliveryPriceText, setDeliveryPriceText] = useState(initial?.deliveryPriceText ?? "");
   const [componentsText, setComponentsText] = useState(initial?.componentsText ?? "[]");
   const [scalingRulesText, setScalingRulesText] = useState(initial?.scalingRulesText ?? "[]");
   const [active, setActive] = useState(initial?.active ?? true);
@@ -59,16 +63,20 @@ export function MenuItemForm({
             id: initial.id,
             name,
             category,
+            pickupPriceText,
+            deliveryPriceText,
             componentsText,
             scalingRulesText,
             active,
           })
-        : await createMenuItem({ name, category, componentsText, scalingRulesText, active });
+        : await createMenuItem({ name, category, pickupPriceText, deliveryPriceText, componentsText, scalingRulesText, active });
 
       if (result.ok) {
         if (!initial?.id) {
           setName("");
           setCategory("");
+          setPickupPriceText("");
+          setDeliveryPriceText("");
           setComponentsText("[]");
           setScalingRulesText("[]");
         }
@@ -91,6 +99,34 @@ export function MenuItemForm({
           <div className="flex flex-col gap-1">
             <Label htmlFor={`mi-category-${scope}`}>Category</Label>
             <Input id={`mi-category-${scope}`} value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`mi-pickup-price-${scope}`}>Pickup price</Label>
+            <Input
+              id={`mi-pickup-price-${scope}`}
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={pickupPriceText}
+              onChange={(e) => setPickupPriceText(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`mi-delivery-price-${scope}`}>Delivery price</Label>
+            <Input
+              id={`mi-delivery-price-${scope}`}
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={deliveryPriceText}
+              onChange={(e) => setDeliveryPriceText(e.target.value)}
+            />
           </div>
         </div>
         <div className="flex flex-col gap-1">
