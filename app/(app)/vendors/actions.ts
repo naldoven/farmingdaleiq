@@ -13,9 +13,11 @@ import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/vendors/action-types";
 import {
+  deleteVendorSchema,
   setVendorActiveSchema,
   updateVendorSchema,
   vendorSchema,
+  type DeleteVendorInput,
   type SetVendorActiveInput,
   type UpdateVendorInput,
   type VendorInput,
@@ -34,11 +36,37 @@ function vendorColumns(parsed: VendorInput) {
   };
 }
 
+const VENDOR_LINKED_RECORD_MESSAGE =
+  "This vendor is attached to old records. Deactivate it instead.";
+
+function isForeignKeyError(error: { code?: string; message?: string } | null | undefined) {
+  return error?.code === "23503" || error?.message?.toLowerCase().includes("foreign key");
+}
+
+async function vendorHasLinkedRecords(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string,
+) {
+  const checks = await Promise.all([
+    supabase.from("equipment").select("id").eq("service_vendor_id", vendorId).limit(1),
+    supabase.from("pm_schedules").select("id").eq("vendor_id", vendorId).limit(1),
+    supabase.from("work_orders").select("id").eq("vendor_id", vendorId).limit(1),
+    supabase.from("training_courses").select("id").eq("vendor_id", vendorId).limit(1),
+  ]);
+  const error = checks.find((check) => check.error)?.error;
+  if (error) return { hasLinkedRecords: false, error };
+
+  return {
+    hasLinkedRecords: checks.some((check) => (check.data ?? []).length > 0),
+    error: null,
+  };
+}
+
 export async function createVendor(
   input: VendorInput,
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    await requirePermission("vendors.manage");
+    await requirePermission("vendors.view");
     const parsed = vendorSchema.parse(input);
     const supabase = await createClient();
 
@@ -56,6 +84,7 @@ export async function createVendor(
     }
 
     revalidatePath("/vendors");
+    revalidatePath("/vendors-settings");
     return { ok: true, data: { id: data.id } };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
@@ -66,7 +95,7 @@ export async function updateVendor(
   input: UpdateVendorInput,
 ): Promise<ActionResult> {
   try {
-    await requirePermission("vendors.manage");
+    await requirePermission("vendors.view");
     const parsed = updateVendorSchema.parse(input);
     const supabase = await createClient();
 
@@ -80,6 +109,7 @@ export async function updateVendor(
     }
 
     revalidatePath("/vendors");
+    revalidatePath("/vendors-settings");
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
@@ -87,16 +117,15 @@ export async function updateVendor(
 }
 
 /**
- * Vendors are soft-deleted (active flag) rather than hard-deleted: work
- * orders, equipment, and pm_schedules can all reference a vendor_id, so
- * removing the row outright would either cascade-delete history or fail on
- * the FK. Deactivating just hides it from active pickers.
+ * Deactivation is the normal path for a vendor that is no longer used but has
+ * history. Hard deletes are guarded below for vendors that were created by
+ * mistake and have no dependent records.
  */
 export async function setVendorActive(
   input: SetVendorActiveInput,
 ): Promise<ActionResult> {
   try {
-    await requirePermission("vendors.manage");
+    await requirePermission("vendors.view");
     const parsed = setVendorActiveSchema.parse(input);
     const supabase = await createClient();
 
@@ -110,6 +139,47 @@ export async function setVendorActive(
     }
 
     revalidatePath("/vendors");
+    revalidatePath("/vendors-settings");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+export async function deleteVendor(
+  input: DeleteVendorInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("vendors.view");
+    const parsed = deleteVendorSchema.parse(input);
+    const supabase = await createClient();
+
+    const linked = await vendorHasLinkedRecords(supabase, parsed.id);
+    if (linked.error) {
+      return { ok: false, error: linked.error.message };
+    }
+    if (linked.hasLinkedRecords) {
+      return { ok: false, error: VENDOR_LINKED_RECORD_MESSAGE };
+    }
+
+    const { data, error } = await supabase
+      .from("vendors")
+      .delete()
+      .eq("id", parsed.id)
+      .select("id");
+
+    if (isForeignKeyError(error)) {
+      return { ok: false, error: VENDOR_LINKED_RECORD_MESSAGE };
+    }
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    if ((data ?? []).length === 0) {
+      return { ok: false, error: "That vendor no longer exists." };
+    }
+
+    revalidatePath("/vendors");
+    revalidatePath("/vendors-settings");
     return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };

@@ -25,24 +25,17 @@ import {
 } from "@/components/mobile";
 import {
   createVendor,
+  deleteVendor,
   setVendorActive,
   updateVendor,
 } from "@/app/(app)/vendors/actions";
-
-export interface VendorRow {
-  id: string;
-  name: string;
-  category: string | null;
-  rep_name: string | null;
-  phone: string | null;
-  email: string | null;
-  account_number: string | null;
-  website: string | null;
-  notes: string | null;
-  active: boolean;
-}
-
-type StatusFilter = "all" | "active" | "inactive";
+import {
+  filterVendors,
+  groupVendorsByLetter,
+  vendorFilterLabel,
+  type VendorRow,
+  type VendorStatusFilter,
+} from "@/components/vendors/vendor-types";
 
 interface VendorFormState {
   name: string;
@@ -81,16 +74,17 @@ function formFromRow(vendor: VendorRow): VendorFormState {
   };
 }
 
-/** "A" for names starting with a letter, "#" for anything else (numbers etc). */
-function groupByLetter(vendors: VendorRow[]): [string, VendorRow[]][] {
-  const groups = new Map<string, VendorRow[]>();
-  for (const vendor of vendors) {
-    const first = vendor.name.trim().charAt(0).toUpperCase();
-    const key = first >= "A" && first <= "Z" ? first : "#";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(vendor);
-  }
-  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+function formPayload(form: VendorFormState) {
+  return {
+    ...form,
+    category: form.category || undefined,
+    repName: form.repName || undefined,
+    phone: form.phone || undefined,
+    email: form.email || undefined,
+    accountNumber: form.accountNumber || undefined,
+    website: form.website || undefined,
+    notes: form.notes || undefined,
+  };
 }
 
 function VendorFormFields({
@@ -172,60 +166,29 @@ function VendorFormFields({
   );
 }
 
-/**
- * Directory + admin CRUD for vendors (ARCHITECTURE.md "Vendors"). Restyled to
- * the KitchenIQ mobile list pattern: SearchBar + status FilterChips + an
- * alphabetically-sectioned list of ListRows, with a round accent "+" for
- * canManage holders to add a vendor. Tapping a row opens the same edit dialog
- * the old table's "Edit" button opened; a "Deactivate/Reactivate" control
- * moved into that dialog's footer since the row itself no longer has a
- * per-item action column.
- */
-export function VendorManager({
-  vendors,
-  canManage,
-}: {
-  vendors: VendorRow[];
-  canManage: boolean;
-}) {
+export function VendorSettingsManager({ vendors }: { vendors: VendorRow[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<VendorFormState>(emptyForm());
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
   const [editForm, setEditForm] = useState<VendorFormState>(emptyForm());
-  const [editingActive, setEditingActive] = useState(true);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<VendorStatusFilter>("all");
+
+  const filtered = useMemo(
+    () => filterVendors(vendors, query, statusFilter),
+    [vendors, query, statusFilter],
+  );
+  const groups = groupVendorsByLetter(filtered);
+  const filterLabel = vendorFilterLabel(statusFilter);
 
   function startEdit(vendor: VendorRow) {
-    setEditingId(vendor.id);
+    setEditingVendor(vendor);
     setEditForm(formFromRow(vendor));
-    setEditingActive(vendor.active);
     setError(null);
   }
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return vendors.filter((vendor) => {
-      if (statusFilter === "active" && !vendor.active) return false;
-      if (statusFilter === "inactive" && vendor.active) return false;
-      if (!q) return true;
-      return (
-        vendor.name.toLowerCase().includes(q) ||
-        (vendor.category ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [vendors, query, statusFilter]);
-
-  const groups = groupByLetter(filtered);
-  const filterLabel =
-    statusFilter === "active"
-      ? "Active"
-      : statusFilter === "inactive"
-        ? "Inactive"
-        : "All";
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,19 +200,18 @@ export function VendorManager({
           onChange={(e) => setQuery(e.target.value)}
           containerClassName="flex-1"
         />
-        {canManage && (
-          <button
-            type="button"
-            aria-label="Add vendor"
-            onClick={() => {
-              setCreateForm(emptyForm());
-              setCreateOpen(true);
-            }}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
-          >
-            <Plus className="h-5 w-5" aria-hidden="true" />
-          </button>
-        )}
+        <button
+          type="button"
+          aria-label="Add vendor"
+          onClick={() => {
+            setCreateForm(emptyForm());
+            setError(null);
+            setCreateOpen(true);
+          }}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-transform active:scale-95"
+        >
+          <Plus className="h-5 w-5" aria-hidden="true" />
+        </button>
       </div>
 
       <ChipRow>
@@ -303,7 +265,7 @@ export function VendorManager({
                           {vendor.active ? "Active" : "Inactive"}
                         </StatusBadge>
                       }
-                      onClick={canManage ? () => startEdit(vendor) : undefined}
+                      onClick={() => startEdit(vendor)}
                     />
                   ))}
                 </div>
@@ -324,16 +286,7 @@ export function VendorManager({
               event.preventDefault();
               setError(null);
               startTransition(async () => {
-                const result = await createVendor({
-                  ...createForm,
-                  category: createForm.category || undefined,
-                  repName: createForm.repName || undefined,
-                  phone: createForm.phone || undefined,
-                  email: createForm.email || undefined,
-                  accountNumber: createForm.accountNumber || undefined,
-                  website: createForm.website || undefined,
-                  notes: createForm.notes || undefined,
-                });
+                const result = await createVendor(formPayload(createForm));
                 if (!result.ok) {
                   setError(result.error);
                   return;
@@ -354,69 +307,94 @@ export function VendorManager({
       </Dialog>
 
       <Dialog
-        open={editingId !== null}
-        onOpenChange={(open) => !open && setEditingId(null)}
+        open={editingVendor !== null}
+        onOpenChange={(open) => !open && setEditingVendor(null)}
       >
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit vendor</DialogTitle>
-          </DialogHeader>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!editingId) return;
-              setError(null);
-              startTransition(async () => {
-                const result = await updateVendor({
-                  id: editingId,
-                  ...editForm,
-                  category: editForm.category || undefined,
-                  repName: editForm.repName || undefined,
-                  phone: editForm.phone || undefined,
-                  email: editForm.email || undefined,
-                  accountNumber: editForm.accountNumber || undefined,
-                  website: editForm.website || undefined,
-                  notes: editForm.notes || undefined,
-                });
-                if (!result.ok) {
-                  setError(result.error);
-                  return;
-                }
-                setEditingId(null);
-                router.refresh();
-              });
-            }}
-          >
-            <VendorFormFields form={editForm} onChange={setEditForm} />
-            <DialogFooter className="sm:justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isPending}
-                onClick={() => {
-                  if (!editingId) return;
+          {editingVendor && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Edit vendor</DialogTitle>
+              </DialogHeader>
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setError(null);
                   startTransition(async () => {
-                    const result = await setVendorActive({
-                      id: editingId,
-                      active: !editingActive,
+                    const result = await updateVendor({
+                      id: editingVendor.id,
+                      ...formPayload(editForm),
                     });
                     if (!result.ok) {
                       setError(result.error);
                       return;
                     }
-                    setEditingActive((prev) => !prev);
+                    setEditingVendor(null);
                     router.refresh();
                   });
                 }}
               >
-                {editingActive ? "Deactivate" : "Reactivate"}
-              </Button>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Saving..." : "Save changes"}
-              </Button>
-            </DialogFooter>
-          </form>
+                <VendorFormFields form={editForm} onChange={setEditForm} />
+                <DialogFooter className="gap-2 sm:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          const result = await setVendorActive({
+                            id: editingVendor.id,
+                            active: !editingVendor.active,
+                          });
+                          if (!result.ok) {
+                            setError(result.error);
+                            return;
+                          }
+                          setEditingVendor(null);
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      {editingVendor.active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={isPending}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Delete vendor "${editingVendor.name}"? Use deactivate if this vendor has any history.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        setError(null);
+                        startTransition(async () => {
+                          const result = await deleteVendor({
+                            id: editingVendor.id,
+                          });
+                          if (!result.ok) {
+                            setError(result.error);
+                            return;
+                          }
+                          setEditingVendor(null);
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                  <Button type="submit" disabled={isPending}>
+                    {isPending ? "Saving..." : "Save changes"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
