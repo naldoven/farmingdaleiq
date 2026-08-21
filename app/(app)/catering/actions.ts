@@ -865,6 +865,15 @@ function parseJsonArray(text: string): Json {
   }
 }
 
+/** Converts a validated dollar input to integer cents so catalog prices stay exact. */
+function priceTextToCents(text: string): number | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  const [whole, fraction = ""] = normalized.split(".");
+  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+}
+
 export async function createMenuItem(
   input: MenuItemInput,
 ): Promise<ActionResult<{ id: string }>> {
@@ -878,6 +887,8 @@ export async function createMenuItem(
       .insert({
         name: parsed.name,
         category: parsed.category ? parsed.category : null,
+        pickup_price_cents: priceTextToCents(parsed.pickupPriceText),
+        delivery_price_cents: priceTextToCents(parsed.deliveryPriceText),
         components: parseJsonArray(parsed.componentsText),
         scaling_rules: parseJsonArray(parsed.scalingRulesText),
         active: parsed.active,
@@ -907,6 +918,8 @@ export async function updateMenuItem(
       .update({
         name: parsed.name,
         category: parsed.category ? parsed.category : null,
+        pickup_price_cents: priceTextToCents(parsed.pickupPriceText),
+        delivery_price_cents: priceTextToCents(parsed.deliveryPriceText),
         components: parseJsonArray(parsed.componentsText),
         scaling_rules: parseJsonArray(parsed.scalingRulesText),
         active: parsed.active,

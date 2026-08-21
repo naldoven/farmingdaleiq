@@ -149,6 +149,8 @@ const jsonArrayText = z
 export const menuItemSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   category: optionalString,
+  pickupPriceText: z.string().trim().regex(/^$|^\d+(?:\.\d{1,2})?$/, "Enter a valid pickup price").default(""),
+  deliveryPriceText: z.string().trim().regex(/^$|^\d+(?:\.\d{1,2})?$/, "Enter a valid delivery price").default(""),
   componentsText: jsonArrayText,
   scalingRulesText: jsonArrayText,
   active: z.boolean().default(true),

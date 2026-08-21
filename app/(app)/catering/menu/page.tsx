@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { ChecklistDefaultsManager } from "@/app/(app)/catering/menu/checklist-defaults-manager";
 import type { ChecklistStage } from "@/app/(app)/catering/logic";
 
+function formatPrice(cents: number | null) {
+  return cents === null ? "Not listed" : `$${(cents / 100).toFixed(2)}`;
+}
+
 /**
  * /catering/menu — ARCHITECTURE.md page map: "Menu item catalog admin
  * (components, scaling rules)." Also owns per-stage checklist default
@@ -20,7 +24,8 @@ export default async function CateringMenuPage() {
   const [{ data: menuItems }, { data: checklistDefaults }] = await Promise.all([
     supabase
       .from("catering_menu_items")
-      .select("id, name, category, components, scaling_rules, active")
+      .select("id, name, category, pickup_price_cents, delivery_price_cents, components, scaling_rules, active")
+      .order("category")
       .order("name"),
     supabase
       .from("catering_checklist_defaults")
@@ -40,7 +45,7 @@ export default async function CateringMenuPage() {
             <ListRow
               key={item.id}
               title={item.name}
-              description={item.category ?? "No category"}
+              description={`${item.category ?? "No category"} · Pickup ${formatPrice(item.pickup_price_cents)} · Delivery ${formatPrice(item.delivery_price_cents)}`}
               trailing={
                 <div className="flex items-center gap-2">
                   <StatusBadge tone={item.active ? "success" : "neutral"} dot>
@@ -52,6 +57,8 @@ export default async function CateringMenuPage() {
                         id: item.id,
                         name: item.name,
                         category: item.category ?? "",
+                        pickupPriceText: item.pickup_price_cents === null ? "" : (item.pickup_price_cents / 100).toFixed(2),
+                        deliveryPriceText: item.delivery_price_cents === null ? "" : (item.delivery_price_cents / 100).toFixed(2),
                         componentsText: JSON.stringify(item.components ?? []),
                         scalingRulesText: JSON.stringify(item.scaling_rules ?? []),
                         active: item.active,
