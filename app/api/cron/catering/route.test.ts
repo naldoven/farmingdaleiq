@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 type QueryResponse = { data: unknown; error: { message: string } | null };
 
 let queryResponse: QueryResponse;
+let setupQueryResponse: QueryResponse;
 let updateResponse: QueryResponse;
 const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, string]> }> = [];
 const events: Array<Record<string, unknown>> = [];
@@ -14,13 +15,20 @@ function createFakeAdmin() {
       if (table === "catering_orders") {
         const filters: Array<[string, string]> = [];
         const query: Record<string, unknown> = {};
+        let selectsSetupCandidates = false;
         const chain = () => query;
-        query.select = chain;
+        query.select = (columns: string) => {
+          selectsSetupCandidates = columns.includes("setup_generated_at");
+          return query;
+        };
         query.eq = (column: string, value: string) => {
           filters.push([column, value]);
           return query;
         };
         query.in = chain;
+        query.neq = chain;
+        query.is = () =>
+          selectsSetupCandidates ? Promise.resolve(setupQueryResponse) : query;
         query.lte = () => Promise.resolve(queryResponse);
         query.update = (values: Record<string, unknown>) => {
           updates.push({ values, filters });
@@ -66,6 +74,7 @@ function makeRequest(authHeader?: string): NextRequest {
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
   queryResponse = { data: [], error: null };
+  setupQueryResponse = { data: [], error: null };
   updateResponse = { data: [], error: null };
   updates.length = 0;
   events.length = 0;

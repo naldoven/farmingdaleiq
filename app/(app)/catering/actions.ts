@@ -37,6 +37,7 @@ import {
   formatStageChangeMessage,
   normalizePhone,
   parseOrderItemsFromNotes,
+  isCateringSetupDay,
   planChecklistMaterialization,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
@@ -88,10 +89,10 @@ function revalidateCatering(orderId?: string) {
 }
 
 /**
- * Materializes the one physical packing list after confirmation. The claimed
- * timestamp is an idempotency guard: two rapid stage changes cannot make two
- * copies of the setup. A refresh first removes only generated rows, leaving
- * any manually added setup checks intact.
+ * Rebuilds the physical packing list on request. The scheduled generation
+ * itself runs from the catering cron on the calendar day before the event.
+ * A refresh first removes only generated rows, leaving separate checklist
+ * items intact.
  */
 async function materializePhysicalOrderSetup(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -100,14 +101,17 @@ async function materializePhysicalOrderSetup(
 ): Promise<ActionResult<{ generated: boolean }>> {
   const { data: order, error: orderError } = await supabase
     .from("catering_orders")
-    .select("id, stage, headcount, paper_goods, fulfillment, notes, setup_generated_at")
+    .select("id, stage, event_date, headcount, paper_goods, fulfillment, notes, setup_generated_at")
     .eq("id", orderId)
     .single();
   if (orderError || !order) {
     return { ok: false, error: orderError?.message ?? "Order not found." };
   }
-  if (order.stage === "new" || order.stage === "confirm" || order.stage === CANCELLED_STAGE) {
-    return { ok: false, error: "Complete the confirmation call before creating the order setup." };
+  if (order.stage === CANCELLED_STAGE) {
+    return { ok: false, error: "Cancelled orders cannot have a setup." };
+  }
+  if (!isCateringSetupDay(order.event_date)) {
+    return { ok: false, error: "Order setups can be refreshed only on the day before the event." };
   }
 
   if (options.replace) {
@@ -464,11 +468,6 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
 
     if (updateError) return { ok: false, error: updateError.message };
 
-    if (["setup", "out", "followup", "closed"].includes(parsed.toStage)) {
-      const setupResult = await materializePhysicalOrderSetup(supabase, parsed.orderId);
-      if (!setupResult.ok) return setupResult;
-    }
-
     if (parsed.toStage === "closed") {
       const { data: openFollowUp } = await supabase
         .from("catering_followups")
@@ -750,7 +749,7 @@ export async function removeChecklistItem(
 }
 
 /**
- * Rebuilds the generated portion of a confirmed order's physical setup from
+ * Rebuilds the generated portion of an order's physical setup from
  * its latest receipt/menu items. Manually added setup rows stay in place;
  * only rows tagged with setup_section are replaced.
  */

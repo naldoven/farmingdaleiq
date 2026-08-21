@@ -14,11 +14,14 @@ import {
   formatScaledLabel,
   formatStageChangeMessage,
   isCateringFollowUpDue,
+  isCateringSetupDay,
+  isCateringSetupDue,
   isoWeekKey,
   normalizePhone,
   parseComponents,
   parseOrderItemsFromNotes,
   parseScalingRules,
+  planPreOrderChecklist,
   periodRange,
   planChecklistMaterialization,
   storeLocalDate,
@@ -161,11 +164,7 @@ describe("physical catering setup", () => {
     expect(result).toContainEqual({ section: "paper_goods", label: "Serving spoons", qty: 4 });
     expect(result).toContainEqual({ section: "paper_goods", label: "Tongs", qty: 4 });
     expect(result).toContainEqual({ section: "sauces_dressings", label: "Assorted dressings", qty: 24 });
-    expect(result).toContainEqual({
-      section: "delivery",
-      label: "Delivery address and handoff details",
-      qty: 1,
-    });
+    expect(result.some((item) => ["packaging", "delivery", "final_check"].includes(item.section))).toBe(false);
   });
 
   it("does not add cups, plates, or cutlery when paper goods are declined", () => {
@@ -234,6 +233,16 @@ describe("physical catering setup", () => {
   });
 });
 
+describe("planPreOrderChecklist", () => {
+  it("places the final handoff checks under Pickup/Delivery", () => {
+    expect(planPreOrderChecklist()).toEqual([
+      { stage: "out", label: "Compare packed items to the receipt", sort: 900 },
+      { stage: "out", label: "Verify sauces and special instructions", sort: 901 },
+      { stage: "out", label: "Cold items packed last", sort: 902 },
+    ]);
+  });
+});
+
 describe("isCateringFollowUpDue", () => {
   const scheduledOrder = {
     stage: "out",
@@ -252,6 +261,26 @@ describe("isCateringFollowUpDue", () => {
   });
 });
 
+describe("isCateringSetupDue", () => {
+  const order = {
+    stage: "new",
+    event_date: "2026-08-21",
+    setup_generated_at: null,
+  };
+
+  it("becomes due on the New York calendar day before the event", () => {
+    expect(isCateringSetupDay(order.event_date, new Date("2026-08-20T04:01:00.000Z"))).toBe(true);
+    expect(isCateringSetupDue(order, new Date("2026-08-20T04:01:00.000Z"))).toBe(true);
+    expect(isCateringSetupDue(order, new Date("2026-08-19T23:59:59.000Z"))).toBe(false);
+  });
+
+  it("does not rebuild a generated, cancelled, or closed setup", () => {
+    expect(isCateringSetupDue({ ...order, setup_generated_at: "2026-08-20T12:00:00.000Z" })).toBe(false);
+    expect(isCateringSetupDue({ ...order, stage: "cancelled" })).toBe(false);
+    expect(isCateringSetupDue({ ...order, stage: "closed" })).toBe(false);
+  });
+});
+
 describe("planChecklistMaterialization", () => {
   const defaults = [
     { stage: "confirm", label: "Called guest to confirm", sort: 0 },
@@ -267,7 +296,7 @@ describe("planChecklistMaterialization", () => {
     },
   };
 
-  it("includes stage defaults and kitchen prep items while waiting for confirmation to build the physical setup", () => {
+  it("includes stage defaults and kitchen prep items while the day-before setup is pending", () => {
     const planned = planChecklistMaterialization({
       defaults: defaults.filter((d) => d.label !== "inactive item should not appear"),
       orderItems: [{ menuItemId: "boxed", qty: 10 }],
