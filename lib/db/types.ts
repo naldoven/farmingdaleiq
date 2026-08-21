@@ -378,6 +378,7 @@ export type Database = {
           stage: string
           stage_changed_at: string | null
           setup_generated_at: string | null
+          selected_condiments: Json
         }
         Insert: {
           amount?: number | null
@@ -399,6 +400,7 @@ export type Database = {
           stage?: string
           stage_changed_at?: string | null
           setup_generated_at?: string | null
+          selected_condiments?: Json
         }
         Update: {
           amount?: number | null
@@ -420,6 +422,7 @@ export type Database = {
           stage?: string
           stage_changed_at?: string | null
           setup_generated_at?: string | null
+          selected_condiments?: Json
         }
         Relationships: [
           {

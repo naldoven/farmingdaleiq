@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { resolveFollowUp } from "@/app/(app)/catering/actions";
 
 /** Marks a re-book follow-up call as done, with an optional outcome note. */
-export function FollowUpResolveForm({ id }: { id: string }) {
+export function FollowUpResolveForm({ id, canManage }: { id: string; canManage: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [outcome, setOutcome] = useState("");
+
+  if (!canManage) return null;
 
   return (
     <div className="flex items-center gap-2">

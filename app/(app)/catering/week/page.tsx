@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { ORDER_STAGE_LABELS, currentWeekDates, type OrderStage } from "@/app/(app)/catering/logic";
+import { CANCELLED_STAGE, ORDER_STAGE_LABELS, currentWeekDates, type OrderStage } from "@/app/(app)/catering/logic";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -22,6 +22,7 @@ export default async function CateringWeekPage() {
     .select("id, guest_name, event_date, event_time, headcount, stage")
     .gte("event_date", dates[0])
     .lte("event_date", dates[dates.length - 1])
+    .neq("stage", CANCELLED_STAGE)
     .order("event_time");
 
   const ordersByDate = new Map<string, NonNullable<typeof orders>>();

@@ -39,6 +39,7 @@ import {
   parseOrderItemsFromNotes,
   isCateringSetupDay,
   planChecklistMaterialization,
+  parseRequestedCondiments,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
@@ -89,6 +90,29 @@ function revalidateCatering(orderId?: string) {
 }
 
 /**
+ * Generated setup rows are a snapshot of the receipt. Clear that snapshot
+ * whenever an order changes so the day-before job never displays stale
+ * supplies beside the current customer order.
+ */
+async function invalidateGeneratedSetup(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orderId: string,
+): Promise<string | null> {
+  const { error: deleteError } = await supabase
+    .from("catering_checklist_items")
+    .delete()
+    .eq("order_id", orderId)
+    .not("setup_section", "is", null);
+  if (deleteError) return deleteError.message;
+
+  const { error: resetError } = await supabase
+    .from("catering_orders")
+    .update({ setup_generated_at: null })
+    .eq("id", orderId);
+  return resetError?.message ?? null;
+}
+
+/**
  * Rebuilds the physical packing list on request. The scheduled generation
  * itself runs from the catering cron on the calendar day before the event.
  * A refresh first removes only generated rows, leaving separate checklist
@@ -101,7 +125,7 @@ async function materializePhysicalOrderSetup(
 ): Promise<ActionResult<{ generated: boolean }>> {
   const { data: order, error: orderError } = await supabase
     .from("catering_orders")
-    .select("id, stage, event_date, headcount, paper_goods, fulfillment, notes, setup_generated_at")
+    .select("id, stage, event_date, headcount, paper_goods, fulfillment, notes, selected_condiments, setup_generated_at")
     .eq("id", orderId)
     .single();
   if (orderError || !order) {
@@ -160,6 +184,7 @@ async function materializePhysicalOrderSetup(
 
   const setupItems = buildPhysicalOrderSetup({
     items,
+    selectedCondiments: parseRequestedCondiments(order.selected_condiments),
     headcount: order.headcount ?? 0,
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
@@ -425,6 +450,9 @@ export async function updateOrderDetails(
 
     if (error) return { ok: false, error: error.message };
 
+    const setupError = await invalidateGeneratedSetup(supabase, parsed.id);
+    if (setupError) return { ok: false, error: setupError };
+
     revalidateCatering(parsed.id);
     return { ok: true, data: undefined };
   } catch (error) {
@@ -461,12 +489,16 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
     }
 
     const fromStage = order.stage;
-    const { error: updateError } = await supabase
+    const { data: moved, error: updateError } = await supabase
       .from("catering_orders")
       .update({ stage: parsed.toStage, stage_changed_at: new Date().toISOString() })
-      .eq("id", parsed.orderId);
+      .eq("id", parsed.orderId)
+      .eq("stage", fromStage)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) return { ok: false, error: updateError.message };
+    if (!moved) return { ok: true, data: undefined };
 
     if (parsed.toStage === "closed") {
       const { data: openFollowUp } = await supabase
@@ -537,12 +569,23 @@ export async function cancelOrder(input: CancelOrderInput): Promise<ActionResult
     }
 
     const fromStage = order.stage;
-    const { error: updateError } = await supabase
+    const { data: cancelled, error: updateError } = await supabase
       .from("catering_orders")
       .update({ stage: CANCELLED_STAGE, stage_changed_at: new Date().toISOString() })
-      .eq("id", parsed.orderId);
+      .eq("id", parsed.orderId)
+      .eq("stage", fromStage)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) return { ok: false, error: updateError.message };
+    if (!cancelled) return { ok: true, data: undefined };
+
+    const { error: followUpError } = await supabase
+      .from("catering_followups")
+      .delete()
+      .eq("order_id", parsed.orderId)
+      .is("done_at", null);
+    if (followUpError) return { ok: false, error: followUpError.message };
 
     // No follow-up is queued on cancel (that only happens on `closed`), so a
     // cancelled order never spawns a re-book call.
@@ -579,6 +622,9 @@ export async function addOrderItem(input: AddOrderItemInput): Promise<ActionResu
 
     if (error) return { ok: false, error: error.message };
 
+    const setupError = await invalidateGeneratedSetup(supabase, parsed.orderId);
+    if (setupError) return { ok: false, error: setupError };
+
     revalidateCatering(parsed.orderId);
     return { ok: true, data: undefined };
   } catch (error) {
@@ -609,6 +655,9 @@ export async function updateOrderItemQty(
       .eq("id", parsed.id);
     if (error) return { ok: false, error: error.message };
 
+    const setupError = await invalidateGeneratedSetup(supabase, item.order_id);
+    if (setupError) return { ok: false, error: setupError };
+
     revalidateCatering(item.order_id);
     return { ok: true, data: undefined };
   } catch (error) {
@@ -635,6 +684,9 @@ export async function removeOrderItem(
 
     const { error } = await supabase.from("catering_order_items").delete().eq("id", parsed.id);
     if (error) return { ok: false, error: error.message };
+
+    const setupError = await invalidateGeneratedSetup(supabase, item.order_id);
+    if (setupError) return { ok: false, error: setupError };
 
     revalidateCatering(item.order_id);
     return { ok: true, data: undefined };

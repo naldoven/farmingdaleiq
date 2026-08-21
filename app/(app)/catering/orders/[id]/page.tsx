@@ -127,7 +127,7 @@ export default async function CateringOrderPage({
             <StatusBadge tone={order.stage === CANCELLED_STAGE ? "neutral" : "accent"}>
               {ORDER_STAGE_LABELS[order.stage as OrderStage]}
             </StatusBadge>
-            <StageSelect orderId={order.id} stage={order.stage as OrderStage} />
+            <StageSelect orderId={order.id} stage={order.stage as OrderStage} canManage={canManage} />
             {canManage && order.stage !== CANCELLED_STAGE && (
               <CancelOrderButton orderId={order.id} />
             )}
@@ -165,11 +165,17 @@ export default async function CateringOrderPage({
             paperGoods: order.paper_goods,
             notes: order.notes,
           }}
+          canManage={canManage}
         />
       </SectionCard>
 
       <SectionCard title="Menu items">
-        <OrderItemEditor orderId={order.id} items={itemRows} menuItems={activeMenuItems ?? []} />
+        <OrderItemEditor
+          orderId={order.id}
+          items={itemRows}
+          menuItems={activeMenuItems ?? []}
+          canManage={canManage}
+        />
       </SectionCard>
 
       <div className="flex items-center justify-between gap-3">
@@ -179,13 +185,19 @@ export default async function CateringOrderPage({
       <OrderSetupSection items={setupItems} canManage={canManage} />
 
       {setupChecklistItems.length > 0 && (
-        <ChecklistSection orderId={order.id} stage="setup" items={setupChecklistItems} />
+        <ChecklistSection orderId={order.id} stage="setup" items={setupChecklistItems} canManage={canManage} />
       )}
 
       <h2 className="text-[19px] font-semibold text-ink">Stage checklists</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {CHECKLIST_STAGES.filter((stage) => stage !== "setup").map((stage) => (
-          <ChecklistSection key={stage} orderId={order.id} stage={stage} items={itemsByStage(stage)} />
+          <ChecklistSection
+            key={stage}
+            orderId={order.id}
+            stage={stage}
+            items={itemsByStage(stage)}
+            canManage={canManage}
+          />
         ))}
       </div>
 

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { FollowUpResolveForm } from "@/components/catering/followup-resolve-form";
 import { HistoryPeriodFilter } from "@/components/catering/history-period-filter";
 import { ListRow, SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
-import { requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
   HISTORY_PERIODS,
@@ -27,6 +27,7 @@ export default async function CateringHistoryPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   await requirePermission("catering.view");
+  const canManage = await hasPermission("catering.manage");
   const { period: periodParam } = await searchParams;
   const period: HistoryPeriod = HISTORY_PERIODS.includes(periodParam as HistoryPeriod)
     ? (periodParam as HistoryPeriod)
@@ -63,6 +64,10 @@ export default async function CateringHistoryPage({
   const { data: periodOrders } = await periodOrdersQuery;
 
   const guestNameByOrderId = new Map((allOrders ?? []).map((o) => [o.id, o.guest_name]));
+  const activeOrderIds = new Set(
+    (allOrders ?? []).filter((order) => order.stage !== "cancelled").map((order) => order.id),
+  );
+  const activeFollowUps = (openFollowUps ?? []).filter((followUp) => activeOrderIds.has(followUp.order_id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -70,7 +75,7 @@ export default async function CateringHistoryPage({
 
       <SectionCard title="Follow-ups due" flush>
         <div className="divide-y divide-line">
-          {(openFollowUps ?? []).map((f) => (
+          {activeFollowUps.map((f) => (
             <ListRow
               key={f.id}
               title={
@@ -79,10 +84,10 @@ export default async function CateringHistoryPage({
                 </Link>
               }
               description={f.due_on ? `Due ${f.due_on}` : "Due date not set"}
-              trailing={<FollowUpResolveForm id={f.id} />}
+              trailing={<FollowUpResolveForm id={f.id} canManage={canManage} />}
             />
           ))}
-          {(openFollowUps ?? []).length === 0 && (
+          {activeFollowUps.length === 0 && (
             <p className="px-4 py-3 text-[13px] text-muted-ink">No follow-ups due.</p>
           )}
         </div>

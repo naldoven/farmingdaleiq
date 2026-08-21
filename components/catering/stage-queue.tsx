@@ -62,7 +62,7 @@ export async function StageQueue({
               {order.guest_name}
             </Link>
           }
-          action={<StageSelect orderId={order.id} stage={orderStage} />}
+          action={<StageSelect orderId={order.id} stage={orderStage} canManage={canManage} />}
         >
           <div className="flex flex-col gap-3">
             <p className="text-[13px] text-muted-ink">
@@ -91,6 +91,7 @@ export async function StageQueue({
                     orderId={order.id}
                     stage="setup"
                     variant="bare"
+                    canManage={canManage}
                     items={(checklistItems ?? [])
                       .filter((item) => item.order_id === order.id && item.setup_section === null)
                       .map((item) => ({ id: item.id, label: item.label, done: item.done }))}
@@ -102,6 +103,7 @@ export async function StageQueue({
                 orderId={order.id}
                 stage={checklistStage}
                 variant="bare"
+                canManage={canManage}
                 items={(checklistItems ?? [])
                   .filter((item) => item.order_id === order.id)
                   .map((item) => ({ id: item.id, label: item.label, done: item.done }))}

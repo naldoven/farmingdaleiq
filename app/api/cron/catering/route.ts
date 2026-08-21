@@ -2,13 +2,13 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  CANCELLED_STAGE,
   FULFILLMENT_METHODS,
   buildPhysicalOrderSetup,
   formatStageChangeMessage,
   isCateringFollowUpDue,
   isCateringSetupDue,
   parseOrderItemsFromNotes,
+  parseRequestedCondiments,
   planPreOrderChecklist,
 } from "@/app/(app)/catering/logic";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -20,9 +20,9 @@ import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
  * time arrives. Vercel invokes this every minute, so neither workflow needs
  * someone to have the app open.
  *
- * The per-order update is claimed with `stage = out`. Overlapping/retried cron
- * runs therefore leave a row another invocation already moved alone and emit
- * at most one stage-change event for it.
+ * Each day-before setup is claimed by `setup_generated_at`, then the stage
+ * transition is guarded by its prior value. A cancellation or manual move can
+ * therefore win without being overwritten by this background job.
  */
 
 function isAuthorized(request: NextRequest): boolean {
@@ -42,23 +42,27 @@ async function materializeDueSetup(
   supabase: ReturnType<typeof createServiceRoleClient>,
   order: {
     id: string;
+    stage: string;
+    guest_name: string;
     headcount: number | null;
     paper_goods: boolean;
     fulfillment: string | null;
     notes: string | null;
+    selected_condiments: unknown;
   },
   now: Date,
-): Promise<{ generated: boolean; error?: string }> {
+): Promise<{ generated: boolean; movedToSetup: boolean; error?: string }> {
   const generatedAt = now.toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("catering_orders")
     .update({ setup_generated_at: generatedAt })
     .eq("id", order.id)
+    .in("stage", ["new", "confirm", "setup"])
     .is("setup_generated_at", null)
     .select("id")
     .maybeSingle();
-  if (claimError) return { generated: false, error: claimError.message };
-  if (!claimed) return { generated: false };
+  if (claimError) return { generated: false, movedToSetup: false, error: claimError.message };
+  if (!claimed) return { generated: false, movedToSetup: false };
 
   const releaseClaim = async () => {
     await supabase
@@ -74,7 +78,7 @@ async function materializeDueSetup(
     .eq("order_id", order.id);
   if (orderItemsError) {
     await releaseClaim();
-    return { generated: false, error: orderItemsError.message };
+    return { generated: false, movedToSetup: false, error: orderItemsError.message };
   }
 
   const menuItemIds = (orderItems ?? []).map((item) => item.menu_item_id);
@@ -83,7 +87,7 @@ async function materializeDueSetup(
     : { data: [] as { id: string; name: string }[], error: null };
   if (menuItemsError) {
     await releaseClaim();
-    return { generated: false, error: menuItemsError.message };
+    return { generated: false, movedToSetup: false, error: menuItemsError.message };
   }
 
   const menuNameById = new Map((menuItems ?? []).map((item) => [item.id, item.name]));
@@ -95,6 +99,7 @@ async function materializeDueSetup(
         .filter((item): item is { name: string; qty: number } => Boolean(item.name));
   const setupItems = buildPhysicalOrderSetup({
     items,
+    selectedCondiments: parseRequestedCondiments(order.selected_condiments),
     headcount: order.headcount ?? 0,
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
@@ -114,10 +119,22 @@ async function materializeDueSetup(
       sort: item.sort,
     })),
   ]);
-  if (!insertError) return { generated: true };
+  if (insertError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: insertError.message };
+  }
 
-  await releaseClaim();
-  return { generated: false, error: insertError.message };
+  if (order.stage === "setup") return { generated: true, movedToSetup: false };
+
+  const { data: moved, error: moveError } = await supabase
+    .from("catering_orders")
+    .update({ stage: "setup", stage_changed_at: generatedAt })
+    .eq("id", order.id)
+    .eq("stage", order.stage)
+    .select("id")
+    .maybeSingle();
+  if (moveError) return { generated: true, movedToSetup: false, error: moveError.message };
+  return { generated: true, movedToSetup: Boolean(moved) };
 }
 
 async function run(request: NextRequest) {
@@ -131,16 +148,16 @@ async function run(request: NextRequest) {
 
   const { data: setupCandidates, error: setupFetchError } = await supabase
     .from("catering_orders")
-    .select("id, stage, event_date, setup_generated_at, headcount, paper_goods, fulfillment, notes")
+    .select("id, stage, guest_name, event_date, setup_generated_at, headcount, paper_goods, fulfillment, notes, selected_condiments")
     .eq("event_date", tomorrow)
-    .neq("stage", CANCELLED_STAGE)
-    .neq("stage", "closed")
+    .in("stage", ["new", "confirm", "setup"])
     .is("setup_generated_at", null);
   if (setupFetchError) {
     return NextResponse.json({ error: setupFetchError.message }, { status: 500 });
   }
 
   let generated = 0;
+  const setupOrderIds: string[] = [];
   const errors: string[] = [];
   for (const order of (setupCandidates ?? []).filter((candidate) => isCateringSetupDue(candidate, now))) {
     const result = await materializeDueSetup(supabase, order, now);
@@ -148,6 +165,24 @@ async function run(request: NextRequest) {
       errors.push(`${order.id}: ${result.error}`);
     } else if (result.generated) {
       generated += 1;
+      setupOrderIds.push(order.id);
+      if (result.movedToSetup) {
+        const { error: eventError } = await supabase.from("app_events").insert({
+          event_key: "catering_stage_change",
+          payload: {
+            orderId: order.id,
+            fromStage: order.stage,
+            toStage: "setup",
+            message: formatStageChangeMessage({
+              guestName: order.guest_name,
+              eventDate: tomorrow,
+              fromStage: order.stage as "new" | "confirm",
+              toStage: "setup",
+            }),
+          },
+        });
+        if (eventError) console.error(`catering cron: failed to emit setup event for ${order.id}`, eventError.message);
+      }
     }
   }
 
@@ -206,6 +241,9 @@ async function run(request: NextRequest) {
   if (generated > 0 || advanced > 0) {
     revalidateCatering();
     for (const orderId of advancedOrderIds) {
+      revalidatePath(`/catering/orders/${orderId}`);
+    }
+    for (const orderId of setupOrderIds) {
       revalidatePath(`/catering/orders/${orderId}`);
     }
   }

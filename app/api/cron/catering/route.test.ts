@@ -6,8 +6,11 @@ type QueryResponse = { data: unknown; error: { message: string } | null };
 let queryResponse: QueryResponse;
 let setupQueryResponse: QueryResponse;
 let updateResponse: QueryResponse;
+let setupOrderItemsResponse: QueryResponse;
+let setupUpdateResponses: QueryResponse[];
 const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, string]> }> = [];
 const events: Array<Record<string, unknown>> = [];
+const inserts: Array<{ table: string; values: unknown }> = [];
 
 function createFakeAdmin() {
   return {
@@ -37,10 +40,34 @@ function createFakeAdmin() {
             filters.push([column, value]);
             return update;
           };
-          update.select = () => Promise.resolve(updateResponse);
+          update.in = () => update;
+          update.is = () => update;
+          update.select = () => {
+            const response = setupUpdateResponses.shift() ?? updateResponse;
+            return {
+              maybeSingle: () => Promise.resolve(response),
+              then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+                Promise.resolve(response).then(resolve, reject),
+            };
+          };
           return update;
         };
         return query;
+      }
+
+      if (table === "catering_order_items") {
+        return {
+          select: () => ({ eq: () => Promise.resolve(setupOrderItemsResponse) }),
+        };
+      }
+
+      if (table === "catering_checklist_items") {
+        return {
+          insert: (values: unknown) => {
+            inserts.push({ table, values });
+            return Promise.resolve({ error: null });
+          },
+        };
       }
 
       if (table === "app_events") {
@@ -78,6 +105,9 @@ beforeEach(() => {
   updateResponse = { data: [], error: null };
   updates.length = 0;
   events.length = 0;
+  inserts.length = 0;
+  setupOrderItemsResponse = { data: [], error: null };
+  setupUpdateResponses = [];
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-20T18:00:00.000Z"));
 });
@@ -115,5 +145,41 @@ describe("catering cron route", () => {
     expect(updates[0].filters).toContainEqual(["stage", "out"]);
     expect(events).toHaveLength(1);
     expect(events[0].event_key).toBe("catering_stage_change");
+  });
+
+  it("builds the day-before setup from exact receipt condiments and moves it to FOH Setup", async () => {
+    setupQueryResponse = {
+      data: [
+        {
+          id: "setup-order",
+          stage: "confirm",
+          guest_name: "Catering Guest",
+          event_date: "2026-08-21",
+          setup_generated_at: null,
+          headcount: 20,
+          paper_goods: true,
+          fulfillment: "delivery",
+          notes: "Items:\n- 1x Small Hot Chick-fil-A Nuggets Tray\n- 1x 8oz Chick-fil-A Sauce",
+          selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 1 }],
+        },
+      ],
+      error: null,
+    };
+    setupUpdateResponses = [
+      { data: { id: "setup-order" }, error: null },
+      { data: { id: "setup-order" }, error: null },
+    ];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(res.status).toBe(200);
+    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(true);
+    const setupInsert = inserts.find((insert) => insert.table === "catering_checklist_items")?.values as Array<Record<string, unknown>>;
+    expect(setupInsert).toContainEqual(expect.objectContaining({
+      setup_section: "sauces_dressings",
+      label: "8oz Chick-fil-A Sauce - 1",
+    }));
+    expect(setupInsert.some((item) => item.setup_section === "food")).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({ event_key: "catering_stage_change" }));
   });
 });

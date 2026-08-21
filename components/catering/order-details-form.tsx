@@ -34,7 +34,7 @@ export interface OrderDetailsData {
 }
 
 /** Editable order fields (ARCHITECTURE.md "Orders"). */
-export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
+export function OrderDetailsForm({ order, canManage }: { order: OrderDetailsData; canManage: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -81,23 +81,23 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-guestName">Guest name</Label>
-          <Input id="d-guestName" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
+          <Input id="d-guestName" value={guestName} disabled={!canManage} onChange={(e) => setGuestName(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-phone">Phone</Label>
-          <Input id="d-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input id="d-phone" value={phone} disabled={!canManage} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-email">Email</Label>
-          <Input id="d-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input id="d-email" type="email" value={email} disabled={!canManage} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-eventDate">Event date</Label>
-          <Input id="d-eventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+          <Input id="d-eventDate" type="date" value={eventDate} disabled={!canManage} onChange={(e) => setEventDate(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-eventTime">Event time</Label>
-          <Input id="d-eventTime" type="time" value={eventTime} onChange={(e) => setEventTime(e.target.value)} />
+          <Input id="d-eventTime" type="time" value={eventTime} disabled={!canManage} onChange={(e) => setEventTime(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-headcount">Headcount</Label>
@@ -106,6 +106,7 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
             type="number"
             min={0}
             value={headcount}
+            disabled={!canManage}
             onChange={(e) => setHeadcount(e.target.value)}
           />
         </div>
@@ -117,12 +118,13 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
             min={0}
             step="0.01"
             value={amount}
+            disabled={!canManage}
             onChange={(e) => setAmount(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="d-fulfillment">Fulfillment</Label>
-          <Select value={fulfillment} onValueChange={setFulfillment}>
+          <Select value={fulfillment} disabled={!canManage} onValueChange={setFulfillment}>
             <SelectTrigger id="d-fulfillment">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -141,6 +143,7 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
             <Input
               id="d-deliveryAddress"
               value={deliveryAddress}
+              disabled={!canManage}
               onChange={(e) => setDeliveryAddress(e.target.value)}
             />
           </div>
@@ -151,6 +154,7 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
         <Checkbox
           id="d-paperGoods"
           checked={paperGoods}
+          disabled={!canManage}
           onCheckedChange={(v) => setPaperGoods(v === true)}
         />
         <Label htmlFor="d-paperGoods">Paper goods needed</Label>
@@ -158,14 +162,16 @@ export function OrderDetailsForm({ order }: { order: OrderDetailsData }) {
 
       <div className="flex flex-col gap-1">
         <Label htmlFor="d-notes">Notes</Label>
-        <Textarea id="d-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Textarea id="d-notes" value={notes} disabled={!canManage} onChange={(e) => setNotes(e.target.value)} />
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Button type="button" disabled={isPending} onClick={submit} className="self-start">
-        {isPending ? "Saving..." : "Save details"}
-      </Button>
+      {canManage && (
+        <Button type="button" disabled={isPending} onClick={submit} className="self-start">
+          {isPending ? "Saving..." : "Save details"}
+        </Button>
+      )}
     </div>
   );
 }
