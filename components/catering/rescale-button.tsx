@@ -8,7 +8,7 @@ import { rescaleOrderSetup } from "@/app/(app)/catering/actions";
 
 /**
  * Rebuilds the generated physical packing list from the order's current
- * receipt/menu items without touching manager-added final checks.
+ * receipt/menu items without touching separate operational checklists.
  */
 export function RescaleButton({ orderId }: { orderId: string }) {
   const router = useRouter();

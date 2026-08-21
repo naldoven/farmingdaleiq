@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { addChecklistItem, removeChecklistItem, toggleChecklistItem } from "@/app/(app)/catering/actions";
+import { removeChecklistItem, toggleChecklistItem } from "@/app/(app)/catering/actions";
 import {
   PHYSICAL_SETUP_SECTIONS,
   PHYSICAL_SETUP_SECTION_LABELS,
@@ -12,7 +12,6 @@ import {
 import { SectionCard, StatusBadge } from "@/components/mobile";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 
 export interface OrderSetupItemData {
   id: string;
@@ -21,35 +20,37 @@ export interface OrderSetupItemData {
   setupSection: string | null;
 }
 
-function sectionForItem(item: OrderSetupItemData): PhysicalSetupSection {
+function sectionForItem(item: OrderSetupItemData): PhysicalSetupSection | null {
+  if (item.setupSection === "equipment") return "paper_goods";
+
   return PHYSICAL_SETUP_SECTIONS.includes(item.setupSection as PhysicalSetupSection)
     ? (item.setupSection as PhysicalSetupSection)
-    : "final_check";
+    : null;
 }
 
 /**
  * The one physical setup list for a catering order. Generated rows carry a
- * section; older setup defaults and manager additions stay visible under
- * Final check instead of being discarded.
+ * section. Non-packing FOH checklist rows are rendered separately instead of
+ * being mixed into the day-before packing list.
  */
 export function OrderSetupSection({
-  orderId,
   items,
   canManage,
   variant = "card",
 }: {
-  orderId: string;
   items: OrderSetupItemData[];
   canManage: boolean;
   variant?: "card" | "bare";
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [newLabel, setNewLabel] = useState("");
 
   const itemsBySection = new Map<PhysicalSetupSection, OrderSetupItemData[]>();
   for (const section of PHYSICAL_SETUP_SECTIONS) itemsBySection.set(section, []);
-  for (const item of items) itemsBySection.get(sectionForItem(item))?.push(item);
+  for (const item of items) {
+    const section = sectionForItem(item);
+    if (section) itemsBySection.get(section)?.push(item);
+  }
 
   const doneCount = items.filter((item) => item.done).length;
   const allDone = items.length > 0 && doneCount === items.length;
@@ -113,34 +114,7 @@ export function OrderSetupSection({
         );
       })}
 
-      {items.length === 0 && <p className="text-[13px] text-muted-ink">Setup will appear after confirmation.</p>}
-
-      {canManage && (
-        <div className="flex items-center gap-2 border-t border-line pt-3">
-          <Input
-            placeholder="Add final check"
-            value={newLabel}
-            onChange={(event) => setNewLabel(event.target.value)}
-            className="h-9 text-[15px]"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isPending || !newLabel.trim()}
-            onClick={() => {
-              const label = newLabel.trim();
-              setNewLabel("");
-              startTransition(async () => {
-                await addChecklistItem({ orderId, stage: "setup", label });
-                router.refresh();
-              });
-            }}
-          >
-            Add
-          </Button>
-        </div>
-      )}
+      {items.length === 0 && <p className="text-[13px] text-muted-ink">Setup will appear the day before the event.</p>}
     </div>
   );
 

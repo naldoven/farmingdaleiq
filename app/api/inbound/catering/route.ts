@@ -7,7 +7,10 @@ import {
   composeOrderNotes,
   parseCateringEmail,
 } from "@/lib/catering/inbound-email";
-import { normalizePhone, planChecklistMaterialization } from "@/app/(app)/catering/logic";
+import {
+  normalizePhone,
+  planChecklistMaterialization,
+} from "@/app/(app)/catering/logic";
 
 /**
  * Inbound bridge for CFA catering order emails. A Google Apps Script in the

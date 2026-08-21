@@ -16,6 +16,7 @@ import {
   CHECKLIST_STAGES,
   ORDER_STAGE_LABELS,
   filterRevenueOrders,
+  isCateringSetupDay,
   type ChecklistStage,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
@@ -106,15 +107,17 @@ export default async function CateringOrderPage({
       .map((c) => ({ id: c.id, label: c.label, done: c.done }));
 
   const setupItems = (checklistItems ?? [])
-    .filter((item) => item.stage === "setup")
+    .filter((item) => item.stage === "setup" && item.setup_section !== null)
     .map((item) => ({
       id: item.id,
       label: item.label,
       done: item.done,
       setupSection: item.setup_section,
     }));
-  const canRefreshSetup =
-    canManage && ["setup", "out", "followup", "closed"].includes(order.stage);
+  const setupChecklistItems = (checklistItems ?? [])
+    .filter((item) => item.stage === "setup" && item.setup_section === null)
+    .map((item) => ({ id: item.id, label: item.label, done: item.done }));
+  const canRefreshSetup = canManage && isCateringSetupDay(order.event_date);
 
   return (
     <div className="flex flex-col gap-4">
@@ -173,7 +176,11 @@ export default async function CateringOrderPage({
         <h2 className="text-[19px] font-semibold text-ink">Order setup</h2>
         {canRefreshSetup && <RescaleButton orderId={order.id} />}
       </div>
-      <OrderSetupSection orderId={order.id} items={setupItems} canManage={canManage} />
+      <OrderSetupSection items={setupItems} canManage={canManage} />
+
+      {setupChecklistItems.length > 0 && (
+        <ChecklistSection orderId={order.id} stage="setup" items={setupChecklistItems} />
+      )}
 
       <h2 className="text-[19px] font-semibold text-ink">Stage checklists</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

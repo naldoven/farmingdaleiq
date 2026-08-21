@@ -71,19 +71,32 @@ export async function StageQueue({
               {order.fulfillment ? ` · ${order.fulfillment}` : ""}
             </p>
             {checklistStage === "setup" ? (
-              <OrderSetupSection
-                orderId={order.id}
-                canManage={canManage}
-                variant="bare"
-                items={(checklistItems ?? [])
-                  .filter((item) => item.order_id === order.id)
-                  .map((item) => ({
-                    id: item.id,
-                    label: item.label,
-                    done: item.done,
-                    setupSection: item.setup_section,
-                  }))}
-              />
+              <>
+                <OrderSetupSection
+                  canManage={canManage}
+                  variant="bare"
+                  items={(checklistItems ?? [])
+                    .filter((item) => item.order_id === order.id && item.setup_section !== null)
+                    .map((item) => ({
+                      id: item.id,
+                      label: item.label,
+                      done: item.done,
+                      setupSection: item.setup_section,
+                    }))}
+                />
+                {(checklistItems ?? []).some(
+                  (item) => item.order_id === order.id && item.setup_section === null,
+                ) && (
+                  <ChecklistSection
+                    orderId={order.id}
+                    stage="setup"
+                    variant="bare"
+                    items={(checklistItems ?? [])
+                      .filter((item) => item.order_id === order.id && item.setup_section === null)
+                      .map((item) => ({ id: item.id, label: item.label, done: item.done }))}
+                  />
+                )}
+              </>
             ) : (
               <ChecklistSection
                 orderId={order.id}
