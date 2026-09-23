@@ -63,7 +63,7 @@ function ItemEditRow({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState(item.name);
-  const [categoryId, setCategoryId] = useState(item.categoryId ?? NO_CATEGORY);
+  const [categoryId, setCategoryId] = useState(item.categoryId ?? "");
   const [unit, setUnit] = useState<WasteUnit>(item.unit);
   const [unitCost, setUnitCost] = useState(item.unitCost != null ? String(item.unitCost) : "");
   const [error, setError] = useState<string | null>(null);
@@ -142,10 +142,9 @@ function ItemEditRow({
               to that tab, appended at the end of its order (see updateItem). */}
           <Select value={categoryId} onValueChange={setCategoryId}>
             <SelectTrigger className="w-[8.5rem]" aria-label="Category">
-              <SelectValue />
+              <SelectValue placeholder="Choose category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NO_CATEGORY}>No category</SelectItem>
               {categories.map((category) => (
                 <SelectItem key={category.id} value={category.id}>
                   {category.name}
@@ -165,6 +164,10 @@ function ItemEditRow({
               // max messages never fired and the user saw a generic type error
               // instead of anything actionable.
               const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+              if (!categoryId) {
+                setError("Choose a category before saving this item.");
+                return;
+              }
               if (parsedUnitCost !== null && !Number.isFinite(parsedUnitCost)) {
                 setError("Enter the unit cost as a number, e.g. 2.50");
                 return;
@@ -174,7 +177,7 @@ function ItemEditRow({
                   updateItem({
                     id: item.id,
                     name,
-                    categoryId: categoryId === NO_CATEGORY ? null : categoryId,
+                    categoryId,
                     unit,
                     unitCost: parsedUnitCost,
                   }),
@@ -235,8 +238,8 @@ export function ItemManager({
   const [isPending, startTransition] = useTransition();
   const [isReordering, startReorderTransition] = useTransition();
   const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? NO_CATEGORY);
-  const [unit, setUnit] = useState<WasteUnit>("each");
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [unit, setUnit] = useState<WasteUnit | "">("");
   const [unitCost, setUnitCost] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
@@ -361,6 +364,14 @@ export function ItemManager({
           // max messages never fired and the user saw a generic type error
           // instead of anything actionable.
           const parsedUnitCost = unitCost.trim() === "" ? null : Number(unitCost);
+          if (!categoryId) {
+            setError("Add a category, then choose it for this item.");
+            return;
+          }
+          if (!unit) {
+            setError("Choose the approved unit for this item.");
+            return;
+          }
           if (parsedUnitCost !== null && !Number.isFinite(parsedUnitCost)) {
             setError("Enter the unit cost as a number, e.g. 2.50");
             return;
@@ -369,7 +380,7 @@ export function ItemManager({
             const result = await safeAction(() =>
               createItem({
                 name,
-                categoryId: categoryId === NO_CATEGORY ? null : categoryId,
+                categoryId,
                 unit,
                 unitCost: parsedUnitCost,
               }),
@@ -379,7 +390,7 @@ export function ItemManager({
               return;
             }
             setName("");
-            setUnit("each");
+            setUnit("");
             setUnitCost("");
             router.refresh();
           });
@@ -393,12 +404,11 @@ export function ItemManager({
           className="max-w-[12rem]"
           required
         />
-        <Select value={categoryId} onValueChange={setCategoryId}>
+        <Select value={categoryId} onValueChange={setCategoryId} disabled={categories.length === 0}>
           <SelectTrigger className="w-[10rem]" aria-label="New item category">
-            <SelectValue />
+            <SelectValue placeholder="Choose category" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_CATEGORY}>No category</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.id} value={category.id}>
                 {category.name}
@@ -408,7 +418,7 @@ export function ItemManager({
         </Select>
         <Select value={unit} onValueChange={(value) => setUnit(value as WasteUnit)}>
           <SelectTrigger className="w-[6rem]">
-            <SelectValue />
+            <SelectValue placeholder="Unit" />
           </SelectTrigger>
           <SelectContent>
             {WASTE_UNITS.map((unitOption) => (
@@ -420,7 +430,7 @@ export function ItemManager({
         </Select>
         <Input
           aria-label="Unit cost"
-          placeholder="Unit cost"
+          placeholder="Unit cost (optional)"
           value={unitCost}
           onChange={(event) => setUnitCost(event.target.value)}
           className="max-w-[6rem]"
@@ -430,7 +440,7 @@ export function ItemManager({
           step="0.01"
           inputMode="decimal"
         />
-        <Button type="submit" variant="secondary" disabled={isPending}>
+        <Button type="submit" variant="secondary" disabled={isPending || !categoryId || !unit}>
           {isPending ? "Adding..." : "Add item"}
         </Button>
       </form>

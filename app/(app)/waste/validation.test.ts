@@ -93,31 +93,32 @@ describe("createCategorySchema / updateCategorySchema", () => {
 describe("createItemSchema / updateItemSchema", () => {
   it("requires a valid unit", () => {
     expect(() =>
-      createItemSchema.parse({ name: "Fries", unit: "gallon" }),
+      createItemSchema.parse({ name: "Fries", categoryId: UUID_B, unit: "gallon" }),
     ).toThrow();
   });
 
   it("accepts each of the allowed units", () => {
     for (const unit of ["each", "lb", "oz"] as const) {
-      const result = createItemSchema.parse({ name: "Item", unit });
+      const result = createItemSchema.parse({ name: "Item", categoryId: UUID_B, unit });
       expect(result.unit).toBe(unit);
     }
   });
 
-  it("allows a null category id and a null unit cost", () => {
+  it("requires a category but allows an unknown unit cost", () => {
     const result = createItemSchema.parse({
       name: "Fries",
       unit: "lb",
-      categoryId: null,
+      categoryId: UUID_B,
       unitCost: null,
     });
-    expect(result.categoryId).toBeNull();
+    expect(result.categoryId).toBe(UUID_B);
     expect(result.unitCost).toBeNull();
+    expect(() => createItemSchema.parse({ name: "Fries", categoryId: null, unit: "lb" })).toThrow();
   });
 
   it("rejects a negative unit cost", () => {
     expect(() =>
-      createItemSchema.parse({ name: "Fries", unit: "lb", unitCost: -1 }),
+      createItemSchema.parse({ name: "Fries", categoryId: UUID_B, unit: "lb", unitCost: -1 }),
     ).toThrow();
   });
 
@@ -138,22 +139,35 @@ describe("createItemSchema / updateItemSchema", () => {
 describe("unit cost bounds (the other half of the '$5.84e+21' typo class)", () => {
   it("rejects a cost above the maximum", () => {
     expect(() =>
-      createItemSchema.parse({ name: "Fries", unit: "lb", unitCost: WASTE_UNIT_COST_MAX + 1 }),
+      createItemSchema.parse({
+        name: "Fries",
+        categoryId: UUID_B,
+        unit: "lb",
+        unitCost: WASTE_UNIT_COST_MAX + 1,
+      }),
     ).toThrow();
   });
 
   it("rejects a decimal-slip typo", () => {
     // The float-overflow end of the same typo class.
-    expect(() => createItemSchema.parse({ name: "Filet", unit: "each", unitCost: 1e21 })).toThrow();
+    expect(() =>
+      createItemSchema.parse({ name: "Filet", categoryId: UUID_B, unit: "each", unitCost: 1e21 }),
+    ).toThrow();
   });
 
   it("rejects NaN and Infinity", () => {
     expect(() =>
-      createItemSchema.parse({ name: "Filet", unit: "each", unitCost: Number.NaN }),
+      createItemSchema.parse({
+        name: "Filet",
+        categoryId: UUID_B,
+        unit: "each",
+        unitCost: Number.NaN,
+      }),
     ).toThrow();
     expect(() =>
       createItemSchema.parse({
         name: "Filet",
+        categoryId: UUID_B,
         unit: "each",
         unitCost: Number.POSITIVE_INFINITY,
       }),
@@ -163,6 +177,7 @@ describe("unit cost bounds (the other half of the '$5.84e+21' typo class)", () =
   it("still accepts a realistic cost at the boundary", () => {
     const result = createItemSchema.parse({
       name: "Filet",
+      categoryId: UUID_B,
       unit: "each",
       unitCost: WASTE_UNIT_COST_MAX,
     });

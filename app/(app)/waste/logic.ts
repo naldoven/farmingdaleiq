@@ -32,6 +32,42 @@ export interface WasteCategoryForRollup {
   name: string;
 }
 
+export interface WasteConfigurationStatus {
+  categoryCount: number;
+  itemCount: number;
+  /** Items with no category, or pointing to a category that no longer exists. */
+  uncategorizedItemCount: number;
+  /** Items that can be logged, but cannot contribute a confirmed dollar total. */
+  unpricedItemCount: number;
+  /** Logging is only useful once every item appears under a real category. */
+  isReadyToLog: boolean;
+}
+
+/**
+ * Separates a usable item list from a cost-complete one. A confirmed cost is
+ * valuable for reports but must never block staff from recording real waste;
+ * an approved item, unit, and category are the minimum needed to make a log
+ * entry unambiguous. This also makes configuration gaps visible without
+ * inventing Farmingdale defaults.
+ */
+export function getWasteConfigurationStatus(
+  items: WasteItemForRollup[],
+  categories: WasteCategoryForRollup[],
+): WasteConfigurationStatus {
+  const categoryIds = new Set(categories.map((category) => category.id));
+  const uncategorizedItemCount = items.filter(
+    (item) => !item.categoryId || !categoryIds.has(item.categoryId),
+  ).length;
+
+  return {
+    categoryCount: categories.length,
+    itemCount: items.length,
+    uncategorizedItemCount,
+    unpricedItemCount: items.filter((item) => item.unitCost == null).length,
+    isReadyToLog: categories.length > 0 && items.length > 0 && uncategorizedItemCount === 0,
+  };
+}
+
 const PERIOD_DAYS: Record<Exclude<PeriodKey, "all">, number> = {
   week: 7,
   month: 30,

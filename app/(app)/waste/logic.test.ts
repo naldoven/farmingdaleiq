@@ -4,6 +4,7 @@ import {
   entryCostCents,
   filterEntriesByPeriod,
   formatCentsAsUsd,
+  getWasteConfigurationStatus,
   periodStart,
   rollupByCategory,
   rollupByItem,
@@ -353,6 +354,58 @@ describe("sumCostCents", () => {
 
   it("returns null for an empty set", () => {
     expect(sumCostCents([])).toEqual({ totalCents: null, unknownCount: 0 });
+  });
+});
+
+describe("getWasteConfigurationStatus", () => {
+  const categories: WasteCategoryForRollup[] = [
+    { id: "protein", name: "Protein" },
+    { id: "sides", name: "Sides" },
+  ];
+
+  it("calls a categorized item list log-ready even while costs are awaiting confirmation", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: "protein", unit: "each", unitCost: null },
+          { id: "fries", name: "Fries", categoryId: "sides", unit: "lb", unitCost: 1.25 },
+        ],
+        categories,
+      ),
+    ).toEqual({
+      categoryCount: 2,
+      itemCount: 2,
+      uncategorizedItemCount: 0,
+      unpricedItemCount: 1,
+      isReadyToLog: true,
+    });
+  });
+
+  it("keeps logging unavailable until every item belongs to a configured category", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: null, unit: "each", unitCost: null },
+          { id: "fries", name: "Fries", categoryId: "missing", unit: "lb", unitCost: null },
+        ],
+        categories,
+      ),
+    ).toMatchObject({
+      itemCount: 2,
+      uncategorizedItemCount: 2,
+      unpricedItemCount: 2,
+      isReadyToLog: false,
+    });
+  });
+
+  it("keeps logging unavailable without a configured category or item", () => {
+    expect(getWasteConfigurationStatus([], [])).toEqual({
+      categoryCount: 0,
+      itemCount: 0,
+      uncategorizedItemCount: 0,
+      unpricedItemCount: 0,
+      isReadyToLog: false,
+    });
   });
 });
 
