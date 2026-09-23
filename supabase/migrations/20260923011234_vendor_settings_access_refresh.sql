@@ -1,7 +1,7 @@
 -- Vendor settings access
--- Naldo wants anyone who can access the vendor directory to add, edit,
--- deactivate/reactivate, and delete unlinked vendor records. The server
--- actions use vendors.view, and this policy keeps RLS in sync.
+-- Anyone with directory access can add, edit, deactivate/reactivate, and
+-- delete unlinked vendor records. Server actions use vendors.view and this
+-- policy keeps RLS in sync.
 
 drop policy if exists vendors_write_manager on public.vendors;
 
