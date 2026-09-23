@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeAnalytics,
   buildPhysicalOrderSetup,
+  cateringStageAdvanceError,
+  checklistRequiredBeforeStageAdvance,
   computeContactRollups,
   computeKitchenPrepItems,
   computeScaledSetupItems,
@@ -27,6 +29,32 @@ import {
   planChecklistMaterialization,
   storeLocalDate,
 } from "@/app/(app)/catering/logic";
+
+describe("catering stage handoffs", () => {
+  it("allows only the immediate next stage", () => {
+    expect(cateringStageAdvanceError("new", "confirm")).toBeNull();
+    expect(cateringStageAdvanceError("confirm", "setup")).toBeNull();
+    expect(cateringStageAdvanceError("setup", "out")).toBeNull();
+    expect(cateringStageAdvanceError("out", "followup")).toBeNull();
+    expect(cateringStageAdvanceError("followup", "closed")).toBeNull();
+  });
+
+  it("blocks skipped, reversed, and cancelled-stage moves", () => {
+    expect(cateringStageAdvanceError("new", "out")).toBe("Move this order to Confirmation Call next.");
+    expect(cateringStageAdvanceError("out", "setup")).toBe("Move this order to Follow-up next.");
+    expect(cateringStageAdvanceError("cancelled", "confirm")).toBe(
+      "Cancelled orders cannot return to the active pipeline.",
+    );
+  });
+
+  it("requires the right checklist at each operational handoff", () => {
+    expect(checklistRequiredBeforeStageAdvance("new")).toBeNull();
+    expect(checklistRequiredBeforeStageAdvance("confirm")).toBe("confirm");
+    expect(checklistRequiredBeforeStageAdvance("setup")).toBe("setup");
+    expect(checklistRequiredBeforeStageAdvance("out")).toBe("out");
+    expect(checklistRequiredBeforeStageAdvance("followup")).toBeNull();
+  });
+});
 
 describe("parseComponents", () => {
   it("accepts plain string entries with an implicit qty of 1", () => {
