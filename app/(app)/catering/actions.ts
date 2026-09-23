@@ -31,7 +31,10 @@ import type { Json } from "@/lib/db/types";
 import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
+  CHECKLIST_STAGE_LABELS,
   buildPhysicalOrderSetup,
+  cateringStageAdvanceError,
+  checklistRequiredBeforeStageAdvance,
   defaultFollowUpDueDate,
   formatOrderNewMessage,
   formatStageChangeMessage,
@@ -463,8 +466,9 @@ export async function updateOrderDetails(
 /**
  * Moves an order to a new pipeline stage. No-ops (no event, no follow-up
  * queued) if the order is already on `toStage` -- see file header on
- * idempotency. Queues a re-book follow-up call the first time an order
- * reaches `closed`.
+ * idempotency. A leader can advance only one stage at a time, and must finish
+ * the active stage's checklist before its operational handoff. Queues a
+ * re-book follow-up call the first time an order reaches `closed`.
  */
 export async function changeStage(input: ChangeStageInput): Promise<ActionResult> {
   try {
@@ -486,6 +490,28 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
       // Already on this stage: treat as a successful no-op so a repeated
       // drag/drop or double click of the dropdown is safe.
       return { ok: true, data: undefined };
+    }
+
+    const stageError = cateringStageAdvanceError(order.stage, parsed.toStage);
+    if (stageError) return { ok: false, error: stageError };
+
+    const requiredChecklistStage = checklistRequiredBeforeStageAdvance(order.stage);
+    if (requiredChecklistStage) {
+      const { data: incompleteItem, error: checklistError } = await supabase
+        .from("catering_checklist_items")
+        .select("id")
+        .eq("order_id", parsed.orderId)
+        .eq("stage", requiredChecklistStage)
+        .eq("done", false)
+        .limit(1)
+        .maybeSingle();
+      if (checklistError) return { ok: false, error: checklistError.message };
+      if (incompleteItem) {
+        return {
+          ok: false,
+          error: `Complete every ${CHECKLIST_STAGE_LABELS[requiredChecklistStage]} item before moving on.`,
+        };
+      }
     }
 
     const fromStage = order.stage;
