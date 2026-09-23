@@ -49,10 +49,14 @@ export function WasteReports({
   entries,
   items,
   categories,
+  isHistoryTruncated,
+  entryLimit,
 }: {
   entries: WasteEntryForRollup[];
   items: WasteItemForRollup[];
   categories: WasteCategoryForRollup[];
+  isHistoryTruncated: boolean;
+  entryLimit: number;
 }) {
   const [period, setPeriod] = useState<PeriodKey>("month");
 
@@ -68,6 +72,11 @@ export function WasteReports({
 
   return (
     <div className="flex flex-col gap-4">
+      {isHistoryTruncated && (
+        <p className="rounded-xl border border-warning bg-warning-soft px-4 py-3 text-[13px] text-ink">
+          Showing the newest {entryLimit.toLocaleString()} entries. Older entries are not included, so period totals may be incomplete.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {PERIOD_KEYS.map((key) => (
           <Button
@@ -77,7 +86,9 @@ export function WasteReports({
             variant={key === period ? "default" : "outline"}
             onClick={() => setPeriod(key)}
           >
-            {PERIOD_LABELS[key]}
+            {key === "all" && isHistoryTruncated
+              ? `Newest ${entryLimit.toLocaleString()} entries`
+              : PERIOD_LABELS[key]}
           </Button>
         ))}
       </div>

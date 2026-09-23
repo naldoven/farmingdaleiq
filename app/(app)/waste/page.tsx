@@ -9,11 +9,16 @@ import { ItemManager } from "@/components/waste/item-manager";
 import { LogEntryForm } from "@/components/waste/log-entry-form";
 import { WasteLogGrid } from "@/components/waste/waste-log-grid";
 import { WasteReports } from "@/components/waste/waste-reports";
+import { WasteSetupStatus } from "@/components/waste/waste-setup-status";
 import { WasteViewTabs, type WasteTabKey } from "@/components/waste/waste-view-tabs";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { formatStoreDateTime } from "@/lib/time";
-import { storeDayRangeUtc, type WasteEntryForRollup } from "@/app/(app)/waste/logic";
+import {
+  getWasteConfigurationStatus,
+  storeDayRangeUtc,
+  type WasteEntryForRollup,
+} from "@/app/(app)/waste/logic";
 import type { WasteUnit } from "@/app/(app)/waste/validation";
 
 /**
@@ -66,6 +71,10 @@ export default async function WastePage({
   // the same permissions the chips themselves are gated on rather than
   // trusted as-is from the URL.
   const requestedTab: WasteTabKey = tab === "reports" || tab === "admin" ? tab : "log";
+  const activeTab: WasteTabKey =
+    (requestedTab === "reports" && !canViewReports) || (requestedTab === "admin" && !canManage)
+      ? "log"
+      : requestedTab;
 
   const supabase = await createClient();
 
@@ -104,6 +113,7 @@ export default async function WastePage({
     { data: dayParts },
     { data: recentEntries },
     { data: allEntries },
+    { count: allEntryCount },
   ] = await Promise.all([
     supabase.from("waste_categories").select("id, name, sort").order("sort"),
     supabase
@@ -117,9 +127,10 @@ export default async function WastePage({
       .order("name"),
     supabase.from("day_parts").select("id, name").order("sort"),
     recentEntriesQuery,
-    // Reports tab is manager/reports-tier only, so only pull the full entry
-    // history when it's actually needed for the rollups.
-    canViewReports
+    // The fast log screen needs only its bounded Recent entries. A manager
+    // used to fetch 5,000 historical rows merely by opening /waste, making
+    // the phone-first shift flow slower than the report itself.
+    activeTab === "reports"
       ? supabase
           .from("waste_entries")
           .select("id, item_id, quantity, logged_at")
@@ -130,6 +141,9 @@ export default async function WastePage({
           .order("logged_at", { ascending: false })
           .limit(REPORT_ENTRY_LIMIT)
       : Promise.resolve({ data: [] as { id: string; item_id: string; quantity: number; logged_at: string }[] }),
+    activeTab === "reports"
+      ? supabase.from("waste_entries").select("id", { count: "exact", head: true })
+      : Promise.resolve({ count: 0 }),
   ]);
 
   const categoryRows = categories ?? [];
@@ -178,24 +192,18 @@ export default async function WastePage({
     loggedAt: entry.logged_at,
   }));
 
-  const activeTab: WasteTabKey =
-    (requestedTab === "reports" && !canViewReports) || (requestedTab === "admin" && !canManage)
-      ? "log"
-      : requestedTab;
+  const configurationStatus = getWasteConfigurationStatus(itemsForRollup, categoryRows);
+  const itemUnitById = new Map(itemRows.map((item) => [item.id, item.unit]));
 
-  // The grid banner/card totals want an entries dataset. Managers/reports
-  // viewers already have the full history fetched above (entriesForRollup);
-  // everyone else only has the bounded recent-entries query the Log tab
-  // always runs, so the grid falls back to that instead of firing a second
-  // query this stream isn't scoped to add.
-  const gridEntries: WasteEntryForRollup[] = canViewReports
-    ? entriesForRollup
-    : recentEntryRows.map((entry) => ({
-        id: entry.id,
-        itemId: entry.item_id,
-        quantity: entry.quantity,
-        loggedAt: entry.logged_at,
-      }));
+  // Keep the shift-entry view small and quick for every role. Its cards make
+  // that scope explicit; the Reports tab is the one place that loads history.
+  const gridEntries: WasteEntryForRollup[] = recentEntryRows.map((entry) => ({
+    id: entry.id,
+    itemId: entry.item_id,
+    quantity: entry.quantity,
+    loggedAt: entry.logged_at,
+  }));
+  const logSummaryLabel = selectedDate ? "Selected date" : "Recent";
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,17 +211,28 @@ export default async function WastePage({
 
       {activeTab === "log" && (
         <div className="mx-auto flex w-full max-w-[480px] flex-col gap-4">
-          <WasteLogGrid items={itemsForRollup} categories={categoryRows} entries={gridEntries} />
+          <WasteSetupStatus status={configurationStatus} canManage={canManage} />
 
-          <SectionCard title="Log manually">
-            <p className="mb-3 text-[13px] text-muted-ink">
-              Item, quantity, and optional day part / note.
-            </p>
-            <LogEntryForm
-              items={itemRows.map((item) => ({ id: item.id, name: item.name, unit: item.unit }))}
-              dayParts={dayPartRows}
-            />
-          </SectionCard>
+          {configurationStatus.isReadyToLog && (
+            <>
+              <WasteLogGrid
+                items={itemsForRollup}
+                categories={categoryRows}
+                entries={gridEntries}
+                summaryLabel={logSummaryLabel}
+              />
+
+              <SectionCard title="Log manually">
+                <p className="mb-3 text-[13px] text-muted-ink">
+                  Pick the item first, then enter its quantity and optional day part / note.
+                </p>
+                <LogEntryForm
+                  items={itemRows.map((item) => ({ id: item.id, name: item.name, unit: item.unit }))}
+                  dayParts={dayPartRows}
+                />
+              </SectionCard>
+            </>
+          )}
 
           <SectionCard
             title={selectedDate ? `Entries on ${selectedDate}` : "Recent entries"}
@@ -272,7 +291,7 @@ export default async function WastePage({
                       key={entry.id}
                       icon={donated ? Heart : Trash2}
                       iconTone={donated ? "success" : "danger"}
-                      title={`${itemNameById.get(entry.item_id) ?? "Item"} · ${entry.quantity}`}
+                      title={`${itemNameById.get(entry.item_id) ?? "Item"} · ${entry.quantity} ${itemUnitById.get(entry.item_id) ?? ""}`.trim()}
                       description={[
                         noteDetail || null,
                         dayPartName,
@@ -297,12 +316,15 @@ export default async function WastePage({
             entries={entriesForRollup}
             items={itemsForRollup}
             categories={categoryRows}
+            isHistoryTruncated={(allEntryCount ?? 0) > REPORT_ENTRY_LIMIT}
+            entryLimit={REPORT_ENTRY_LIMIT}
           />
         </div>
       )}
 
       {activeTab === "admin" && canManage && (
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+          <WasteSetupStatus status={configurationStatus} canManage={canManage} />
           <SectionCard title="Categories">
             <CategoryManager categories={categoryRows} />
           </SectionCard>

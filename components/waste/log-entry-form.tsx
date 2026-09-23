@@ -47,7 +47,10 @@ export function LogEntryForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [itemId, setItemId] = useState(items[0]?.id ?? "");
+  // Starting on the first alphabetic item is fast only when it happens to be
+  // right. On a phone it is easy to miss that preselection and permanently
+  // mis-file waste, so manual entry deliberately requires an item choice.
+  const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [dayPartId, setDayPartId] = useState(NO_DAY_PART);
   const [note, setNote] = useState("");
@@ -99,7 +102,14 @@ export function LogEntryForm({
         <label className="text-sm font-medium" htmlFor="waste-log-item">
           Item
         </label>
-        <Select value={itemId} onValueChange={setItemId} disabled={items.length === 0}>
+        <Select
+          value={itemId}
+          onValueChange={(value) => {
+            setItemId(value);
+            setError(null);
+          }}
+          disabled={items.length === 0}
+        >
           <SelectTrigger id="waste-log-item">
             <SelectValue placeholder="Pick an item" />
           </SelectTrigger>
