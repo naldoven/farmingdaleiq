@@ -147,10 +147,24 @@ describe("createItem / updateItem duplicate-name guard", () => {
   it("rejects a duplicate item name, case-insensitively", async () => {
     const { createItem } = await import("@/app/(app)/waste/actions");
     createClientMock.mockReturnValue(
-      makeSupabaseMock([{ data: [{ id: "33333333-3333-4333-8333-333333333333", name: "Chicken Breast" }] }]),
+      makeSupabaseMock([
+        {
+          data: [
+            {
+              id: "33333333-3333-4333-8333-333333333333",
+              name: "Chicken Breast",
+              category_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            },
+          ],
+        },
+      ]),
     );
 
-    const result = await createItem({ name: "chicken breast", unit: "lb" });
+    const result = await createItem({
+      name: "chicken breast",
+      categoryId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      unit: "lb",
+    });
 
     expect(result).toEqual({
       ok: false,
@@ -163,7 +177,14 @@ describe("createItem / updateItem duplicate-name guard", () => {
     createClientMock.mockReturnValue(
       makeSupabaseMock([
         { data: [{ id: "33333333-3333-4333-8333-333333333333", name: "Chicken Breast" }] }, // duplicate check
-        { data: { name: "Chicken Breast", unit: "lb", unit_cost: 2.5 } }, // previous row, for the audit event
+        {
+          data: {
+            name: "Chicken Breast",
+            unit: "lb",
+            unit_cost: 2.5,
+            category_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          },
+        }, // previous row, for the audit event
         { data: [{ id: "33333333-3333-4333-8333-333333333333" }], error: null }, // update, returning the affected row
       ]),
     );
@@ -171,6 +192,7 @@ describe("createItem / updateItem duplicate-name guard", () => {
     const result = await updateItem({
       id: "33333333-3333-4333-8333-333333333333",
       name: "Chicken Breast",
+      categoryId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       unit: "lb",
       unitCost: 2.5,
     });

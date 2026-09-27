@@ -62,7 +62,10 @@ export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const createItemSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150),
-  categoryId: z.string().uuid().nullable().optional(),
+  // ARCHITECTURE.md requires every item to be organized under a category. Do
+  // not silently create an "uncategorized" store default just to get through
+  // setup: the manager needs to supply the real Farmingdale grouping first.
+  categoryId: z.string().uuid("Choose a category"),
   unit: z.enum(WASTE_UNITS),
   unitCost: z.coerce
     .number()
