@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -29,33 +29,45 @@ export function StageSelect({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   if (!canManage) return null;
 
   return (
-    <Select
-      value={stage}
-      disabled={isPending}
-      onValueChange={(value) => {
-        startTransition(async () => {
-          // The dropdown only lists the pipeline flow stages (ORDER_STAGES),
-          // never the terminal `cancelled` stage (that goes through the
-          // dedicated cancel action), so the value is always a flow stage.
-          await changeStage({ orderId, toStage: value as (typeof ORDER_STAGES)[number] });
-          router.refresh();
-        });
-      }}
-    >
-      <SelectTrigger className="h-8 text-xs" onClick={(e) => e.stopPropagation()}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent onClick={(e) => e.stopPropagation()}>
-        {ORDER_STAGES.map((s) => (
-          <SelectItem key={s} value={s}>
-            {ORDER_STAGE_LABELS[s]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex max-w-52 flex-col items-end gap-1">
+      <Select
+        value={stage}
+        disabled={isPending}
+        onValueChange={(value) => {
+          setError(null);
+          startTransition(async () => {
+            // The dropdown only lists the pipeline flow stages (ORDER_STAGES),
+            // never the terminal `cancelled` stage (that goes through the
+            // dedicated cancel action), so the value is always a flow stage.
+            const result = await changeStage({
+              orderId,
+              toStage: value as (typeof ORDER_STAGES)[number],
+            });
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
+            router.refresh();
+          });
+        }}
+      >
+        <SelectTrigger className="h-8 text-xs" onClick={(e) => e.stopPropagation()}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent onClick={(e) => e.stopPropagation()}>
+          {ORDER_STAGES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {ORDER_STAGE_LABELS[s]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && <p className="text-right text-[12px] text-danger" role="alert">{error}</p>}
+    </div>
   );
 }

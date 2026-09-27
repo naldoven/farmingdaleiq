@@ -64,6 +64,24 @@ export const ORDER_STAGE_LABELS: Record<OrderStage, string> = {
 };
 
 /**
+ * The staff pipeline is deliberately forward-only. Letting a card jump from
+ * New straight to dispatch makes the board look complete while the
+ * confirmation and packing work was never done. Cancellations keep their
+ * dedicated action, available from every active stage.
+ */
+export function cateringStageAdvanceError(fromStage: string, toStage: OrderStage): string | null {
+  const fromIndex = ORDER_STAGES.indexOf(fromStage as (typeof ORDER_STAGES)[number]);
+  const toIndex = ORDER_STAGES.indexOf(toStage as (typeof ORDER_STAGES)[number]);
+
+  if (fromIndex === -1) return "Cancelled orders cannot return to the active pipeline.";
+  if (toIndex !== fromIndex + 1) {
+    return `Move this order to ${ORDER_STAGE_LABELS[ORDER_STAGES[fromIndex + 1]]} next.`;
+  }
+
+  return null;
+}
+
+/**
  * Stages excluded from every money/analytics rollup: `new` (unconfirmed, not
  * real spend yet) and `cancelled` (CAT1 — a cancelled order must never count
  * toward revenue, lifetime spend, or analytics). One shared source of truth so
@@ -91,6 +109,14 @@ export const CHECKLIST_STAGE_LABELS: Record<ChecklistStage, string> = {
   kitchen_prep: "Kitchen Prep",
   out: "Pre-order checklist",
 };
+
+/** The checklist that must be complete before each operational handoff. */
+export function checklistRequiredBeforeStageAdvance(fromStage: string): ChecklistStage | null {
+  if (fromStage === "confirm") return "confirm";
+  if (fromStage === "setup") return "setup";
+  if (fromStage === "out") return "out";
+  return null;
+}
 
 export const PRE_ORDER_CHECKLIST_ITEMS = [
   "Compare packed items to the receipt",
