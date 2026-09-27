@@ -8,6 +8,11 @@ describe("buildDiscordMessage", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("break_overdue");
   });
 
+  it("never routes accountability events to Discord", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("infraction_issued");
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("disciplinary_triggered");
+  });
+
   it("builds a message with title and detail", () => {
     const msg = buildDiscordMessage("maint_request", {
       title: "Walk-in freezer won't cool",
@@ -39,11 +44,10 @@ describe("buildDiscordMessage", () => {
         { title: "3 points — tardy", points: 3, infractionType: "tardiness" },
         { recipientName: "Jamie Rivera", recipientDiscordId: "999" },
       );
-      expect(msg.content).toBe("⚠️ Jamie Rivera received an infraction.");
+      expect(msg.content).toBe("⚠️ A private accountability event was recorded in FarmingdaleIQ.");
       expect(msg.content).not.toContain("point");
       expect(msg.content).not.toContain("tardiness");
-      // Even accountability posts never @mention — the leaders channel sees
-      // a name, not a ping that could draw attention publicly.
+      expect(msg.content).not.toContain("Jamie Rivera");
       expect(msg.content).not.toContain("<@");
     });
 
@@ -53,12 +57,13 @@ describe("buildDiscordMessage", () => {
         { title: "Written warning", detail: "12 points accumulated" },
         { recipientName: "Alex Chen" },
       );
-      expect(msg.content).toBe("⚠️ Alex Chen reached a disciplinary threshold.");
+      expect(msg.content).toBe("⚠️ A private accountability event was recorded in FarmingdaleIQ.");
+      expect(msg.content).not.toContain("Alex Chen");
     });
 
-    it("falls back to a generic name when none is supplied", () => {
+    it("does not disclose an identity when none is supplied", () => {
       const msg = buildDiscordMessage("infraction_issued", {});
-      expect(msg.content).toBe("⚠️ Someone received an infraction.");
+      expect(msg.content).toBe("⚠️ A private accountability event was recorded in FarmingdaleIQ.");
     });
   });
 });

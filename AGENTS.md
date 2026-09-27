@@ -167,7 +167,7 @@ ARCHITECTURE.md "Store configuration (Farmingdale)":
 
 - 6 dayparts: Morning, Lunch, Mid, Dinner, Night, Closing
 - 10 ranked roles, Location Manager down to Team Member
-- Accountability: rolling 60-day period; ladder at 10/15/20/30/50 points
+- Accountability: rolling 60-day period; ladder at 10/20/30/40/50 points
 - Breaks: one active rule — scheduled 6 hours earns one 30-minute break (the
   fuller NY-law engine exists but only this rule is live)
 - Food holding: cold 33–41°F, hot 140–210°F

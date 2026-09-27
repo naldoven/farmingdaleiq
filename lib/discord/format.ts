@@ -29,21 +29,13 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Catering
   "catering_order_new",
   "catering_stage_change",
-  // Accountability -> private leaders channel ONLY, privacy-redacted (see
-  // buildDiscordMessage below); routing itself still goes through the same
-  // discord_event_routes table, an admin just has to opt in explicitly.
-  "infraction_issued",
-  "disciplinary_triggered",
 ]);
 
 /**
- * Privacy rule (ARCHITECTURE.md "Discord integration" > Privacy rule):
- * "infractions and disciplinary events never auto-post [to a public
- * channel]... even then without point details — just 'X received an
- * infraction'." This function enforces that unconditionally: whatever a
- * producer puts in the payload for these two keys is ignored entirely, so a
- * future producer accidentally including point counts or infraction-type
- * text can never leak it into Discord through this formatter.
+ * Accountability events are deliberately absent from
+ * DISCORD_ROUTABLE_EVENT_KEYS. Keeping this redaction as a second guard means
+ * an accidental direct call can never disclose a team member's identity,
+ * points, note, or infraction type to Discord.
  */
 const PRIVACY_REDACTED_KEYS = new Set<EventKey>([
   "infraction_issued",
@@ -111,14 +103,9 @@ export function buildDiscordMessage(
   opts: BuildDiscordMessageOptions = {},
 ): DiscordWebhookMessage {
   const emoji = EMOJI[key] ?? "🔔";
-  const who = opts.recipientName ?? "Someone";
 
   if (PRIVACY_REDACTED_KEYS.has(key)) {
-    const text =
-      key === "infraction_issued"
-        ? `${who} received an infraction.`
-        : `${who} reached a disciplinary threshold.`;
-    return { content: `${emoji} ${text}` };
+    return { content: `${emoji} A private accountability event was recorded in FarmingdaleIQ.` };
   }
 
   const title =
