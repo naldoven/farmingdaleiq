@@ -201,6 +201,121 @@ describe("createItem / updateItem duplicate-name guard", () => {
   });
 });
 
+describe("updateItem unit change guard", () => {
+  const itemId = "33333333-3333-4333-8333-333333333333";
+  const categoryId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const stored = { name: "Chicken Breast", unit: "oz", unit_cost: 0.2, category_id: categoryId };
+
+  it("refuses a unit change once the item has logged waste", async () => {
+    const { updateItem } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: [] }, // duplicate check
+      { data: stored }, // previous row
+      { count: 4, error: null }, // entries logged against this item
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await updateItem({
+      id: itemId,
+      name: "Chicken Breast",
+      categoryId,
+      unit: "each",
+      unitCost: 0.2,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "This item already has logged waste. Create a new item for the new unit.",
+    });
+    // Duplicate check, previous row, entry count: the update never ran.
+    expect(supabase.from).toHaveBeenCalledTimes(3);
+  });
+
+  it("allows a unit change while the item has no logged waste", async () => {
+    const { updateItem } = await import("@/app/(app)/waste/actions");
+    createClientMock.mockReturnValue(
+      makeSupabaseMock([
+        { data: [] }, // duplicate check
+        { data: stored }, // previous row
+        { count: 0, error: null }, // no entries yet
+        { data: [{ id: itemId }], error: null }, // update
+      ]),
+    );
+
+    const result = await updateItem({
+      id: itemId,
+      name: "Chicken Breast",
+      categoryId,
+      unit: "each",
+      unitCost: 0.2,
+    });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+  });
+
+  it("still lets name and cost change on an item with logged waste", async () => {
+    const { updateItem } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: [] }, // duplicate check
+      { data: stored }, // previous row
+      { data: [{ id: itemId }], error: null }, // update (no entry count needed)
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await updateItem({
+      id: itemId,
+      name: "Chicken Filet",
+      categoryId,
+      unit: "oz",
+      unitCost: 0.25,
+    });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(supabase.from).not.toHaveBeenCalledWith("waste_entries");
+  });
+
+  it("does not skip the guard when the stored item cannot be read", async () => {
+    const { updateItem } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: [] }, // duplicate check
+      { data: null, error: { message: "network down", code: "08006" } }, // previous row
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await updateItem({
+      id: itemId,
+      name: "Chicken Breast",
+      categoryId,
+      unit: "each",
+      unitCost: 0.2,
+    });
+
+    expect(result).toEqual({ ok: false, error: "Could not update the item." });
+    expect(supabase.from).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not change the unit when the entry count cannot be read", async () => {
+    const { updateItem } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: [] }, // duplicate check
+      { data: stored }, // previous row
+      { count: null, error: { message: "network down", code: "08006" } }, // entry count
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await updateItem({
+      id: itemId,
+      name: "Chicken Breast",
+      categoryId,
+      unit: "each",
+      unitCost: 0.2,
+    });
+
+    expect(result).toEqual({ ok: false, error: "Could not update the item." });
+    expect(supabase.from).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe("createItem name scoping (matches the per-category unique index)", () => {
   it("allows the same item name in a different category", async () => {
     const { createItem } = await import("@/app/(app)/waste/actions");
@@ -371,6 +486,66 @@ describe("logWasteEntry attribution", () => {
       ok: false,
       error: "Your session expired. Sign in again to log waste.",
     });
+  });
+});
+
+describe("logWasteEntry item category guard", () => {
+  const itemId = "33333333-3333-4333-8333-333333333333";
+
+  it("refuses an item with no category, before any entry is written", async () => {
+    const { logWasteEntry } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: { id: itemId, category_id: null }, error: null }, // item lookup
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await logWasteEntry({ itemId, quantity: 1 });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "This item isn't set up for logging yet. Ask a manager to give it a category.",
+    });
+    // Only the item lookup ran; waste_entries was never touched.
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+    expect(supabase.from).toHaveBeenCalledWith("waste_items");
+  });
+
+  it("reports an item that no longer exists instead of attempting the insert", async () => {
+    const { logWasteEntry } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([{ data: null, error: null }]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await logWasteEntry({ itemId, quantity: 1 });
+
+    expect(result).toEqual({ ok: false, error: "That item no longer exists." });
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not treat a failed item lookup as permission to write", async () => {
+    const { logWasteEntry } = await import("@/app/(app)/waste/actions");
+    const supabase = makeSupabaseMock([
+      { data: null, error: { message: "network down", code: "08006" } },
+    ]);
+    createClientMock.mockReturnValue(supabase);
+
+    const result = await logWasteEntry({ itemId, quantity: 1 });
+
+    expect(result).toEqual({ ok: false, error: "Could not log this waste entry." });
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs an entry for an item that has a category", async () => {
+    const { logWasteEntry } = await import("@/app/(app)/waste/actions");
+    createClientMock.mockReturnValue(
+      makeSupabaseMock([
+        { data: { id: itemId, category_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, error: null }, // item lookup
+        { data: { id: "55555555-5555-4555-8555-555555555555" }, error: null }, // insert
+      ]),
+    );
+
+    const result = await logWasteEntry({ itemId, quantity: 2 });
+
+    expect(result).toEqual({ ok: true, data: undefined });
   });
 });
 

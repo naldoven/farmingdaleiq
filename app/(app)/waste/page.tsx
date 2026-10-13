@@ -15,6 +15,7 @@ import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { formatStoreDateTime } from "@/lib/time";
 import {
+  getLoggableItems,
   getWasteConfigurationStatus,
   storeDayRangeUtc,
   type WasteEntryForRollup,
@@ -108,8 +109,8 @@ export default async function WastePage({
   }
 
   const [
-    { data: categories },
-    { data: items },
+    { data: categories, error: categoriesError },
+    { data: items, error: itemsError },
     { data: dayParts },
     { data: recentEntries },
     { data: allEntries },
@@ -145,6 +146,26 @@ export default async function WastePage({
       ? supabase.from("waste_entries").select("id", { count: "exact", head: true })
       : Promise.resolve({ count: 0 }),
   ]);
+
+  // A failed read is not an empty configuration. Without this, a network blip
+  // on either query fell through as "no categories / no items", showed managers
+  // and the team the setup message, and switched logging off. Stop here and
+  // say what actually happened; a refresh re-runs both reads. Reports and
+  // Admin stop too, because their empty-looking lists would be just as wrong.
+  if (categoriesError || itemsError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <WasteViewTabs activeTab={activeTab} showReports={canViewReports} showAdmin={canManage} />
+        <div className="mx-auto w-full max-w-[480px]">
+          <SectionCard title="Waste">
+            <p role="alert" className="text-[13px] text-muted-ink">
+              Couldn&apos;t load waste items. Refresh to try again.
+            </p>
+          </SectionCard>
+        </div>
+      </div>
+    );
+  }
 
   const categoryRows = categories ?? [];
   // Group by category (in the categories' own sort order, uncategorized last)
@@ -193,6 +214,9 @@ export default async function WastePage({
   }));
 
   const configurationStatus = getWasteConfigurationStatus(itemsForRollup, categoryRows);
+  // Items without a valid category stay out of the grid and the manual form
+  // (logWasteEntry refuses them too); the rest remain loggable.
+  const loggableItems = getLoggableItems(itemsForRollup, categoryRows);
   const itemUnitById = new Map(itemRows.map((item) => [item.id, item.unit]));
 
   // Keep the shift-entry view small and quick for every role. Its cards make
@@ -216,7 +240,7 @@ export default async function WastePage({
           {configurationStatus.isReadyToLog && (
             <>
               <WasteLogGrid
-                items={itemsForRollup}
+                items={loggableItems}
                 categories={categoryRows}
                 entries={gridEntries}
                 summaryLabel={logSummaryLabel}
@@ -227,7 +251,11 @@ export default async function WastePage({
                   Pick the item first, then enter its quantity and optional day part / note.
                 </p>
                 <LogEntryForm
-                  items={itemRows.map((item) => ({ id: item.id, name: item.name, unit: item.unit }))}
+                  items={loggableItems.map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    unit: item.unit,
+                  }))}
                   dayParts={dayPartRows}
                 />
               </SectionCard>

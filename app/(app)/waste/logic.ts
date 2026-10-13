@@ -37,10 +37,26 @@ export interface WasteConfigurationStatus {
   itemCount: number;
   /** Items with no category, or pointing to a category that no longer exists. */
   uncategorizedItemCount: number;
+  /** Items with a real category: the ones staff can log against. */
+  loggableItemCount: number;
   /** Items that can be logged, but cannot contribute a confirmed dollar total. */
   unpricedItemCount: number;
-  /** Logging is only useful once every item appears under a real category. */
+  /** True while at least one item is loggable. Other items may still be hidden. */
   isReadyToLog: boolean;
+}
+
+/**
+ * Items an entry can be logged against: the ones filed under a category that
+ * still exists. Everything else is left out of the log grid and manual form
+ * (and refused by logWasteEntry) because a category is the minimum that makes
+ * an entry unambiguous.
+ */
+export function getLoggableItems<T extends { categoryId: string | null }>(
+  items: T[],
+  categories: WasteCategoryForRollup[],
+): T[] {
+  const categoryIds = new Set(categories.map((category) => category.id));
+  return items.filter((item) => item.categoryId !== null && categoryIds.has(item.categoryId));
 }
 
 /**
@@ -49,22 +65,24 @@ export interface WasteConfigurationStatus {
  * an approved item, unit, and category are the minimum needed to make a log
  * entry unambiguous. This also makes configuration gaps visible without
  * inventing Farmingdale defaults.
+ *
+ * Readiness is per item, not all-or-nothing: ARCHITECTURE.md says anyone can
+ * log a waste entry, so one mis-filed item must not switch logging off for the
+ * whole store mid-shift. It only counts as not ready when nothing is loggable.
  */
 export function getWasteConfigurationStatus(
   items: WasteItemForRollup[],
   categories: WasteCategoryForRollup[],
 ): WasteConfigurationStatus {
-  const categoryIds = new Set(categories.map((category) => category.id));
-  const uncategorizedItemCount = items.filter(
-    (item) => !item.categoryId || !categoryIds.has(item.categoryId),
-  ).length;
+  const loggableItemCount = getLoggableItems(items, categories).length;
 
   return {
     categoryCount: categories.length,
     itemCount: items.length,
-    uncategorizedItemCount,
+    uncategorizedItemCount: items.length - loggableItemCount,
+    loggableItemCount,
     unpricedItemCount: items.filter((item) => item.unitCost == null).length,
-    isReadyToLog: categories.length > 0 && items.length > 0 && uncategorizedItemCount === 0,
+    isReadyToLog: loggableItemCount > 0,
   };
 }
 
