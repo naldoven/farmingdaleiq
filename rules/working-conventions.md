@@ -1,7 +1,7 @@
 # Working conventions
 
-The full process. `AGENTS.md` carries the short version; this file carries the detail
-and the reasons.
+The full process. `rules/codex-agreement.md` carries the short version; this file carries
+the detail and the reasons.
 
 ## Verify before commit
 
