@@ -1,5 +1,5 @@
 import type { EventKey, EventPayload } from "@/lib/events/bus";
-import type { DiscordWebhookMessage } from "@/lib/discord/client";
+import type { DiscordAllowedMentions, DiscordWebhookMessage } from "@/lib/discord/client";
 import { enabledEventKeys } from "@/lib/features";
 
 /**
@@ -105,7 +105,10 @@ export function buildDiscordMessage(
   const emoji = EMOJI[key] ?? "🔔";
 
   if (PRIVACY_REDACTED_KEYS.has(key)) {
-    return { content: `${emoji} A private accountability event was recorded in FarmingdaleIQ.` };
+    return {
+      content: `${emoji} A private accountability event was recorded in FarmingdaleIQ.`,
+      allowed_mentions: { parse: [] },
+    };
   }
 
   const title =
@@ -116,11 +119,20 @@ export function buildDiscordMessage(
     (typeof payload.message === "string" && payload.message) ||
     (typeof payload.body === "string" && payload.body) ||
     undefined;
-  const mentionText = mention(opts.recipientDiscordId);
+  const recipientId = opts.recipientDiscordId || undefined;
+  const mentionText = mention(recipientId);
 
   const parts = [`${emoji} **${title}**`];
   if (detail) parts.push(detail);
   if (mentionText) parts.push(mentionText);
 
-  return { content: parts.join(" — ") };
+  // `content` carries user-typed text (title, message, body), so Discord must
+  // never be left to parse mentions out of it: a typed "@everyone" would ping
+  // the whole server. The recipient's own <@id> is the only intended ping, so
+  // it is the only id re-allowed.
+  const allowed_mentions: DiscordAllowedMentions = recipientId
+    ? { parse: [], users: [recipientId] }
+    : { parse: [] };
+
+  return { content: parts.join(" — "), allowed_mentions };
 }

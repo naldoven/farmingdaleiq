@@ -88,6 +88,56 @@ describe("deliverPendingOutbox", () => {
     expect(db.rowsOf("discord_outbox")[0].status).toBe("sent");
   });
 
+  it("replays allowed_mentions from the queued payload so the recipient ping survives", async () => {
+    sendDiscordWebhookMock.mockResolvedValueOnce(undefined);
+
+    // Round trip through the real enqueue so the test covers what is stored,
+    // not a hand-written payload that could drift from it. FakeSupabase does
+    // not apply column defaults, so the queued row is re-seeded as pending.
+    const queueDb = new FakeSupabase({ discord_outbox: [] });
+    await enqueueDiscordMessage(
+      {
+        channelId: "chan-1",
+        message: { content: "hi <@123>", allowed_mentions: { parse: [], users: ["123"] } },
+        sourceEventId: "evt-1",
+      },
+      queueDb as unknown as Parameters<typeof enqueueDiscordMessage>[1],
+    );
+    const stored = queueDb.rowsOf("discord_outbox")[0];
+
+    const db = new FakeSupabase({
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_outbox: [{ ...stored, id: "row-1", status: "pending", attempts: 0 }],
+    });
+    const client = db as unknown as Parameters<typeof deliverPendingOutbox>[1];
+
+    await deliverPendingOutbox(25, client);
+
+    expect(sendDiscordWebhookMock).toHaveBeenCalledWith("https://discord.example/hook", {
+      content: "hi <@123>",
+      allowed_mentions: { parse: [], users: ["123"] },
+    });
+  });
+
+  it("sends rows queued before allowed_mentions existed with none set (client then defaults to no pings)", async () => {
+    sendDiscordWebhookMock.mockResolvedValueOnce(undefined);
+
+    const db = new FakeSupabase({
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_outbox: [
+        { id: "row-1", channel_id: "chan-1", payload: { content: "old row" }, status: "pending", attempts: 0 },
+      ],
+    });
+    const client = db as unknown as Parameters<typeof deliverPendingOutbox>[1];
+
+    await deliverPendingOutbox(25, client);
+
+    expect(sendDiscordWebhookMock).toHaveBeenCalledWith("https://discord.example/hook", {
+      content: "old row",
+      allowed_mentions: undefined,
+    });
+  });
+
   it("schedules a backoff retry on failure without marking it failed yet", async () => {
     sendDiscordWebhookMock.mockRejectedValueOnce(new Error("network error"));
 
