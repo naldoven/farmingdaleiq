@@ -171,6 +171,33 @@ export async function logWasteEntry(input: LogEntryInput): Promise<ActionResult>
       return { ok: false, error: "Your session expired. Sign in again to log waste." };
     }
 
+    // The log screen hides items with no category, but UI hiding is not the
+    // control: a stale tab or a hand-built request could still name one, and
+    // waste_entries.item_id only needs the item to exist. Refuse here so a
+    // category-less item can never collect entries that every category rollup
+    // would then file under "Uncategorized". waste_items.category_id is a real
+    // FK, so a non-null value is always a category that exists.
+    const { data: item, error: itemError } = await supabase
+      .from("waste_items")
+      .select("id, category_id")
+      .eq("id", parsed.itemId)
+      .maybeSingle();
+
+    if (itemError) {
+      return { ok: false, error: friendlyDbError(itemError, "Could not log this waste entry.") };
+    }
+
+    if (!item) {
+      return { ok: false, error: "That item no longer exists." };
+    }
+
+    if (!item.category_id) {
+      return {
+        ok: false,
+        error: "This item isn't set up for logging yet. Ask a manager to give it a category.",
+      };
+    }
+
     const { data, error } = await supabase
       .from("waste_entries")
       .insert({
@@ -496,11 +523,41 @@ export async function updateItem(input: UpdateItemInput): Promise<ActionResult> 
     // (rollups read the item's CURRENT cost -- see the KNOWN LIMITATION note on
     // rollupByItem in logic.ts), so "what was it before?" is the single most
     // useful thing this event can carry.
-    const { data: previous } = await supabase
+    const { data: previous, error: previousError } = await supabase
       .from("waste_items")
       .select("name, unit, unit_cost, category_id")
       .eq("id", parsed.id)
       .maybeSingle();
+
+    // Fail closed: the unit guard below needs the stored unit, so a failed read
+    // must not quietly skip it and let a unit change through.
+    if (previousError) {
+      return { ok: false, error: friendlyDbError(previousError, "Could not update the item.") };
+    }
+
+    // The unit is part of what every logged quantity means. waste_entries has
+    // no unit column, so changing it after waste exists would silently rewrite
+    // history: old "12 oz" rows would read "12 each" and be re-costed at the
+    // new unit's price. Name, category, and cost edits are unaffected. There is
+    // a narrow gap between this count and the update below where a fresh entry
+    // could land; closing it needs a DB trigger, which is a schema change.
+    if (previous && previous.unit !== parsed.unit) {
+      const { count, error: countError } = await supabase
+        .from("waste_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("item_id", parsed.id);
+
+      if (countError) {
+        return { ok: false, error: friendlyDbError(countError, "Could not update the item.") };
+      }
+
+      if ((count ?? 0) > 0) {
+        return {
+          ok: false,
+          error: "This item already has logged waste. Create a new item for the new unit.",
+        };
+      }
+    }
 
     // Moving an item to a different category appends it at the END of that
     // category's manager-arranged order. sort positions are per-category, so
