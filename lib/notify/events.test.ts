@@ -147,7 +147,7 @@ describe("processAppEvents", () => {
     expect(db.rowsOf("discord_outbox")).toHaveLength(1);
   });
 
-  it("never leaks infraction detail into the Discord message it queues", async () => {
+  it("never queues accountability events for Discord, even with a saved route", async () => {
     const { db, client } = makeClient({
       app_events: [
         {
@@ -166,11 +166,7 @@ describe("processAppEvents", () => {
 
     await processAppEvents(200, client);
 
-    const outboxRow = db.rowsOf("discord_outbox")[0];
-    const payload = outboxRow.payload as { content: string };
-    expect(payload.content).toBe("⚠️ Jamie Rivera received an infraction.");
-    expect(payload.content).not.toContain("points");
-    expect(payload.content).not.toContain("3");
+    expect(db.rowsOf("discord_outbox")).toHaveLength(0);
   });
 
   it("honors a per-instance notifyDiscord: false override even when the route is enabled", async () => {

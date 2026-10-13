@@ -537,12 +537,18 @@ values the app ships seeded with.
   Operations Lead, Shift Supervisor, Team Leader, FOH Trainer, BOH Trainer,
   FOH Brand Ambassadors, Team Member. Per-role permissions still to map.
 - **Accountability period**: rolling 60 days.
-- **Infraction types (points)**: Call Out (P3&4) 10, No Call No Show (P3&4) 30,
-  Late to Shift 5-30 mins (P3&4) 4, Excused Call Out 0, Coaching 0, Time Theft
-  (P4) 4, Violation of Standard Procedures (P5&6) 10. (List continues in
-  KitchenIQ; capture the tail when seeding.)
-- **Disciplinary ladder (threshold points)**: Coaching 10, Verbal Warning 15,
-  Written Warning 20, 1 Week Suspension 30, Employment Review 50.
+- **Infraction types (points)**: Excused Call Out 0, Coaching 0,
+  Uniform/Appearance 1st Coaching 0, Uniform/Appearance 2nd Coaching 0,
+  Excused Lateness 0, Performance Coaching (P5) 0, Missing Thermometer 1,
+  Time Theft (P4) 4, Late to Shift (5-30 Mins) (P3&4) 5,
+  Uniform/Appearance Violation (P13-15) 5, Late to Shift (30+ Mins) (P3&4) 8,
+  Call Out (P3&4) 10, Violation of Standard Procedures (P5&6) 10,
+  Insubordination (P5&6) 10, Cash Shortage (Cash & Coupon Policy) 10,
+  Performance (P5) 20, No Call No Show (P3&4) 30, Food/Property/Money Theft
+  (P6) 40. Confirm whether any additional types exist below the final
+  2026-09-26 KitchenIQ screenshot before treating this as the full list.
+- **Disciplinary ladder (threshold points)**: Coaching 10, Verbal Warning 20,
+  Written Warning 30, 1 Week Suspension 40, Employment Review 50.
 - **Rewards (token cost)**: Cookie/Brownie (TM) 25, Drink Cup (TM) 25, LTO/Iced
   Coffee (TM) 40, Treasure Box (TM) 50, Drink Cup (L) 50, Medium Side (TM) 50,
   Cookie/Brownie (L) 50. (List continues; capture the tail when seeding.)
@@ -579,8 +585,9 @@ inventory, course inventory. Still open:
 2. **Waste**: categories and items you track, and whether each is counted or
    weighed; track cost per item? (No waste config found in the KitchenIQ portal.)
 3. **Tokens**: tokens per task/checklist completion and the Top Performer amount
-   (default 20?). Reward prices are captured; the tails of the reward and
-   infraction lists still need a full export when seeding.
+   (default 20?). Reward prices are captured; the reward-list tail still needs
+   a full export. The infraction types visible in the 2026-09-26 screenshots
+   are captured above, pending confirmation that no further rows exist.
 4. **Training**: passport content per position (skill items, which of the 52
    courses attach where); which leadership roles get Leadership Passports; stage
    lists and tracks for Farmingdale's Masters and lead pipelines if they differ
