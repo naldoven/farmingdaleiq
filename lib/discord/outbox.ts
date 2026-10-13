@@ -121,8 +121,15 @@ export async function deliverPendingOutbox(
     }
 
     try {
-      const payload = row.payload as { content?: string };
-      await sendDiscordWebhook(channel.webhook_url, { content: payload.content ?? "" });
+      // Forward allowed_mentions from the stored payload: it is what lets the
+      // recipient's <@id> ping while everything else stays inert. Rows queued
+      // before the field existed have none, and sendDiscordWebhook defaults
+      // those to no pings.
+      const payload = row.payload as Partial<DiscordWebhookMessage>;
+      await sendDiscordWebhook(channel.webhook_url, {
+        content: payload.content ?? "",
+        allowed_mentions: payload.allowed_mentions,
+      });
       await client
         .from("discord_outbox")
         .update({ status: "sent", sent_at: new Date().toISOString() })
