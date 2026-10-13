@@ -4,6 +4,8 @@ import {
   entryCostCents,
   filterEntriesByPeriod,
   formatCentsAsUsd,
+  getLoggableItems,
+  getWasteConfigurationStatus,
   periodStart,
   rollupByCategory,
   rollupByItem,
@@ -353,6 +355,122 @@ describe("sumCostCents", () => {
 
   it("returns null for an empty set", () => {
     expect(sumCostCents([])).toEqual({ totalCents: null, unknownCount: 0 });
+  });
+});
+
+describe("getWasteConfigurationStatus", () => {
+  const categories: WasteCategoryForRollup[] = [
+    { id: "protein", name: "Protein" },
+    { id: "sides", name: "Sides" },
+  ];
+
+  it("calls a categorized item list log-ready even while costs are awaiting confirmation", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: "protein", unit: "each", unitCost: null },
+          { id: "fries", name: "Fries", categoryId: "sides", unit: "lb", unitCost: 1.25 },
+        ],
+        categories,
+      ),
+    ).toEqual({
+      categoryCount: 2,
+      itemCount: 2,
+      uncategorizedItemCount: 0,
+      loggableItemCount: 2,
+      unpricedItemCount: 1,
+      isReadyToLog: true,
+    });
+  });
+
+  it("keeps the categorized items loggable when one item has no category", () => {
+    // One mis-filed item used to switch logging off for the whole store.
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: "protein", unit: "each", unitCost: 4 },
+          { id: "fries", name: "Fries", categoryId: "sides", unit: "lb", unitCost: 1.25 },
+          { id: "mystery", name: "Mystery", categoryId: null, unit: "each", unitCost: null },
+        ],
+        categories,
+      ),
+    ).toEqual({
+      categoryCount: 2,
+      itemCount: 3,
+      uncategorizedItemCount: 1,
+      loggableItemCount: 2,
+      unpricedItemCount: 1,
+      isReadyToLog: true,
+    });
+  });
+
+  it("treats an item pointing at a deleted category as uncategorized", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: "protein", unit: "each", unitCost: 4 },
+          { id: "fries", name: "Fries", categoryId: "missing", unit: "lb", unitCost: 1.25 },
+        ],
+        categories,
+      ),
+    ).toMatchObject({ uncategorizedItemCount: 1, loggableItemCount: 1, isReadyToLog: true });
+  });
+
+  it("blocks logging only when no item is loggable", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [
+          { id: "filet", name: "Filet", categoryId: null, unit: "each", unitCost: null },
+          { id: "fries", name: "Fries", categoryId: "missing", unit: "lb", unitCost: null },
+        ],
+        categories,
+      ),
+    ).toMatchObject({
+      itemCount: 2,
+      uncategorizedItemCount: 2,
+      loggableItemCount: 0,
+      unpricedItemCount: 2,
+      isReadyToLog: false,
+    });
+  });
+
+  it("keeps logging unavailable without a configured category or item", () => {
+    expect(getWasteConfigurationStatus([], [])).toEqual({
+      categoryCount: 0,
+      itemCount: 0,
+      uncategorizedItemCount: 0,
+      loggableItemCount: 0,
+      unpricedItemCount: 0,
+      isReadyToLog: false,
+    });
+  });
+
+  it("keeps logging unavailable when items exist but no category does", () => {
+    expect(
+      getWasteConfigurationStatus(
+        [{ id: "filet", name: "Filet", categoryId: "protein", unit: "each", unitCost: null }],
+        [],
+      ),
+    ).toMatchObject({ loggableItemCount: 0, uncategorizedItemCount: 1, isReadyToLog: false });
+  });
+});
+
+describe("getLoggableItems", () => {
+  const categories: WasteCategoryForRollup[] = [{ id: "protein", name: "Protein" }];
+
+  it("drops items with no category or a category that no longer exists, keeping order", () => {
+    const items = [
+      { id: "a", categoryId: "protein" },
+      { id: "b", categoryId: null },
+      { id: "c", categoryId: "gone" },
+      { id: "d", categoryId: "protein" },
+    ];
+
+    expect(getLoggableItems(items, categories).map((item) => item.id)).toEqual(["a", "d"]);
+  });
+
+  it("returns nothing when there are no categories", () => {
+    expect(getLoggableItems([{ id: "a", categoryId: "protein" }], [])).toEqual([]);
   });
 });
 

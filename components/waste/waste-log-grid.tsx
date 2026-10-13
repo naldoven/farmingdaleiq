@@ -38,10 +38,13 @@ export function WasteLogGrid({
   items,
   categories,
   entries,
+  summaryLabel,
 }: {
   items: WasteItemForRollup[];
   categories: WasteCategoryForRollup[];
   entries: WasteEntryForRollup[];
+  /** The server intentionally keeps the log view bounded for fast shift use. */
+  summaryLabel: string;
 }) {
   const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES);
   const [query, setQuery] = useState("");
@@ -97,7 +100,7 @@ export function WasteLogGrid({
                   : undefined
               }
             >
-              Total: {bannerTotalLabel}
+              {summaryLabel} total: {bannerTotalLabel}
             </span>
           </span>
           <ChevronDown className="h-5 w-5 shrink-0 opacity-90" aria-hidden="true" />
@@ -139,7 +142,12 @@ export function WasteLogGrid({
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {filteredItems.map((item) => (
-            <WasteItemCard key={item.id} item={item} rollup={rollupByItemId.get(item.id)} />
+            <WasteItemCard
+              key={item.id}
+              item={item}
+              rollup={rollupByItemId.get(item.id)}
+              summaryLabel={summaryLabel}
+            />
           ))}
         </div>
       )}
@@ -270,9 +278,11 @@ function HoldLogButton({
 function WasteItemCard({
   item,
   rollup,
+  summaryLabel,
 }: {
   item: WasteItemForRollup;
   rollup: ItemRollupRow | undefined;
+  summaryLabel: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -318,6 +328,7 @@ function WasteItemCard({
   return (
     <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-card p-3 shadow-card">
       <p className="truncate text-[15px] font-semibold text-ink">{item.name}</p>
+      <p className="-mt-1 text-[12px] text-muted-ink">Unit: {item.unit}</p>
 
       <div className="grid grid-cols-2 gap-2">
         <HoldLogButton
@@ -359,13 +370,13 @@ function WasteItemCard({
           with quantity N, so "entries" would read as 1 after logging 12 and
           look like the hold didn't count. */}
       <p className="text-[12px] text-muted-ink">
-        {rollup?.totalQuantity ?? 0} {item.unit} tracked
+        {rollup?.totalQuantity ?? 0} {item.unit} {summaryLabel.toLowerCase()} tracked
       </p>
       {/* No entries yet is a genuine $0.00; entries logged against an item with
           no unit cost is "—" (unknown), via the shared formatCentsAsUsd null
           convention -- never the misleading "$0.00" the old formatter showed. */}
       <p className="text-[13px] font-semibold text-ink">
-        Total: {formatCentsAsUsd(rollup ? rollup.totalCostCents : 0)}
+        {summaryLabel} total: {formatCentsAsUsd(rollup ? rollup.totalCostCents : 0)}
       </p>
 
       {error && <p className="text-[12px] leading-snug text-danger">{error}</p>}
