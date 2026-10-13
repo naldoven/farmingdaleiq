@@ -35,7 +35,6 @@ import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
   CHECKLIST_STAGE_LABELS,
-  PACKING_LIST_NOT_BUILT_ERROR,
   buildPhysicalOrderSetup,
   canBuildCateringSetup,
   cateringStageAdvanceError,
@@ -46,6 +45,7 @@ import {
   formatStageOverrideMessage,
   isSetupBuildStage,
   normalizePhone,
+  packingListGateError,
   parseOrderItemsFromNotes,
   planChecklistMaterialization,
   planMissingPreOrderChecklist,
@@ -131,10 +131,17 @@ async function invalidateGeneratedSetup(
 /**
  * Builds or rebuilds the physical packing list on request. The scheduled
  * generation itself runs from the catering cron on the calendar day before
- * the event (and on the event day for a list that is still missing). A
- * refresh first removes only generated rows, leaving separate checklist
- * items intact. It also adds any missing Pre-order items, so a list built by
- * hand ends up with the same rows as one the cron built.
+ * the event (and on the event day for a list that is still missing). It also
+ * adds any missing Pre-order items, so a list built by hand ends up with the
+ * same rows as one the cron built.
+ *
+ * Every build replaces, never appends. An edit or a Refresh can clear
+ * setup_generated_at while another build is still running, and the next
+ * build would then insert a second full list beside the stale one. So once a
+ * build holds the claim, it deletes the order's generated rows (the ones with
+ * a setup_section) right before inserting. Rows without a setup_section are
+ * left alone: hand-added FOH Setup items (addChecklistItem never sets one)
+ * and the Pre-order items, which live on the Pickup/Delivery checklist.
  */
 async function materializePhysicalOrderSetup(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -163,13 +170,9 @@ async function materializePhysicalOrderSetup(
   }
 
   if (options.replace) {
-    const { error: removeError } = await supabase
-      .from("catering_checklist_items")
-      .delete()
-      .eq("order_id", orderId)
-      .not("setup_section", "is", null);
-    if (removeError) return { ok: false, error: removeError.message };
-
+    // Give up the old marker so this build can claim it. The old rows are
+    // removed inside the claimed build below, not here, so a build that
+    // loses the claim to the cron leaves the cron's list alone.
     const { error: resetError } = await supabase
       .from("catering_orders")
       .update({ setup_generated_at: null })
@@ -232,6 +235,31 @@ async function materializePhysicalOrderSetup(
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
   });
+
+  // An edit or a Refresh may have taken the claim while this build read the
+  // order. The newer build owns the list now, so stop without writing.
+  const { data: stillClaimed, error: recheckError } = await supabase
+    .from("catering_orders")
+    .select("id")
+    .eq("id", orderId)
+    .eq("setup_generated_at", generatedAt)
+    .maybeSingle();
+  if (recheckError) {
+    await releaseClaim();
+    return { ok: false, error: recheckError.message };
+  }
+  if (!stillClaimed) return { ok: true, data: { generated: false } };
+
+  const { error: clearError } = await supabase
+    .from("catering_checklist_items")
+    .delete()
+    .eq("order_id", orderId)
+    .not("setup_section", "is", null);
+  if (clearError) {
+    await releaseClaim();
+    return { ok: false, error: clearError.message };
+  }
+
   const { error: insertError } = await supabase.from("catering_checklist_items").insert([
     ...setupItems.map((item, index) => ({
       order_id: orderId,
@@ -537,8 +565,9 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
     const stageError = cateringStageAdvanceError(order.stage, parsed.toStage);
     if (stageError) return { ok: false, error: stageError };
 
-    if (order.stage === "setup" && !order.setup_generated_at) {
-      return { ok: false, error: PACKING_LIST_NOT_BUILT_ERROR };
+    if (order.stage === "setup") {
+      const packingError = packingListGateError(order.setup_generated_at);
+      if (packingError) return { ok: false, error: packingError };
     }
 
     const requiredChecklistStage = checklistRequiredBeforeStageAdvance(order.stage);

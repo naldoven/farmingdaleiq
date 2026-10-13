@@ -18,6 +18,10 @@ const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, 
 const events: Array<Record<string, unknown>> = [];
 const inserts: Array<{ table: string; values: unknown }> = [];
 const setupCandidateFilters: Array<[string, unknown]> = [];
+/** Answer to "does this build still hold its claim?" just before it writes. */
+let claimRecheckResponse: QueryResponse;
+/** Ordered writes to catering_checklist_items, to check delete-then-insert. */
+const checklistWrites: Array<{ op: "delete" | "insert"; filters: Array<[string, unknown]> }> = [];
 const callCheckFilters: Array<[string, unknown]> = [];
 
 function createFakeAdmin() {
@@ -43,6 +47,7 @@ function createFakeAdmin() {
         query.is = () =>
           selectsSetupCandidates ? Promise.resolve(setupQueryResponse) : query;
         query.lte = () => Promise.resolve(queryResponse);
+        query.maybeSingle = () => Promise.resolve(claimRecheckResponse);
         query.update = (values: Record<string, unknown>) => {
           updates.push({ values, filters });
           const update: Record<string, unknown> = {};
@@ -102,8 +107,25 @@ function createFakeAdmin() {
             };
             return query;
           },
+          delete: () => {
+            const filters: Array<[string, unknown]> = [];
+            checklistWrites.push({ op: "delete", filters });
+            const query: Record<string, unknown> = {};
+            query.eq = (column: string, value: unknown) => {
+              filters.push([column, value]);
+              return query;
+            };
+            query.not = (column: string, operator: string, value: unknown) => {
+              filters.push([`not.${column}.${operator}`, value]);
+              return query;
+            };
+            query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+              Promise.resolve({ error: null }).then(resolve, reject);
+            return query;
+          },
           insert: (values: unknown) => {
             inserts.push({ table, values });
+            checklistWrites.push({ op: "insert", filters: [] });
             return Promise.resolve({ error: null });
           },
         };
@@ -173,6 +195,8 @@ beforeEach(() => {
   events.length = 0;
   inserts.length = 0;
   setupCandidateFilters.length = 0;
+  checklistWrites.length = 0;
+  claimRecheckResponse = { data: { id: "setup-order" }, error: null };
   callCheckFilters.length = 0;
   setupOrderItemsResponse = { data: [], error: null };
   setupUpdateResponses = [];
@@ -316,6 +340,31 @@ describe("catering cron route", () => {
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(0);
     expect(callCheckFilters).toHaveLength(0);
+  });
+
+  it("replaces a stale list: deletes the generated rows inside the claimed build, then inserts", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(checklistWrites.map((write) => write.op)).toEqual(["delete", "insert"]);
+    expect(checklistWrites[0].filters).toEqual([
+      ["order_id", "setup-order"],
+      ["not.setup_section.is", null],
+    ]);
+  });
+
+  it("writes nothing when an edit or a manual Refresh took the claim mid-build", async () => {
+    setupQueryResponse = { data: [setupCandidate({})], error: null };
+    callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+    claimRecheckResponse = { data: null, error: null };
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(checklistWrites).toEqual([]);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
   });
 
   it("builds a missing packing list on the event day, for same-day orders", async () => {

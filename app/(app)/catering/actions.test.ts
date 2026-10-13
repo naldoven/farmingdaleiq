@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PermissionError } from "@/lib/auth/permissions";
-import { PACKING_LIST_NOT_BUILT_ERROR, planPreOrderChecklist } from "@/app/(app)/catering/logic";
+import {
+  PACKING_LIST_BUILDING_ERROR,
+  PACKING_LIST_NOT_BUILT_ERROR,
+  planPreOrderChecklist,
+} from "@/app/(app)/catering/logic";
 
 /**
  * Server-action coverage for Catering (app/(app)/catering/actions.ts):
@@ -137,6 +141,8 @@ function order(fields: Record<string, unknown>): Response {
 }
 
 const landed: Response = { data: { id: ORDER_ID }, error: null };
+/** A packing list stamped long before "now", so the build has surely finished. */
+const BUILT_LONG_AGO = "2026-01-01T12:00:00.000Z";
 const none: Response = { data: null, error: null };
 
 function denyKey(denied: string) {
@@ -168,9 +174,25 @@ describe("changeStage handoff guards", () => {
     expect(emitEventMock).not.toHaveBeenCalled();
   });
 
+  it("refuses to leave FOH Setup while the list was stamped moments ago and may still be inserting", async () => {
+    // The build stamps setup_generated_at when it claims the order, before
+    // its rows exist, so a just-stamped order can look built with an empty
+    // list. Leaving is refused until the stamp is older than any build.
+    const justNow = new Date(Date.now() - 30 * 1000).toISOString();
+    client = createFakeClient({
+      catering_orders: [order({ stage: "setup", setup_generated_at: justNow })],
+    });
+
+    const result = await changeStage({ orderId: ORDER_ID, toStage: "out" });
+
+    expect(result).toEqual({ ok: false, error: PACKING_LIST_BUILDING_ERROR });
+    expect(client.calls).toHaveLength(1);
+    expect(emitEventMock).not.toHaveBeenCalled();
+  });
+
   it("refuses to leave FOH Setup while a packing item is undone", async () => {
     client = createFakeClient({
-      catering_orders: [order({ stage: "setup", setup_generated_at: "2099-05-31T12:00:00.000Z" })],
+      catering_orders: [order({ stage: "setup", setup_generated_at: BUILT_LONG_AGO })],
       catering_checklist_items: [{ data: { id: "undone-item" }, error: null }],
     });
 
@@ -188,7 +210,7 @@ describe("changeStage handoff guards", () => {
 
   it("moves to Pickup/Delivery once the list is built and every item is done", async () => {
     client = createFakeClient({
-      catering_orders: [order({ stage: "setup", setup_generated_at: "2099-05-31T12:00:00.000Z" }), landed],
+      catering_orders: [order({ stage: "setup", setup_generated_at: BUILT_LONG_AGO }), landed],
       catering_checklist_items: [none],
     });
 
@@ -471,10 +493,11 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
         order({ stage: "setup", event_date: "2026-08-21", paper_goods: true, headcount: 10, fulfillment: "pickup", notes: null, selected_condiments: [] }),
         none, // clear the old generated marker
         landed, // claim
+        landed, // still holds the claim just before writing
       ],
       catering_checklist_items: [
-        none, // remove old generated rows
         { data: [{ label: "Compare packed items to the receipt" }], error: null },
+        none, // delete the old generated rows
         none, // insert
       ],
       catering_order_items: [{ data: [], error: null }],
@@ -493,6 +516,51 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
         .map((item) => item.label)
         .filter((label) => label !== "Compare packed items to the receipt"),
     );
+  });
+
+  it("replaces the generated rows inside the claimed build instead of adding a second list", async () => {
+    client = createFakeClient({
+      catering_orders: [
+        order({ stage: "setup", event_date: "2026-08-21", paper_goods: true, headcount: 10, fulfillment: "pickup", notes: null, selected_condiments: [] }),
+        none,
+        landed,
+        landed,
+      ],
+      catering_checklist_items: [{ data: [], error: null }, none, none],
+      catering_order_items: [{ data: [], error: null }],
+    });
+
+    expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: true, data: undefined });
+
+    const indexOf = (predicate: (call: (typeof client.calls)[number]) => boolean) =>
+      client.calls.findIndex(predicate);
+    const recheck = indexOf(
+      (c) => c.table === "catering_orders" && c.ops.some(([name, args]) => name === "eq" && args[0] === "setup_generated_at"),
+    );
+    const clear = indexOf((c) => c.table === "catering_checklist_items" && c.ops.some(([name]) => name === "delete"));
+    const insert = indexOf((c) => c.table === "catering_checklist_items" && c.ops.some(([name]) => name === "insert"));
+    expect(recheck).toBeGreaterThan(-1);
+    expect(clear).toBeGreaterThan(recheck);
+    expect(insert).toBeGreaterThan(clear);
+    // Only generated rows go: hand-added and Pre-order rows have no section.
+    expect(client.calls[clear].ops).toContainEqual(["not", ["setup_section", "is", null]]);
+  });
+
+  it("writes nothing when an edit or another build took the claim mid-build", async () => {
+    client = createFakeClient({
+      catering_orders: [
+        order({ stage: "setup", event_date: "2026-08-21", notes: null, selected_condiments: [] }),
+        none,
+        landed,
+        none, // the claim is gone by the time this build is ready to write
+      ],
+      catering_checklist_items: [{ data: [], error: null }],
+      catering_order_items: [{ data: [], error: null }],
+    });
+
+    expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: true, data: undefined });
+    expect(opArgs(client, "catering_checklist_items", "delete")).toBeUndefined();
+    expect(opArgs(client, "catering_checklist_items", "insert")).toBeUndefined();
   });
 
   it("refuses to rebuild the list on a Follow-up or Closed order", async () => {

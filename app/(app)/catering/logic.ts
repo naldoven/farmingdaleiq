@@ -172,6 +172,33 @@ export function checklistRequiredBeforeStageAdvance(fromStage: string): Checklis
 export const PACKING_LIST_NOT_BUILT_ERROR =
   "No packing list yet. It is built the day before the event, or you can build it on the order page on the event day.";
 
+/**
+ * A build stamps setup_generated_at when it claims the order, a moment before
+ * its rows are inserted, so a fresh stamp can sit beside an empty list. A row
+ * count cannot tell "still building" from "built, nothing to pack": an order
+ * with no paper goods, drinks, sauces or trays legitimately builds zero setup
+ * rows, and the Pre-order items live on the Pickup/Delivery checklist. So the
+ * gate waits until the stamp is older than any build takes. A list has to be
+ * packed before an order can move anyway, so the wait only shows up on an
+ * order with an empty list.
+ */
+export const SETUP_BUILD_SETTLE_MS = 2 * 60 * 1000;
+
+export const PACKING_LIST_BUILDING_ERROR = "The packing list is still being built. Try again in a minute.";
+
+/** Why an order cannot leave FOH Setup yet because of its packing list, or null. */
+export function packingListGateError(
+  setupGeneratedAt: string | null,
+  now: Date = new Date(),
+): string | null {
+  if (!setupGeneratedAt) return PACKING_LIST_NOT_BUILT_ERROR;
+  const stamped = new Date(setupGeneratedAt).getTime();
+  if (Number.isNaN(stamped) || now.getTime() - stamped < SETUP_BUILD_SETTLE_MS) {
+    return PACKING_LIST_BUILDING_ERROR;
+  }
+  return null;
+}
+
 export const PRE_ORDER_CHECKLIST_ITEMS = [
   "Compare packed items to the receipt",
   "Verify sauces and special instructions",

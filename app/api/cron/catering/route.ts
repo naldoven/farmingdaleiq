@@ -25,7 +25,10 @@ import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
  *
  * Each setup is claimed by `setup_generated_at`, then the stage transition is
  * guarded by its prior value. A cancellation or manual move can therefore win
- * without being overwritten by this background job.
+ * without being overwritten by this background job. Like the manual build
+ * (actions.ts materializePhysicalOrderSetup), a build checks it still holds
+ * the claim and then replaces the order's generated rows instead of adding to
+ * them, so an edit or Refresh in the middle of a build cannot leave two lists.
  *
  * The job only moves an order to FOH Setup when its Confirmation Call
  * checklist exists and is fully ticked, and nobody has moved the order's
@@ -61,10 +64,11 @@ async function materializeDueSetup(
     notes: string | null;
     selected_condiments: unknown;
   },
-  now: Date,
   moveToSetup: boolean,
 ): Promise<{ generated: boolean; movedToSetup: boolean; error?: string }> {
-  const generatedAt = now.toISOString();
+  // Stamped at the claim itself, not the start of the run: the FOH Setup
+  // gate (logic.ts packingListGateError) times its wait from this stamp.
+  const generatedAt = new Date().toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("catering_orders")
     .update({ setup_generated_at: generatedAt })
@@ -116,6 +120,32 @@ async function materializeDueSetup(
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
   });
+
+  // An edit or a manual Refresh may have taken the claim while this build
+  // read the order. The newer build owns the list, so stop without writing.
+  const { data: stillClaimed, error: recheckError } = await supabase
+    .from("catering_orders")
+    .select("id")
+    .eq("id", order.id)
+    .eq("setup_generated_at", generatedAt)
+    .maybeSingle();
+  if (recheckError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: recheckError.message };
+  }
+  if (!stillClaimed) return { generated: false, movedToSetup: false };
+
+  // Replace, never append: drop any generated rows a stale build left behind.
+  // Hand-added FOH Setup rows and Pre-order rows carry no setup_section.
+  const { error: clearError } = await supabase
+    .from("catering_checklist_items")
+    .delete()
+    .eq("order_id", order.id)
+    .not("setup_section", "is", null);
+  if (clearError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: clearError.message };
+  }
 
   // An edit wipes only the packing list rows, so the Pre-order rows from the
   // first build are still there when the list is rebuilt. Add only the ones
@@ -219,7 +249,7 @@ async function run(request: NextRequest) {
   for (const order of dueSetups) {
     const moveToSetup =
       callItemsReadable && canCronMoveToSetup(order, callItemsByOrder.get(order.id) ?? []);
-    const result = await materializeDueSetup(supabase, order, now, moveToSetup);
+    const result = await materializeDueSetup(supabase, order, moveToSetup);
     if (result.error) {
       errors.push(`${order.id}: ${result.error}`);
     } else if (result.generated) {

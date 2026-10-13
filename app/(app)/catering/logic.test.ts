@@ -41,6 +41,10 @@ import {
   stageOverrideTargetError,
   planChecklistMaterialization,
   storeLocalDate,
+  PACKING_LIST_BUILDING_ERROR,
+  PACKING_LIST_NOT_BUILT_ERROR,
+  SETUP_BUILD_SETTLE_MS,
+  packingListGateError,
 } from "@/app/(app)/catering/logic";
 
 const PRE_ORDER_LABELS = planPreOrderChecklist().map((item) => item.label);
@@ -506,6 +510,25 @@ describe("isNewOrderSettling", () => {
     expect(isNewOrderSettling("2026-08-20T16:58:30.000Z", now)).toBe(true);
     expect(isNewOrderSettling("2026-08-20T16:58:00.000Z", now)).toBe(false);
     expect(isNewOrderSettling("not a date", now)).toBe(false);
+  });
+});
+
+describe("packingListGateError", () => {
+  const now = new Date("2026-08-20T17:00:00.000Z");
+
+  it("refuses when no list was built", () => {
+    expect(packingListGateError(null, now)).toBe(PACKING_LIST_NOT_BUILT_ERROR);
+  });
+
+  it("refuses while a fresh stamp may still sit beside an empty, inserting list", () => {
+    expect(packingListGateError("2026-08-20T16:59:30.000Z", now)).toBe(PACKING_LIST_BUILDING_ERROR);
+    expect(packingListGateError("2026-08-20T16:58:00.001Z", now)).toBe(PACKING_LIST_BUILDING_ERROR);
+    expect(packingListGateError("not a date", now)).toBe(PACKING_LIST_BUILDING_ERROR);
+  });
+
+  it("passes once the stamp is older than any build takes", () => {
+    expect(packingListGateError(new Date(now.getTime() - SETUP_BUILD_SETTLE_MS).toISOString(), now)).toBeNull();
+    expect(packingListGateError("2026-08-19T04:00:00.000Z", now)).toBeNull();
   });
 });
 
