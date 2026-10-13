@@ -114,18 +114,23 @@ async function invalidateGeneratedSetup(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orderId: string,
 ): Promise<string | null> {
+  // Null the stamp BEFORE deleting rows. The other order left a window where
+  // the stamp was old and the list already empty, so a move out of FOH Setup
+  // passed the packing-list gate with nothing packed, and the cron never
+  // rebuilt (it only picks up a null stamp). Leftover rows after a failed
+  // delete are harmless: every build replaces generated rows.
+  const { error: resetError } = await supabase
+    .from("catering_orders")
+    .update({ setup_generated_at: null })
+    .eq("id", orderId);
+  if (resetError) return resetError.message;
+
   const { error: deleteError } = await supabase
     .from("catering_checklist_items")
     .delete()
     .eq("order_id", orderId)
     .not("setup_section", "is", null);
-  if (deleteError) return deleteError.message;
-
-  const { error: resetError } = await supabase
-    .from("catering_orders")
-    .update({ setup_generated_at: null })
-    .eq("id", orderId);
-  return resetError?.message ?? null;
+  return deleteError?.message ?? null;
 }
 
 /**

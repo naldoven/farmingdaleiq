@@ -521,8 +521,11 @@ describe("packingListGateError", () => {
   });
 
   it("refuses while a fresh stamp may still sit beside an empty, inserting list", () => {
-    expect(packingListGateError("2026-08-20T16:59:30.000Z", now)).toBe(PACKING_LIST_BUILDING_ERROR);
-    expect(packingListGateError("2026-08-20T16:58:00.001Z", now)).toBe(PACKING_LIST_BUILDING_ERROR);
+    // 16:59:30Z is 12:59 PM in New York (EDT); the move opens two minutes later.
+    expect(packingListGateError("2026-08-20T16:59:30.000Z", now)).toBe(
+      "The packing list was rebuilt at 12:59 PM. You can move this order on at 1:01 PM.",
+    );
+    expect(packingListGateError("2026-08-20T16:58:00.001Z", now)).toContain("You can move this order on at 1:00 PM.");
     expect(packingListGateError("not a date", now)).toBe(PACKING_LIST_BUILDING_ERROR);
   });
 

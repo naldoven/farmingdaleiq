@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PermissionError } from "@/lib/auth/permissions";
-import {
-  PACKING_LIST_BUILDING_ERROR,
-  PACKING_LIST_NOT_BUILT_ERROR,
-  planPreOrderChecklist,
-} from "@/app/(app)/catering/logic";
+import { PACKING_LIST_NOT_BUILT_ERROR, planPreOrderChecklist } from "@/app/(app)/catering/logic";
 
 /**
  * Server-action coverage for Catering (app/(app)/catering/actions.ts):
@@ -185,7 +181,7 @@ describe("changeStage handoff guards", () => {
 
     const result = await changeStage({ orderId: ORDER_ID, toStage: "out" });
 
-    expect(result).toEqual({ ok: false, error: PACKING_LIST_BUILDING_ERROR });
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("You can move this order on at") });
     expect(client.calls).toHaveLength(1);
     expect(emitEventMock).not.toHaveBeenCalled();
   });

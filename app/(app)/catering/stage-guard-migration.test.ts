@@ -60,7 +60,11 @@ describe("catering stage guard migration matches logic.ts", () => {
 
   it("guards inserts and stage updates, and keeps the function off the Data API", () => {
     expect(MIGRATION).toMatch(/before insert or update of stage on public\.catering_orders/i);
-    expect(MIGRATION).toMatch(/security invoker/i);
+    // Check the SQL, not the header comment: the comment also says "SECURITY
+    // INVOKER", so matching the raw file would pass even for a definer function.
+    const sqlOnly = MIGRATION.replace(/--.*$/gm, "");
+    expect(sqlOnly).toMatch(/security invoker/i);
+    expect(sqlOnly).not.toMatch(/security definer/i);
     expect(MIGRATION).toMatch(
       /revoke all on function public\.enforce_catering_stage_transition\(\) from public, anon, authenticated;/i,
     );

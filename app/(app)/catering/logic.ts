@@ -1,6 +1,7 @@
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
   addStoreCalendarDays,
+  formatStoreTime,
   storeDateTimeInputToIso,
   storeLocalDate as getStoreLocalDate,
 } from "@/lib/time";
@@ -178,13 +179,16 @@ export const PACKING_LIST_NOT_BUILT_ERROR =
  * count cannot tell "still building" from "built, nothing to pack": an order
  * with no paper goods, drinks, sauces or trays legitimately builds zero setup
  * rows, and the Pre-order items live on the Pickup/Delivery checklist. So the
- * gate waits until the stamp is older than any build takes. A list has to be
- * packed before an order can move anyway, so the wait only shows up on an
- * order with an empty list.
+ * gate waits until the stamp is older than any build takes. A small list can
+ * be packed inside that window (for example a 4-item rebuild after an
+ * event-day edit), so the refusal names the exact time the move opens rather
+ * than a vague "try again". Every rebuild restarts the wait.
  */
 export const SETUP_BUILD_SETTLE_MS = 2 * 60 * 1000;
 
-export const PACKING_LIST_BUILDING_ERROR = "The packing list is still being built. Try again in a minute.";
+/** Fallback when the stamp cannot be read, so no time can be named. */
+export const PACKING_LIST_BUILDING_ERROR =
+  "The packing list was just rebuilt. Wait two minutes, then move this order on.";
 
 /** Why an order cannot leave FOH Setup yet because of its packing list, or null. */
 export function packingListGateError(
@@ -193,8 +197,10 @@ export function packingListGateError(
 ): string | null {
   if (!setupGeneratedAt) return PACKING_LIST_NOT_BUILT_ERROR;
   const stamped = new Date(setupGeneratedAt).getTime();
-  if (Number.isNaN(stamped) || now.getTime() - stamped < SETUP_BUILD_SETTLE_MS) {
-    return PACKING_LIST_BUILDING_ERROR;
+  if (Number.isNaN(stamped)) return PACKING_LIST_BUILDING_ERROR;
+  const readyAt = stamped + SETUP_BUILD_SETTLE_MS;
+  if (now.getTime() < readyAt) {
+    return `The packing list was rebuilt at ${formatStoreTime(new Date(stamped))}. You can move this order on at ${formatStoreTime(new Date(readyAt))}.`;
   }
   return null;
 }
