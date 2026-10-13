@@ -14,9 +14,12 @@
  *   - changeStage no-ops (without re-emitting an event or re-queuing a
  *     follow-up) when the order is already on the requested stage, so a
  *     double drag/drop or a double click of the stage dropdown is a no-op.
- *   - closing an order only queues a fresh follow-up when no *open*
- *     (done_at is null) follow-up already exists for that order, so closing
- *     twice cannot queue duplicate follow-up calls.
+ *   - closing an order only queues a follow-up when that order has no
+ *     follow-up at all (open or resolved), so closing twice, or re-closing
+ *     after a manager moved it back, cannot queue a second re-book call.
+ *   - moveOrderBack and restoreOrder compare-and-set on the stage the
+ *     manager saw, and a repeat that finds the order already on the target
+ *     stage is a no-op success, so a double tap moves one step, not two.
  *   - toggleChecklistItem and resolveFollowUp are plain idempotent field
  *     writes: setting the same done/outcome state twice is a no-op.
  */
@@ -32,17 +35,22 @@ import type { ActionResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
   CHECKLIST_STAGE_LABELS,
+  PACKING_LIST_NOT_BUILT_ERROR,
   buildPhysicalOrderSetup,
+  canBuildCateringSetup,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
   defaultFollowUpDueDate,
   formatOrderNewMessage,
   formatStageChangeMessage,
+  formatStageOverrideMessage,
   normalizePhone,
   parseOrderItemsFromNotes,
-  isCateringSetupDay,
   planChecklistMaterialization,
+  planMissingPreOrderChecklist,
   parseRequestedCondiments,
+  previousCateringStage,
+  stageOverrideTargetError,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
@@ -56,9 +64,11 @@ import {
   createOrderSchema,
   menuItemIdSchema,
   menuItemSchema,
+  moveOrderBackSchema,
   orderIdSchema,
   orderItemIdSchema,
   resolveFollowUpSchema,
+  restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
   toggleChecklistItemSchema,
   updateChecklistDefaultSchema,
@@ -72,7 +82,9 @@ import {
   type ChecklistDefaultInput,
   type CreateOrderInput,
   type MenuItemInput,
+  type MoveOrderBackInput,
   type ResolveFollowUpInput,
+  type RestoreOrderInput,
   type ToggleChecklistDefaultActiveInput,
   type ToggleChecklistItemInput,
   type UpdateChecklistDefaultInput,
@@ -116,10 +128,12 @@ async function invalidateGeneratedSetup(
 }
 
 /**
- * Rebuilds the physical packing list on request. The scheduled generation
- * itself runs from the catering cron on the calendar day before the event.
- * A refresh first removes only generated rows, leaving separate checklist
- * items intact.
+ * Builds or rebuilds the physical packing list on request. The scheduled
+ * generation itself runs from the catering cron on the calendar day before
+ * the event (and on the event day for a list that is still missing). A
+ * refresh first removes only generated rows, leaving separate checklist
+ * items intact. It also adds any missing Pre-order items, so a list built by
+ * hand ends up with the same rows as one the cron built.
  */
 async function materializePhysicalOrderSetup(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -137,8 +151,8 @@ async function materializePhysicalOrderSetup(
   if (order.stage === CANCELLED_STAGE) {
     return { ok: false, error: "Cancelled orders cannot have a setup." };
   }
-  if (!isCateringSetupDay(order.event_date)) {
-    return { ok: false, error: "Order setups can be refreshed only on the day before the event." };
+  if (!canBuildCateringSetup(order.event_date)) {
+    return { ok: false, error: "The packing list can't be built until the day before the event." };
   }
 
   if (options.replace) {
@@ -169,6 +183,25 @@ async function materializePhysicalOrderSetup(
   if (claimError) return { ok: false, error: claimError.message };
   if (!claimed) return { ok: true, data: { generated: false } };
 
+  const releaseClaim = async () => {
+    // Let a later retry rebuild the list if this build fails part way.
+    await supabase
+      .from("catering_orders")
+      .update({ setup_generated_at: null })
+      .eq("id", orderId)
+      .eq("setup_generated_at", generatedAt);
+  };
+
+  const { data: existingPreOrder, error: existingPreOrderError } = await supabase
+    .from("catering_checklist_items")
+    .select("label")
+    .eq("order_id", orderId)
+    .eq("stage", "out");
+  if (existingPreOrderError) {
+    await releaseClaim();
+    return { ok: false, error: existingPreOrderError.message };
+  }
+
   const { data: orderItems } = await supabase
     .from("catering_order_items")
     .select("menu_item_id, qty")
@@ -192,22 +225,23 @@ async function materializePhysicalOrderSetup(
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
   });
-  const { error: insertError } = await supabase.from("catering_checklist_items").insert(
-    setupItems.map((item, index) => ({
+  const { error: insertError } = await supabase.from("catering_checklist_items").insert([
+    ...setupItems.map((item, index) => ({
       order_id: orderId,
       stage: "setup",
       label: `${item.label} - ${item.qty}`,
       setup_section: item.section,
       sort: 1000 + index,
     })),
-  );
+    ...planMissingPreOrderChecklist((existingPreOrder ?? []).map((item) => item.label)).map((item) => ({
+      order_id: orderId,
+      stage: item.stage,
+      label: item.label,
+      sort: item.sort,
+    })),
+  ]);
   if (insertError) {
-    // Let a later confirmation retry rebuild the list if this insert fails.
-    await supabase
-      .from("catering_orders")
-      .update({ setup_generated_at: null })
-      .eq("id", orderId)
-      .eq("setup_generated_at", generatedAt);
+    await releaseClaim();
     return { ok: false, error: insertError.message };
   }
 
@@ -467,8 +501,9 @@ export async function updateOrderDetails(
  * Moves an order to a new pipeline stage. No-ops (no event, no follow-up
  * queued) if the order is already on `toStage` -- see file header on
  * idempotency. A leader can advance only one stage at a time, and must finish
- * the active stage's checklist before its operational handoff. Queues a
- * re-book follow-up call the first time an order reaches `closed`.
+ * the active stage's checklist before its operational handoff. Leaving FOH
+ * Setup also needs the packing list to exist. Queues a re-book follow-up call
+ * the first time an order reaches `closed`.
  */
 export async function changeStage(input: ChangeStageInput): Promise<ActionResult> {
   try {
@@ -478,7 +513,7 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
 
     const { data: order, error: fetchError } = await supabase
       .from("catering_orders")
-      .select("id, stage, contact_id, event_date, guest_name")
+      .select("id, stage, contact_id, event_date, guest_name, setup_generated_at")
       .eq("id", parsed.orderId)
       .single();
 
@@ -494,6 +529,10 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
 
     const stageError = cateringStageAdvanceError(order.stage, parsed.toStage);
     if (stageError) return { ok: false, error: stageError };
+
+    if (order.stage === "setup" && !order.setup_generated_at) {
+      return { ok: false, error: PACKING_LIST_NOT_BUILT_ERROR };
+    }
 
     const requiredChecklistStage = checklistRequiredBeforeStageAdvance(order.stage);
     if (requiredChecklistStage) {
@@ -527,15 +566,18 @@ export async function changeStage(input: ChangeStageInput): Promise<ActionResult
     if (!moved) return { ok: true, data: undefined };
 
     if (parsed.toStage === "closed") {
-      const { data: openFollowUp } = await supabase
+      // One re-book call per order. Moving an order back out of Closed
+      // deletes its still-open call (moveOrderBack), and a resolved call
+      // means the guest was already called, so re-closing never queues a
+      // second one.
+      const { data: existingFollowUp } = await supabase
         .from("catering_followups")
         .select("id")
         .eq("order_id", parsed.orderId)
-        .is("done_at", null)
         .limit(1)
         .maybeSingle();
 
-      if (!openFollowUp) {
+      if (!existingFollowUp) {
         await supabase.from("catering_followups").insert({
           order_id: parsed.orderId,
           contact_id: order.contact_id,
@@ -624,6 +666,171 @@ export async function cancelOrder(input: CancelOrderInput): Promise<ActionResult
         eventDate: order.event_date,
         fromStage: fromStage as OrderStage,
         toStage: CANCELLED_STAGE,
+      }),
+    });
+
+    revalidateCatering(parsed.orderId);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+const ORDER_CHANGED_ERROR = "This order has changed. Refresh and try again.";
+
+/**
+ * Manager undo: moves an order back one stage. Shift leaders hold
+ * catering.manage and the pipeline is forward-only on purpose, so this is
+ * gated on catering.override and logged with the manager's reason on the
+ * same catering_stage_change event every other move emits (app_events
+ * records who via emitted_by). Checklists and the packing list are left as
+ * they are: the work already done is still true.
+ */
+export async function moveOrderBack(input: MoveOrderBackInput): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.override");
+    const parsed = moveOrderBackSchema.parse(input);
+
+    const toStage = previousCateringStage(parsed.fromStage);
+    if (!toStage) return { ok: false, error: "New orders have no earlier stage." };
+
+    const supabase = await createClient();
+    const { data: order, error: fetchError } = await supabase
+      .from("catering_orders")
+      .select("id, stage, event_date, event_time, guest_name")
+      .eq("id", parsed.orderId)
+      .single();
+
+    if (fetchError || !order) {
+      return { ok: false, error: fetchError?.message ?? "Order not found." };
+    }
+
+    if (order.stage === CANCELLED_STAGE) {
+      return { ok: false, error: "This order is cancelled. Use Restore instead." };
+    }
+
+    if (order.stage !== parsed.fromStage) {
+      // A repeated tap after the first move landed: the order is already
+      // where the manager asked for, so report success without a second step.
+      if (order.stage === toStage) return { ok: true, data: undefined };
+      return { ok: false, error: ORDER_CHANGED_ERROR };
+    }
+
+    const targetError = stageOverrideTargetError(order, toStage);
+    if (targetError) return { ok: false, error: targetError };
+
+    const { data: moved, error: updateError } = await supabase
+      .from("catering_orders")
+      .update({ stage: toStage, stage_changed_at: new Date().toISOString() })
+      .eq("id", parsed.orderId)
+      .eq("stage", parsed.fromStage)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) return { ok: false, error: updateError.message };
+    // Unlike changeStage this is not a silent no-op: an override that did not
+    // land (a race, or RLS refusing a role without catering.manage) must not
+    // read as done to the manager.
+    if (!moved) return { ok: false, error: ORDER_CHANGED_ERROR };
+
+    if (parsed.fromStage === "closed") {
+      // Closing queued a re-book call. An open call on an order that is no
+      // longer closed would sit in History's "Follow-ups due" for a guest
+      // whose order is not finished. Open calls carry no notes yet (outcome
+      // and note are written when a call is resolved), so deleting loses
+      // nothing, and re-closing queues a fresh one. Resolved calls stay as
+      // history and stop a second call being queued.
+      const { error: followUpError } = await supabase
+        .from("catering_followups")
+        .delete()
+        .eq("order_id", parsed.orderId)
+        .is("done_at", null);
+      if (followUpError) {
+        // The stage move already landed and is the source of truth; a left
+        // over call is visible on History and can be marked done by hand.
+        console.error("catering: could not remove the open follow-up after a move back", followUpError.message);
+      }
+    }
+
+    await emitEventSafely("catering_stage_change", {
+      orderId: parsed.orderId,
+      fromStage: parsed.fromStage,
+      toStage,
+      override: "move_back",
+      reason: parsed.reason,
+      message: formatStageOverrideMessage({
+        guestName: order.guest_name,
+        eventDate: order.event_date,
+        fromStage: parsed.fromStage,
+        toStage,
+        kind: "move_back",
+        reason: parsed.reason,
+      }),
+    });
+
+    revalidateCatering(parsed.orderId);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Manager undo for a cancellation: puts a cancelled order back on the
+ * pipeline at the stage the manager picks (RESTORE_STAGES). The stage it was
+ * cancelled from is not offered as a default: it lives only in app_events,
+ * which signed-in users cannot read, and storing it would need a new column.
+ * catering.override gated and logged like moveOrderBack.
+ */
+export async function restoreOrder(input: RestoreOrderInput): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.override");
+    const parsed = restoreOrderSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: order, error: fetchError } = await supabase
+      .from("catering_orders")
+      .select("id, stage, event_date, event_time, guest_name")
+      .eq("id", parsed.orderId)
+      .single();
+
+    if (fetchError || !order) {
+      return { ok: false, error: fetchError?.message ?? "Order not found." };
+    }
+
+    if (order.stage !== CANCELLED_STAGE) {
+      // A repeated tap after the restore landed is a no-op success.
+      if (order.stage === parsed.toStage) return { ok: true, data: undefined };
+      return { ok: false, error: "Only cancelled orders can be restored." };
+    }
+
+    const targetError = stageOverrideTargetError(order, parsed.toStage);
+    if (targetError) return { ok: false, error: targetError };
+
+    const { data: restored, error: updateError } = await supabase
+      .from("catering_orders")
+      .update({ stage: parsed.toStage, stage_changed_at: new Date().toISOString() })
+      .eq("id", parsed.orderId)
+      .eq("stage", CANCELLED_STAGE)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) return { ok: false, error: updateError.message };
+    if (!restored) return { ok: false, error: ORDER_CHANGED_ERROR };
+
+    await emitEventSafely("catering_stage_change", {
+      orderId: parsed.orderId,
+      fromStage: CANCELLED_STAGE,
+      toStage: parsed.toStage,
+      override: "restore",
+      reason: parsed.reason,
+      message: formatStageOverrideMessage({
+        guestName: order.guest_name,
+        eventDate: order.event_date,
+        fromStage: CANCELLED_STAGE,
+        toStage: parsed.toStage,
+        kind: "restore",
+        reason: parsed.reason,
       }),
     });
 

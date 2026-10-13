@@ -7,6 +7,7 @@ import { OrderDetailsForm } from "@/components/catering/order-details-form";
 import { OrderItemEditor } from "@/components/catering/order-item-editor";
 import { OrderSetupSection } from "@/components/catering/order-setup-section";
 import { RescaleButton } from "@/components/catering/rescale-button";
+import { StageOverrideControls } from "@/components/catering/stage-override-controls";
 import { StageSelect } from "@/components/catering/stage-select";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -15,8 +16,8 @@ import {
   CANCELLED_STAGE,
   CHECKLIST_STAGES,
   ORDER_STAGE_LABELS,
+  canBuildCateringSetup,
   filterRevenueOrders,
-  isCateringSetupDay,
   type ChecklistStage,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
@@ -33,7 +34,10 @@ export default async function CateringOrderPage({
   params: Promise<{ id: string }>;
 }) {
   await requirePermission("catering.view");
-  const canManage = await hasPermission("catering.manage");
+  const [canManage, canOverride] = await Promise.all([
+    hasPermission("catering.manage"),
+    hasPermission("catering.override"),
+  ]);
   const { id } = await params;
 
   const supabase = await createClient();
@@ -48,7 +52,7 @@ export default async function CateringOrderPage({
     supabase
       .from("catering_orders")
       .select(
-        "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id",
+        "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id, setup_generated_at",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -117,7 +121,13 @@ export default async function CateringOrderPage({
   const setupChecklistItems = (checklistItems ?? [])
     .filter((item) => item.stage === "setup" && item.setup_section === null)
     .map((item) => ({ id: item.id, label: item.label, done: item.done }));
-  const canRefreshSetup = canManage && isCateringSetupDay(order.event_date);
+  // Building is offered from the day before the event onward, and only while
+  // the order is still heading to or in its handoff: a list on a finished
+  // order would be noise.
+  const canRefreshSetup =
+    canManage &&
+    ["new", "confirm", "setup", "out"].includes(order.stage) &&
+    canBuildCateringSetup(order.event_date);
 
   return (
     <div className="flex flex-col gap-4">
@@ -139,6 +149,7 @@ export default async function CateringOrderPage({
       <p className="-mt-3 text-[13px] text-muted-ink">
         {order.event_date} {order.event_time ?? ""}
       </p>
+      <StageOverrideControls orderId={order.id} stage={order.stage as OrderStage} canOverride={canOverride} />
 
       {contactHistory && (
         <SectionCard>
@@ -180,7 +191,7 @@ export default async function CateringOrderPage({
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[19px] font-semibold text-ink">Order setup</h2>
-        {canRefreshSetup && <RescaleButton orderId={order.id} />}
+        {canRefreshSetup && <RescaleButton orderId={order.id} built={Boolean(order.setup_generated_at)} />}
       </div>
       <OrderSetupSection items={setupItems} canManage={canManage} />
 

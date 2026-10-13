@@ -1,12 +1,16 @@
 import Link from "next/link";
 
-import { SectionCard } from "@/components/mobile";
+import { SectionCard, StatusBadge } from "@/components/mobile";
 import { ChecklistSection } from "@/components/catering/checklist-section";
 import { OrderSetupSection } from "@/components/catering/order-setup-section";
 import { StageSelect } from "@/components/catering/stage-select";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { ChecklistStage, OrderStage } from "@/app/(app)/catering/logic";
+import {
+  isConfirmationCallLate,
+  type ChecklistStage,
+  type OrderStage,
+} from "@/app/(app)/catering/logic";
 
 /**
  * Shared queue view for /catering/confirm, /catering/setup, /catering/
@@ -52,6 +56,10 @@ export async function StageQueue({
     return <p className="text-[13px] text-muted-ink">No orders in this stage.</p>;
   }
 
+  // Only the Confirmation Calls queue can show the badge: the helper is false
+  // for every stage after Confirmation Call.
+  const now = new Date();
+
   return (
     <div className="flex flex-col gap-4">
       {(orders ?? []).map((order) => (
@@ -65,11 +73,16 @@ export async function StageQueue({
           action={<StageSelect orderId={order.id} stage={orderStage} canManage={canManage} />}
         >
           <div className="flex flex-col gap-3">
-            <p className="text-[13px] text-muted-ink">
-              {order.event_date} {order.event_time ?? ""}
-              {order.headcount != null ? ` · ${order.headcount} guests` : ""}
-              {order.fulfillment ? ` · ${order.fulfillment}` : ""}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {isConfirmationCallLate({ stage: orderStage, event_date: order.event_date }, now) && (
+                <StatusBadge tone="warning">Call not done</StatusBadge>
+              )}
+              <p className="text-[13px] text-muted-ink">
+                {order.event_date} {order.event_time ?? ""}
+                {order.headcount != null ? ` · ${order.headcount} guests` : ""}
+                {order.fulfillment ? ` · ${order.fulfillment}` : ""}
+              </p>
+            </div>
             {checklistStage === "setup" ? (
               <>
                 <OrderSetupSection

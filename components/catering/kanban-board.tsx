@@ -6,7 +6,13 @@ import { useRouter } from "next/navigation";
 
 import { HScroll, KanbanGhostCard, StatusBadge, useKanbanDrag } from "@/components/mobile";
 import { OrderCard, type OrderCardData } from "@/components/catering/order-card";
-import { ORDER_STAGE_LABELS, ORDER_STAGES, type OrderStage } from "@/app/(app)/catering/logic";
+import {
+  ORDER_STAGE_LABELS,
+  ORDER_STAGES,
+  cateringStageAdvanceError,
+  nextCateringStage,
+  type OrderStage,
+} from "@/app/(app)/catering/logic";
 import { changeStage } from "@/app/(app)/catering/actions";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +28,10 @@ import { cn } from "@/lib/utils";
  * from a touch screen) rather than native HTML5 drag-and-drop -- the
  * `draggable` attribute this board used previously never fires from a touch
  * interaction at all, so dragging silently did nothing on the phones this
- * app actually runs on. changeStage has no forward-only restriction (any
- * stage can move to any other), so unlike the maintenance work-order board
- * every column is always a valid drop target.
+ * app actually runs on. changeStage is forward-only, one step at a time (see
+ * cateringStageAdvanceError), so only the dragged card's next column lights
+ * up as a drop target, and a drop anywhere else shows the reason without a
+ * round trip to the server.
  */
 export function KanbanBoard({ orders, canManage }: { orders: OrderCardData[]; canManage: boolean }) {
   const router = useRouter();
@@ -55,6 +62,12 @@ export function KanbanBoard({ orders, canManage }: { orders: OrderCardData[]; ca
       const current = localOrders.find((o) => o.id === orderId);
       if (!current || current.stage === stage) return;
 
+      const moveError = cateringStageAdvanceError(current.stage, stage as OrderStage);
+      if (moveError) {
+        setError(moveError);
+        return;
+      }
+
       setError(null);
       const previousStage = current.stage;
       setLocalOrders((prev) =>
@@ -75,6 +88,8 @@ export function KanbanBoard({ orders, canManage }: { orders: OrderCardData[]; ca
   });
 
   const byStage = (stage: OrderStage) => localOrders.filter((o) => o.stage === stage);
+  const draggingOrder = localOrders.find((o) => o.id === drag.draggingId);
+  const dropTarget = draggingOrder ? nextCateringStage(draggingOrder.stage) : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -86,7 +101,7 @@ export function KanbanBoard({ orders, canManage }: { orders: OrderCardData[]; ca
       <HScroll ref={containerRef} snap="start">
         {ORDER_STAGES.map((stage) => {
           const stageOrders = byStage(stage);
-          const isOver = drag.overColumn === stage;
+          const isOver = drag.overColumn === stage && stage === dropTarget;
           return (
             <div
               key={stage}

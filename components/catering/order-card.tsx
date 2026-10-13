@@ -22,6 +22,10 @@ export interface OrderCardData {
    * "no checklist items yet" -- the bar is hidden instead of showing 0%. */
   checklistDone?: number;
   checklistTotal?: number;
+  /** Event is today or tomorrow and the order still waits on its
+   * confirmation call (logic.ts isConfirmationCallLate). The day-before job
+   * does not move these to FOH Setup, so the card says why. */
+  callNotDone?: boolean;
 }
 
 /**
@@ -70,6 +74,7 @@ export function OrderCard({
           {order.eventTime ? ` · ${order.eventTime}` : ""}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
+          {order.callNotDone && <StatusBadge tone="warning">Call not done</StatusBadge>}
           {order.headcount != null && (
             <StatusBadge tone="neutral">{order.headcount} guests</StatusBadge>
           )}

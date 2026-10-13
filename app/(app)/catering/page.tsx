@@ -6,7 +6,12 @@ import type { OrderCardData } from "@/components/catering/order-card";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { CANCELLED_STAGE, storeLocalDate, type OrderStage } from "@/app/(app)/catering/logic";
+import {
+  CANCELLED_STAGE,
+  isConfirmationCallLate,
+  storeLocalDate,
+  type OrderStage,
+} from "@/app/(app)/catering/logic";
 
 /**
  * /catering pipeline board (ARCHITECTURE.md page map: "Order pipeline board:
@@ -65,6 +70,7 @@ export default async function CateringPipelinePage() {
     progressByOrder.set(row.order_id, existing);
   }
 
+  const now = new Date();
   const cards: OrderCardData[] = (orders ?? []).map((o) => {
     const progress = progressByOrder.get(o.id);
     return {
@@ -78,6 +84,7 @@ export default async function CateringPipelinePage() {
       stage: o.stage as OrderStage,
       checklistDone: progress?.done,
       checklistTotal: progress?.total,
+      callNotDone: isConfirmationCallLate(o, now),
     };
   });
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeAnalytics,
   buildPhysicalOrderSetup,
+  canBuildCateringSetup,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
   computeContactRollups,
@@ -15,20 +16,29 @@ import {
   formatOrderNewMessage,
   formatScaledLabel,
   formatStageChangeMessage,
+  formatStageOverrideMessage,
   isCateringFollowUpDue,
   isCateringSetupDay,
   isCateringSetupDue,
+  isCateringSetupWindow,
+  isConfirmationCallLate,
   isoWeekKey,
   normalizePhone,
   parseComponents,
   parseOrderItemsFromNotes,
   parseRequestedCondiments,
   parseScalingRules,
+  nextCateringStage,
+  planMissingPreOrderChecklist,
   planPreOrderChecklist,
   periodRange,
+  previousCateringStage,
+  stageOverrideTargetError,
   planChecklistMaterialization,
   storeLocalDate,
 } from "@/app/(app)/catering/logic";
+
+const PRE_ORDER_LABELS = planPreOrderChecklist().map((item) => item.label);
 
 describe("catering stage handoffs", () => {
   it("allows only the immediate next stage", () => {
@@ -45,6 +55,23 @@ describe("catering stage handoffs", () => {
     expect(cateringStageAdvanceError("cancelled", "confirm")).toBe(
       "Cancelled orders cannot return to the active pipeline.",
     );
+  });
+
+  it("gives closed orders a real message instead of naming a stage that does not exist", () => {
+    const message = cateringStageAdvanceError("closed", "followup");
+    expect(message).toBe("This order is closed and cannot move forward.");
+    expect(message).not.toContain("undefined");
+  });
+
+  it("knows the one stage before and after each pipeline stage", () => {
+    expect(nextCateringStage("new")).toBe("confirm");
+    expect(nextCateringStage("followup")).toBe("closed");
+    expect(nextCateringStage("closed")).toBeNull();
+    expect(nextCateringStage("cancelled")).toBeNull();
+    expect(previousCateringStage("confirm")).toBe("new");
+    expect(previousCateringStage("closed")).toBe("followup");
+    expect(previousCateringStage("new")).toBeNull();
+    expect(previousCateringStage("cancelled")).toBeNull();
   });
 
   it("requires the right checklist at each operational handoff", () => {
@@ -284,6 +311,49 @@ describe("planPreOrderChecklist", () => {
   });
 });
 
+describe("planMissingPreOrderChecklist", () => {
+  it("adds all three Pre-order items to an order that has none", () => {
+    expect(planMissingPreOrderChecklist([])).toEqual(planPreOrderChecklist());
+  });
+
+  it("skips Pre-order items the order already has, so a rebuild cannot duplicate them", () => {
+    expect(
+      planMissingPreOrderChecklist(["Compare packed items to the receipt", " cold items packed last ", "Tender out"]),
+    ).toEqual([{ stage: "out", label: "Verify sauces and special instructions", sort: 901 }]);
+    expect(planMissingPreOrderChecklist([...PRE_ORDER_LABELS])).toEqual([]);
+  });
+});
+
+describe("stageOverrideTargetError", () => {
+  const order = { event_date: "2026-08-20", event_time: "14:00:00" };
+
+  it("refuses landing on Pickup/Delivery after the event time, where the cron would undo it", () => {
+    expect(stageOverrideTargetError(order, "out", new Date("2026-08-20T18:30:00.000Z"))).toBe(
+      "The event time has passed, so this order would go straight back to Follow-up.",
+    );
+  });
+
+  it("allows Pickup/Delivery before the event time, without a time, and every other stage", () => {
+    expect(stageOverrideTargetError(order, "out", new Date("2026-08-20T17:00:00.000Z"))).toBeNull();
+    expect(
+      stageOverrideTargetError({ ...order, event_time: null }, "out", new Date("2026-08-21T12:00:00.000Z")),
+    ).toBeNull();
+    expect(stageOverrideTargetError(order, "followup", new Date("2026-08-21T12:00:00.000Z"))).toBeNull();
+  });
+});
+
+describe("formatStageOverrideMessage", () => {
+  it("names the override and carries the manager's reason", () => {
+    const base = { guestName: "Jane", eventDate: "2026-08-21", fromStage: "setup" as const, toStage: "confirm" as const };
+    expect(formatStageOverrideMessage({ ...base, kind: "move_back", reason: "Guest changed the menu" })).toBe(
+      `${formatStageChangeMessage(base)}. Moved back by a manager: Guest changed the menu`,
+    );
+    expect(
+      formatStageOverrideMessage({ ...base, fromStage: "cancelled", kind: "restore", reason: "Cancelled by mistake" }),
+    ).toContain("Restored by a manager: Cancelled by mistake");
+  });
+});
+
 describe("isCateringFollowUpDue", () => {
   const scheduledOrder = {
     stage: "out",
@@ -315,10 +385,55 @@ describe("isCateringSetupDue", () => {
     expect(isCateringSetupDue(order, new Date("2026-08-19T23:59:59.000Z"))).toBe(false);
   });
 
+  it("is also due on the event day itself, for same-day orders or a list wiped by an edit", () => {
+    // 2026-08-21 13:00 New York.
+    const eventDay = new Date("2026-08-21T17:00:00.000Z");
+    expect(isCateringSetupWindow("2026-08-21", eventDay)).toBe(true);
+    expect(isCateringSetupDue(order, eventDay)).toBe(true);
+    // The day after the event is too late for the automatic build.
+    expect(isCateringSetupDue(order, new Date("2026-08-22T17:00:00.000Z"))).toBe(false);
+  });
+
   it("does not rebuild a generated, cancelled, or closed setup", () => {
     expect(isCateringSetupDue({ ...order, setup_generated_at: "2026-08-20T12:00:00.000Z" })).toBe(false);
     expect(isCateringSetupDue({ ...order, stage: "cancelled" })).toBe(false);
     expect(isCateringSetupDue({ ...order, stage: "closed" })).toBe(false);
+  });
+});
+
+describe("canBuildCateringSetup", () => {
+  // 2026-08-20 13:00 New York.
+  const now = new Date("2026-08-20T17:00:00.000Z");
+
+  it("allows a manual build from the day before the event onward", () => {
+    expect(canBuildCateringSetup("2026-08-21", now)).toBe(true);
+    expect(canBuildCateringSetup("2026-08-20", now)).toBe(true);
+    expect(canBuildCateringSetup("2026-08-10", now)).toBe(true);
+  });
+
+  it("refuses a build two or more days early, before the receipt is final", () => {
+    expect(canBuildCateringSetup("2026-08-22", now)).toBe(false);
+  });
+
+  it("uses the New York date, not UTC, late in the evening", () => {
+    // 2026-08-20 22:30 New York is already 2026-08-21 in UTC.
+    expect(canBuildCateringSetup("2026-08-22", new Date("2026-08-21T02:30:00.000Z"))).toBe(false);
+  });
+});
+
+describe("isConfirmationCallLate", () => {
+  // 2026-08-20 13:00 New York.
+  const now = new Date("2026-08-20T17:00:00.000Z");
+
+  it("flags New and Confirmation Call orders whose event is today or tomorrow", () => {
+    expect(isConfirmationCallLate({ stage: "new", event_date: "2026-08-21" }, now)).toBe(true);
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-20" }, now)).toBe(true);
+  });
+
+  it("does not flag orders further out or already past the call", () => {
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-22" }, now)).toBe(false);
+    expect(isConfirmationCallLate({ stage: "setup", event_date: "2026-08-21" }, now)).toBe(false);
+    expect(isConfirmationCallLate({ stage: "cancelled", event_date: "2026-08-21" }, now)).toBe(false);
   });
 });
 

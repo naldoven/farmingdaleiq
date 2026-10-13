@@ -72,9 +72,13 @@ export const ALL_PERMISSION_KEYS = [
   "maintenance.request",
   "maintenance.triage",
 
-  // Catering
+  // Catering. `override` is the manager-only undo (move an order back one
+  // step, restore a cancelled order). It is separate from `manage` because
+  // shift leaders hold `manage`, and the forward-only pipeline exists to stop
+  // them skipping handoffs.
   "catering.manage",
   "catering.view",
+  "catering.override",
 
   // Reporting
   "reports.view",

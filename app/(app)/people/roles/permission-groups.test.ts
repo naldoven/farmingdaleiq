@@ -24,6 +24,11 @@ describe("groupPermissionKeys", () => {
     expect(groupPermissionKeys([])).toEqual([]);
   });
 
+  it("lists the manager-only catering.override key in the Catering group of the role editor", () => {
+    const catering = groupPermissionKeys().find((group) => group.module === "catering");
+    expect(catering?.keys).toEqual(["catering.manage", "catering.view", "catering.override"]);
+  });
+
   it("covers every real PERMISSION_KEYS entry exactly once with no default arg", () => {
     const groups = groupPermissionKeys();
     const flattened = groups.flatMap((g) => g.keys);
