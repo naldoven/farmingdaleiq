@@ -1,12 +1,13 @@
 # Machine environment
 
-Windows 10, PowerShell 5.1, Git Bash available. These traps are specific to this
+Windows 11, PowerShell 5.1, Git Bash available. These traps are specific to this
 machine and every one of them has cost a session. Read before running shell commands.
 
-## OneDrive eats repositories
+## Repositories live in C:\dev, never OneDrive
 
-Both current projects live under `C:\Users\ebhdh\OneDrive\Documents\`. OneDrive sync
-has, repeatedly:
+This repository lives in `C:\dev\FarmingdaleIQ`, outside OneDrive. It moved there on
+2026-10-13 with the switch to a new computer. Never clone or create a repository under
+a OneDrive-synced folder. On the old computer, OneDrive sync repeatedly:
 
 - killed dev servers mid-run
 - emptied git worktrees mid-build, losing whole builds
@@ -14,9 +15,6 @@ has, repeatedly:
 
 **If a dev server dies or `node_modules` disappears, run `npm ci` and restart before
 debugging anything else.** It imitates a real bug convincingly.
-
-New repositories should be created outside OneDrive, in `C:\dev\`. The two current
-projects have not been moved yet.
 
 ## PowerShell versus Bash
 
@@ -87,8 +85,8 @@ stall silently.
 
 ## Known-good tool paths
 
-- `psql` 17.10 at `C:\Program Files\PostgreSQL\17\bin\psql.exe`. Works as a database
-  fallback when other paths fail. Connect through the Supabase pooler host, not the
-  direct host, which does not resolve over IPv4.
-- Reading PDFs page by page needs PyMuPDF (`fitz`). The built-in reader has no
-  `pdftoppm` here and its page count is wrong.
+- `psql` is not installed on this computer yet. On the old one, `psql` 17.10 worked as
+  a database fallback when other paths failed. If you install it, connect through the
+  Supabase pooler host, not the direct host, which does not resolve over IPv4.
+- Reading PDFs page by page needs PyMuPDF (`fitz`), which is not installed on this
+  computer yet. The built-in reader has no `pdftoppm` here and its page count is wrong.
