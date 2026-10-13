@@ -1,7 +1,9 @@
-# AGENTS.md
+# Codex working agreement
 
-Working agreement for any AI coding agent on Naldo's projects. Codex reads this file
-automatically from the repo root. Copy it into each project root.
+Working agreement for any AI coding agent on Naldo's projects. In this repo it lives in
+`rules/`, because the root `AGENTS.md` is the FarmingdaleIQ project guide, and that guide
+points here. In a project with no `AGENTS.md` of its own, copy this file to the root as
+`AGENTS.md`, where Codex reads it automatically.
 
 Companion files live in `rules/`. Read the one that matches what you are doing.
 
@@ -192,4 +194,5 @@ Each of these cost a real incident. Do not rediscover them.
   specific to this machine. Read before running any shell command.
 - `rules/model-routing.md`: which model tier does what, and how to brief a subagent.
 
-Project specifics for `farmingdaleiq` and `yll-call-copilot` are in `PROJECTS.md`.
+Project specifics for FarmingdaleIQ (gates, commands, layout, conventions) are in the
+root `AGENTS.md`. Where the two disagree, the root `AGENTS.md` wins.

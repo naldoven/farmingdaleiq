@@ -53,6 +53,15 @@ the live Supabase project and self-skips without secrets.
 | `docs/DESIGN-SYSTEM.md` | **Read before adding or changing any screen.** Color tokens, type scale, and the component catalog. |
 | `docs/CATERING-EMAIL-INGEST.md` | The catering inbound-email parser. |
 
+## Working agreement (`rules/`)
+
+`rules/` holds the working agreement for AI agents on Naldo's projects: how to work
+with him, when to ask before starting, git and merge rules, voice rules for anything
+written, and the traps on this Windows machine. Start with `rules/codex-agreement.md`;
+it links the other four. Where those files and this one disagree on something specific
+to FarmingdaleIQ, this file wins. For example, the gates here are the four above,
+including `npm run build`, not the three listed in the rules files.
+
 ## Layout
 
 ```
