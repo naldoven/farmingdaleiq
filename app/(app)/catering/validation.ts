@@ -5,6 +5,7 @@ import {
   FULFILLMENT_METHODS,
   HISTORY_PERIODS,
   ORDER_STAGES,
+  RESTORE_STAGES,
 } from "@/app/(app)/catering/logic";
 
 /**
@@ -90,6 +91,31 @@ export const cancelOrderSchema = z.object({
   orderId: z.string().uuid(),
 });
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
+
+// Manager overrides are logged to the catering channel, so the reason has to
+// say something. Three characters rules out a stray tap or a single letter.
+const overrideReasonSchema = z
+  .string()
+  .trim()
+  .min(3, "Add a short reason.")
+  .max(300, "Keep the reason under 300 characters.");
+
+// `fromStage` is the stage the manager was looking at. The action
+// compare-and-sets on it, so a double tap moves the order back one step, not
+// two.
+export const moveOrderBackSchema = z.object({
+  orderId: z.string().uuid(),
+  fromStage: z.enum(ORDER_STAGES),
+  reason: overrideReasonSchema,
+});
+export type MoveOrderBackInput = z.infer<typeof moveOrderBackSchema>;
+
+export const restoreOrderSchema = z.object({
+  orderId: z.string().uuid(),
+  toStage: z.enum(RESTORE_STAGES, { error: "Pick a stage to restore to." }),
+  reason: overrideReasonSchema,
+});
+export type RestoreOrderInput = z.infer<typeof restoreOrderSchema>;
 
 export const addOrderItemSchema = z.object({
   orderId: z.string().uuid(),

@@ -6,7 +6,9 @@ import {
   checklistDefaultSchema,
   createOrderSchema,
   menuItemSchema,
+  moveOrderBackSchema,
   resolveFollowUpSchema,
+  restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
   updateChecklistDefaultSchema,
   updateOrderDetailsSchema,
@@ -117,6 +119,33 @@ describe("changeStageSchema", () => {
         toStage: "archived",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("manager override schemas", () => {
+  const orderId = "11111111-1111-4111-8111-111111111111";
+
+  it("moveOrderBackSchema needs a real reason and trims it", () => {
+    const ok = moveOrderBackSchema.safeParse({ orderId, fromStage: "setup", reason: "  Guest changed the menu  " });
+    expect(ok.success && ok.data.reason).toBe("Guest changed the menu");
+    expect(moveOrderBackSchema.safeParse({ orderId, fromStage: "setup", reason: "   " }).success).toBe(false);
+    expect(moveOrderBackSchema.safeParse({ orderId, fromStage: "setup", reason: "ok" }).success).toBe(false);
+    expect(moveOrderBackSchema.safeParse({ orderId, fromStage: "setup", reason: "x".repeat(301) }).success).toBe(false);
+  });
+
+  it("moveOrderBackSchema only takes pipeline stages", () => {
+    expect(moveOrderBackSchema.safeParse({ orderId, fromStage: "cancelled", reason: "Wrong order" }).success).toBe(false);
+  });
+
+  it("restoreOrderSchema accepts New through Follow-up only", () => {
+    for (const toStage of ["new", "confirm", "setup", "out", "followup"]) {
+      expect(restoreOrderSchema.safeParse({ orderId, toStage, reason: "Cancelled by mistake" }).success).toBe(true);
+    }
+    for (const toStage of ["closed", "cancelled", ""]) {
+      const result = restoreOrderSchema.safeParse({ orderId, toStage, reason: "Cancelled by mistake" });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe("Pick a stage to restore to.");
+    }
   });
 });
 

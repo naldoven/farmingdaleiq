@@ -1,3 +1,5 @@
+import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
+
 /**
  * Parser for CFA catering order notification emails (the "Incoming Catering
  * Order: Pickup/Delivery Order Received for (NNNNN)" emails the store's FSU
@@ -273,5 +275,7 @@ export function composeDiscordSummary(parsed: ParsedCateringEmail): string {
   if (parsed.paperGoods) money.push("Paper goods: yes");
   if (money.length > 0) lines.push(money.join(" | "));
   if (parsed.specialInstructions) lines.push(`Note: ${parsed.specialInstructions}`);
-  return lines.join("\n");
+  // Guest name, items, and special instructions come straight from the
+  // customer's order; a "@everyone" in any of them must not ping the server.
+  return neutralizeDiscordMentions(lines.join("\n"));
 }

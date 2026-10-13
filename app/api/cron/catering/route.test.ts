@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+import { PRE_ORDER_CHECKLIST_ITEMS } from "@/app/(app)/catering/logic";
+
 type QueryResponse = { data: unknown; error: { message: string } | null };
 
 let queryResponse: QueryResponse;
@@ -8,9 +10,19 @@ let setupQueryResponse: QueryResponse;
 let updateResponse: QueryResponse;
 let setupOrderItemsResponse: QueryResponse;
 let setupUpdateResponses: QueryResponse[];
+/** Confirmation Call rows (order_id, done) the cron's call check reads. */
+let callItemsResponse: QueryResponse;
+/** Pre-order labels an order already has, keyed by order id. */
+let existingOutLabels: Record<string, string[]>;
 const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, string]> }> = [];
 const events: Array<Record<string, unknown>> = [];
 const inserts: Array<{ table: string; values: unknown }> = [];
+const setupCandidateFilters: Array<[string, unknown]> = [];
+/** Answer to "does this build still hold its claim?" just before it writes. */
+let claimRecheckResponse: QueryResponse;
+/** Ordered writes to catering_checklist_items, to check delete-then-insert. */
+const checklistWrites: Array<{ op: "delete" | "insert"; filters: Array<[string, unknown]> }> = [];
+const callCheckFilters: Array<[string, unknown]> = [];
 
 function createFakeAdmin() {
   return {
@@ -19,7 +31,6 @@ function createFakeAdmin() {
         const filters: Array<[string, string]> = [];
         const query: Record<string, unknown> = {};
         let selectsSetupCandidates = false;
-        const chain = () => query;
         query.select = (columns: string) => {
           selectsSetupCandidates = columns.includes("setup_generated_at");
           return query;
@@ -28,11 +39,15 @@ function createFakeAdmin() {
           filters.push([column, value]);
           return query;
         };
-        query.in = chain;
-        query.neq = chain;
+        query.in = (column: string, values: unknown) => {
+          if (selectsSetupCandidates) setupCandidateFilters.push([column, values]);
+          return query;
+        };
+        query.neq = () => query;
         query.is = () =>
           selectsSetupCandidates ? Promise.resolve(setupQueryResponse) : query;
         query.lte = () => Promise.resolve(queryResponse);
+        query.maybeSingle = () => Promise.resolve(claimRecheckResponse);
         query.update = (values: Record<string, unknown>) => {
           updates.push({ values, filters });
           const update: Record<string, unknown> = {};
@@ -63,8 +78,54 @@ function createFakeAdmin() {
 
       if (table === "catering_checklist_items") {
         return {
+          // Two reads: the batched call check (select "order_id, done") and
+          // the per-order Pre-order label lookup (select "label").
+          select: (columns: string) => {
+            const filters: Array<[string, unknown]> = [];
+            const query: Record<string, unknown> = {};
+            query.in = (column: string, values: unknown) => {
+              filters.push([column, values]);
+              return query;
+            };
+            query.eq = (column: string, value: unknown) => {
+              filters.push([column, value]);
+              return query;
+            };
+            query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+              let response: QueryResponse;
+              if (columns.startsWith("order_id")) {
+                callCheckFilters.push(...filters);
+                response = callItemsResponse;
+              } else {
+                const orderId = filters.find(([column]) => column === "order_id")?.[1] as string;
+                response = {
+                  data: (existingOutLabels[orderId] ?? []).map((label) => ({ label })),
+                  error: null,
+                };
+              }
+              return Promise.resolve(response).then(resolve, reject);
+            };
+            return query;
+          },
+          delete: () => {
+            const filters: Array<[string, unknown]> = [];
+            checklistWrites.push({ op: "delete", filters });
+            const query: Record<string, unknown> = {};
+            query.eq = (column: string, value: unknown) => {
+              filters.push([column, value]);
+              return query;
+            };
+            query.not = (column: string, operator: string, value: unknown) => {
+              filters.push([`not.${column}.${operator}`, value]);
+              return query;
+            };
+            query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+              Promise.resolve({ error: null }).then(resolve, reject);
+            return query;
+          },
           insert: (values: unknown) => {
             inserts.push({ table, values });
+            checklistWrites.push({ op: "insert", filters: [] });
             return Promise.resolve({ error: null });
           },
         };
@@ -98,17 +159,49 @@ function makeRequest(authHeader?: string): NextRequest {
   return new NextRequest("https://example.test/api/cron/catering", { headers });
 }
 
+function setupCandidate(fields: Record<string, unknown>) {
+  return {
+    id: "setup-order",
+    stage: "confirm",
+    guest_name: "Catering Guest",
+    event_date: "2026-08-21",
+    setup_generated_at: null,
+    // Created and last moved well before the build window opened.
+    created_at: "2026-08-10T15:00:00.000Z",
+    stage_changed_at: "2026-08-10T15:00:00.000Z",
+    headcount: 20,
+    paper_goods: true,
+    fulfillment: "delivery",
+    notes: "Items:\n- 1x Small Hot Chick-fil-A Nuggets Tray\n- 1x 8oz Chick-fil-A Sauce",
+    selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 1 }],
+    ...fields,
+  };
+}
+
+function insertedRows(): Array<Record<string, unknown>> {
+  return inserts
+    .filter((insert) => insert.table === "catering_checklist_items")
+    .flatMap((insert) => insert.values as Array<Record<string, unknown>>);
+}
+
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
   queryResponse = { data: [], error: null };
   setupQueryResponse = { data: [], error: null };
   updateResponse = { data: [], error: null };
+  callItemsResponse = { data: [], error: null };
+  existingOutLabels = {};
   updates.length = 0;
   events.length = 0;
   inserts.length = 0;
+  setupCandidateFilters.length = 0;
+  checklistWrites.length = 0;
+  claimRecheckResponse = { data: { id: "setup-order" }, error: null };
+  callCheckFilters.length = 0;
   setupOrderItemsResponse = { data: [], error: null };
   setupUpdateResponses = [];
   vi.useFakeTimers();
+  // 2026-08-20 14:00 New York: today is 08-20, tomorrow is 08-21.
   vi.setSystemTime(new Date("2026-08-20T18:00:00.000Z"));
 });
 
@@ -147,21 +240,12 @@ describe("catering cron route", () => {
     expect(events[0].event_key).toBe("catering_stage_change");
   });
 
-  it("builds the day-before setup from exact receipt condiments and moves it to FOH Setup", async () => {
-    setupQueryResponse = {
+  it("builds the day-before setup from exact receipt condiments and moves a confirmed order to FOH Setup", async () => {
+    setupQueryResponse = { data: [setupCandidate({})], error: null };
+    callItemsResponse = {
       data: [
-        {
-          id: "setup-order",
-          stage: "confirm",
-          guest_name: "Catering Guest",
-          event_date: "2026-08-21",
-          setup_generated_at: null,
-          headcount: 20,
-          paper_goods: true,
-          fulfillment: "delivery",
-          notes: "Items:\n- 1x Small Hot Chick-fil-A Nuggets Tray\n- 1x 8oz Chick-fil-A Sauce",
-          selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 1 }],
-        },
+        { order_id: "setup-order", done: true },
+        { order_id: "setup-order", done: true },
       ],
       error: null,
     };
@@ -174,12 +258,165 @@ describe("catering cron route", () => {
     expect(res.status).toBe(200);
     expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
     expect(updates.some((update) => update.values.stage === "setup")).toBe(true);
-    const setupInsert = inserts.find((insert) => insert.table === "catering_checklist_items")?.values as Array<Record<string, unknown>>;
-    expect(setupInsert).toContainEqual(expect.objectContaining({
+    expect(insertedRows()).toContainEqual(expect.objectContaining({
       setup_section: "sauces_dressings",
       label: "8oz Chick-fil-A Sauce - 1",
     }));
-    expect(setupInsert.some((item) => item.setup_section === "food")).toBe(false);
+    expect(insertedRows().some((item) => item.setup_section === "food")).toBe(false);
+    // The call check reads every Confirmation Call row for the candidates.
+    expect(callCheckFilters).toEqual([
+      ["order_id", ["setup-order"]],
+      ["stage", "confirm"],
+    ]);
     expect(events).toContainEqual(expect.objectContaining({ event_key: "catering_stage_change" }));
+    const payload = events[0].payload as Record<string, unknown>;
+    expect(payload).toMatchObject({ fromStage: "confirm", toStage: "setup" });
+    expect(payload.message).toContain("2026-08-21");
+  });
+
+  it("builds the packing list for an order whose call is not done but leaves it where it is", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "new" })], error: null };
+    callItemsResponse = {
+      data: [
+        { order_id: "setup-order", done: true },
+        { order_id: "setup-order", done: false },
+      ],
+      error: null,
+    };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
+    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(insertedRows().filter((item) => item.stage === "out")).toHaveLength(PRE_ORDER_CHECKLIST_ITEMS.length);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("builds the list but does not undo a manager's move back after an edit wiped it", async () => {
+    // The manager moved it back to Confirmation Call at 11:00 New York on the
+    // day before, then an edit cleared the list. The call is fully ticked.
+    setupQueryResponse = {
+      data: [setupCandidate({ stage: "confirm", stage_changed_at: "2026-08-20T15:00:00.000Z" })],
+      error: null,
+    };
+    callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
+    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("does not move an order that has no Confirmation Call items", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "new" })], error: null };
+    callItemsResponse = { data: [], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(insertedRows().length).toBeGreaterThan(0);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips an order created under two minutes ago: no build, no move", async () => {
+    setupQueryResponse = {
+      data: [
+        setupCandidate({
+          stage: "new",
+          created_at: "2026-08-20T17:59:00.000Z",
+          stage_changed_at: "2026-08-20T17:59:00.000Z",
+        }),
+      ],
+      error: null,
+    };
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
+    expect(callCheckFilters).toHaveLength(0);
+  });
+
+  it("replaces a stale list: deletes the generated rows inside the claimed build, then inserts", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(checklistWrites.map((write) => write.op)).toEqual(["delete", "insert"]);
+    expect(checklistWrites[0].filters).toEqual([
+      ["order_id", "setup-order"],
+      ["not.setup_section.is", null],
+    ]);
+  });
+
+  it("writes nothing when an edit or a manual Refresh took the claim mid-build", async () => {
+    setupQueryResponse = { data: [setupCandidate({})], error: null };
+    callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+    claimRecheckResponse = { data: null, error: null };
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(checklistWrites).toEqual([]);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("builds a missing packing list on the event day, for same-day orders", async () => {
+    setupQueryResponse = {
+      data: [setupCandidate({ id: "same-day-order", stage: "setup", event_date: "2026-08-20" })],
+      error: null,
+    };
+    setupUpdateResponses = [{ data: { id: "same-day-order" }, error: null }];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    // Candidates come from today and tomorrow, in the store's time zone.
+    expect(setupCandidateFilters).toContainEqual(["event_date", ["2026-08-20", "2026-08-21"]]);
+    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
+    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    // Already in FOH Setup, so no move and no call check for it.
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(callCheckFilters).toHaveLength(0);
+  });
+
+  it("does not add Pre-order items again when rebuilding a list wiped by an edit", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+    existingOutLabels = { "setup-order": [...PRE_ORDER_CHECKLIST_ITEMS] };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(insertedRows().filter((item) => item.stage === "out")).toEqual([]);
+  });
+
+  it("adds only the Pre-order items an order is missing", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+    existingOutLabels = { "setup-order": [PRE_ORDER_CHECKLIST_ITEMS[0]] };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(insertedRows().filter((item) => item.stage === "out").map((item) => item.label)).toEqual([
+      PRE_ORDER_CHECKLIST_ITEMS[1],
+      PRE_ORDER_CHECKLIST_ITEMS[2],
+    ]);
+  });
+
+  it("moves nothing when the call check cannot be read, but still builds the list", async () => {
+    setupQueryResponse = { data: [setupCandidate({})], error: null };
+    callItemsResponse = { data: null, error: { message: "read failed" } };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.errors).toEqual(["confirmation calls: read failed"]);
+    expect(insertedRows().length).toBeGreaterThan(0);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
   });
 });

@@ -176,6 +176,18 @@ describe("composeDiscordSummary", () => {
     const parsed = parseCateringEmail({ subject: "weird", body: "garbage" });
     expect(composeDiscordSummary(parsed)).toContain("NEEDS REVIEW");
   });
+
+  it("never lets customer text ping the Discord server", () => {
+    const parsed = parseCateringEmail({ subject: SUBJECT, body: BODY });
+    if (!parsed.ok) throw new Error("sample email should parse");
+    const message = composeDiscordSummary({
+      ...parsed,
+      guestName: "@everyone",
+      specialInstructions: "call @here or <@123>",
+    });
+    expect(message).not.toMatch(/@everyone|@here|<@\d/);
+    expect(message).toContain("everyone");
+  });
 });
 
 /**

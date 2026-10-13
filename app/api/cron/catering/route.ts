@@ -4,25 +4,39 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   FULFILLMENT_METHODS,
   buildPhysicalOrderSetup,
+  canCronMoveToSetup,
   formatStageChangeMessage,
   isCateringFollowUpDue,
   isCateringSetupDue,
+  isNewOrderSettling,
   parseOrderItemsFromNotes,
   parseRequestedCondiments,
-  planPreOrderChecklist,
+  planMissingPreOrderChecklist,
 } from "@/app/(app)/catering/logic";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
 
 /**
- * Builds physical setups on the Farmingdale calendar day before the event,
- * then advances orders through Pickup/Delivery -> Follow-up once the event
- * time arrives. Vercel invokes this every minute, so neither workflow needs
- * someone to have the app open.
+ * Builds physical setups on the Farmingdale calendar day before the event
+ * (and on the event day when the list is still missing, for same-day orders
+ * or a list wiped by an edit), then advances orders through Pickup/Delivery
+ * -> Follow-up once the event time arrives. Vercel invokes this every minute,
+ * so neither workflow needs someone to have the app open.
  *
- * Each day-before setup is claimed by `setup_generated_at`, then the stage
- * transition is guarded by its prior value. A cancellation or manual move can
- * therefore win without being overwritten by this background job.
+ * Each setup is claimed by `setup_generated_at`, then the stage transition is
+ * guarded by its prior value. A cancellation or manual move can therefore win
+ * without being overwritten by this background job. Like the manual build
+ * (actions.ts materializePhysicalOrderSetup), a build checks it still holds
+ * the claim and then replaces the order's generated rows instead of adding to
+ * them, so an edit or Refresh in the middle of a build cannot leave two lists.
+ *
+ * The job only moves an order to FOH Setup when its Confirmation Call
+ * checklist exists and is fully ticked, and nobody has moved the order's
+ * stage since its build window opened (logic.ts canCronMoveToSetup).
+ * Otherwise the order keeps its packing list but stays where it is for a
+ * leader to move by hand, and the board shows "Call not done" while the call
+ * is open (logic.ts isConfirmationCallLate). Orders younger than two minutes
+ * are skipped entirely: their items and checklists may still be inserting.
  */
 
 function isAuthorized(request: NextRequest): boolean {
@@ -50,9 +64,11 @@ async function materializeDueSetup(
     notes: string | null;
     selected_condiments: unknown;
   },
-  now: Date,
+  moveToSetup: boolean,
 ): Promise<{ generated: boolean; movedToSetup: boolean; error?: string }> {
-  const generatedAt = now.toISOString();
+  // Stamped at the claim itself, not the start of the run: the FOH Setup
+  // gate (logic.ts packingListGateError) times its wait from this stamp.
+  const generatedAt = new Date().toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("catering_orders")
     .update({ setup_generated_at: generatedAt })
@@ -104,6 +120,46 @@ async function materializeDueSetup(
     paperGoods: order.paper_goods,
     fulfillment: order.fulfillment,
   });
+
+  // An edit or a manual Refresh may have taken the claim while this build
+  // read the order. The newer build owns the list, so stop without writing.
+  const { data: stillClaimed, error: recheckError } = await supabase
+    .from("catering_orders")
+    .select("id")
+    .eq("id", order.id)
+    .eq("setup_generated_at", generatedAt)
+    .maybeSingle();
+  if (recheckError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: recheckError.message };
+  }
+  if (!stillClaimed) return { generated: false, movedToSetup: false };
+
+  // Replace, never append: drop any generated rows a stale build left behind.
+  // Hand-added FOH Setup rows and Pre-order rows carry no setup_section.
+  const { error: clearError } = await supabase
+    .from("catering_checklist_items")
+    .delete()
+    .eq("order_id", order.id)
+    .not("setup_section", "is", null);
+  if (clearError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: clearError.message };
+  }
+
+  // An edit wipes only the packing list rows, so the Pre-order rows from the
+  // first build are still there when the list is rebuilt. Add only the ones
+  // that are missing.
+  const { data: existingPreOrder, error: existingPreOrderError } = await supabase
+    .from("catering_checklist_items")
+    .select("label")
+    .eq("order_id", order.id)
+    .eq("stage", "out");
+  if (existingPreOrderError) {
+    await releaseClaim();
+    return { generated: false, movedToSetup: false, error: existingPreOrderError.message };
+  }
+
   const { error: insertError } = await supabase.from("catering_checklist_items").insert([
     ...setupItems.map((item, index) => ({
       order_id: order.id,
@@ -112,7 +168,7 @@ async function materializeDueSetup(
       setup_section: item.section,
       sort: 1000 + index,
     })),
-    ...planPreOrderChecklist().map((item) => ({
+    ...planMissingPreOrderChecklist((existingPreOrder ?? []).map((item) => item.label)).map((item) => ({
       order_id: order.id,
       stage: item.stage,
       label: item.label,
@@ -124,7 +180,7 @@ async function materializeDueSetup(
     return { generated: false, movedToSetup: false, error: insertError.message };
   }
 
-  if (order.stage === "setup") return { generated: true, movedToSetup: false };
+  if (!moveToSetup) return { generated: true, movedToSetup: false };
 
   const { data: moved, error: moveError } = await supabase
     .from("catering_orders")
@@ -144,23 +200,56 @@ async function run(request: NextRequest) {
 
   const supabase = createServiceRoleClient();
   const now = new Date();
-  const tomorrow = addStoreCalendarDays(storeLocalDate(now), 1);
+  const today = storeLocalDate(now);
+  const tomorrow = addStoreCalendarDays(today, 1);
 
   const { data: setupCandidates, error: setupFetchError } = await supabase
     .from("catering_orders")
-    .select("id, stage, guest_name, event_date, setup_generated_at, headcount, paper_goods, fulfillment, notes, selected_condiments")
-    .eq("event_date", tomorrow)
+    .select(
+      "id, stage, guest_name, event_date, setup_generated_at, stage_changed_at, created_at, headcount, paper_goods, fulfillment, notes, selected_condiments",
+    )
+    .in("event_date", [today, tomorrow])
     .in("stage", ["new", "confirm", "setup"])
     .is("setup_generated_at", null);
   if (setupFetchError) {
     return NextResponse.json({ error: setupFetchError.message }, { status: 500 });
   }
 
+  const dueSetups = (setupCandidates ?? []).filter(
+    (candidate) => isCateringSetupDue(candidate, now) && !isNewOrderSettling(candidate.created_at, now),
+  );
+  const errors: string[] = [];
+
+  // Every Confirmation Call item for the candidates still before FOH Setup,
+  // in one query rather than one per order. canCronMoveToSetup decides.
+  const callItemsByOrder = new Map<string, { done: boolean }[]>();
+  let callItemsReadable = true;
+  const awaitingCall = dueSetups.filter((order) => order.stage !== "setup").map((order) => order.id);
+  if (awaitingCall.length > 0) {
+    const { data: callItems, error: callFetchError } = await supabase
+      .from("catering_checklist_items")
+      .select("order_id, done")
+      .in("order_id", awaitingCall)
+      .eq("stage", "confirm");
+    if (callFetchError) {
+      // Fail safe: still build the packing lists, but move nothing when the
+      // call status cannot be read. A leader can move a confirmed order.
+      errors.push(`confirmation calls: ${callFetchError.message}`);
+      callItemsReadable = false;
+    }
+    for (const item of callItems ?? []) {
+      const list = callItemsByOrder.get(item.order_id) ?? [];
+      list.push({ done: item.done });
+      callItemsByOrder.set(item.order_id, list);
+    }
+  }
+
   let generated = 0;
   const setupOrderIds: string[] = [];
-  const errors: string[] = [];
-  for (const order of (setupCandidates ?? []).filter((candidate) => isCateringSetupDue(candidate, now))) {
-    const result = await materializeDueSetup(supabase, order, now);
+  for (const order of dueSetups) {
+    const moveToSetup =
+      callItemsReadable && canCronMoveToSetup(order, callItemsByOrder.get(order.id) ?? []);
+    const result = await materializeDueSetup(supabase, order, moveToSetup);
     if (result.error) {
       errors.push(`${order.id}: ${result.error}`);
     } else if (result.generated) {
@@ -175,7 +264,7 @@ async function run(request: NextRequest) {
             toStage: "setup",
             message: formatStageChangeMessage({
               guestName: order.guest_name,
-              eventDate: tomorrow,
+              eventDate: order.event_date,
               fromStage: order.stage as "new" | "confirm",
               toStage: "setup",
             }),

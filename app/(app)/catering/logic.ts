@@ -1,5 +1,7 @@
+import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
   addStoreCalendarDays,
+  formatStoreTime,
   storeDateTimeInputToIso,
   storeLocalDate as getStoreLocalDate,
 } from "@/lib/time";
@@ -63,6 +65,69 @@ export const ORDER_STAGE_LABELS: Record<OrderStage, string> = {
   cancelled: "Cancelled",
 };
 
+export type FlowStage = (typeof ORDER_STAGES)[number];
+
+/** The one stage a leader may move an order to next, or null at the end of the flow. */
+export function nextCateringStage(stage: string): FlowStage | null {
+  const index = ORDER_STAGES.indexOf(stage as FlowStage);
+  if (index === -1) return null;
+  return ORDER_STAGES[index + 1] ?? null;
+}
+
+/**
+ * The stage a manager's "Move back one step" lands on. `new` has nothing
+ * before it, and a cancelled order goes through Restore instead, so both
+ * return null.
+ */
+export function previousCateringStage(stage: string): FlowStage | null {
+  const index = ORDER_STAGES.indexOf(stage as FlowStage);
+  if (index <= 0) return null;
+  return ORDER_STAGES[index - 1];
+}
+
+/**
+ * The staff pipeline is deliberately forward-only. Letting a card jump from
+ * New straight to dispatch makes the board look complete while the
+ * confirmation and packing work was never done. Cancellations keep their
+ * dedicated action, available from every active stage; moving back and
+ * restoring are manager overrides (catering.override) with their own actions.
+ */
+export function cateringStageAdvanceError(fromStage: string, toStage: OrderStage): string | null {
+  if (fromStage === "closed") return "This order is closed and cannot move forward.";
+
+  const next = nextCateringStage(fromStage);
+  if (!next) return "Cancelled orders cannot return to the active pipeline.";
+  if (toStage !== next) return `Move this order to ${ORDER_STAGE_LABELS[next]} next.`;
+
+  return null;
+}
+
+/**
+ * Stages a manager can restore a cancelled order to. Closed is left out on
+ * purpose: closing is what queues the re-book follow-up call, so a restored
+ * order goes back to Follow-up at the latest and is closed through the normal
+ * move, which keeps that one follow-up rule in a single place.
+ */
+export const RESTORE_STAGES = ["new", "confirm", "setup", "out", "followup"] as const;
+export type RestoreStage = (typeof RESTORE_STAGES)[number];
+
+/**
+ * The every-minute cron moves Pickup/Delivery orders to Follow-up once their
+ * event time passes (isCateringFollowUpDue). A manager override that lands an
+ * order on Pickup/Delivery after that time would be undone a minute later, so
+ * it is refused with a reason instead of looking like it silently failed.
+ */
+export function stageOverrideTargetError(
+  order: { event_date: string; event_time: string | null },
+  toStage: OrderStage,
+  now: Date = new Date(),
+): string | null {
+  if (toStage === "out" && isCateringFollowUpDue({ ...order, stage: "out" }, now)) {
+    return "The event time has passed, so this order would go straight back to Follow-up.";
+  }
+  return null;
+}
+
 /**
  * Stages excluded from every money/analytics rollup: `new` (unconfirmed, not
  * real spend yet) and `cancelled` (CAT1 — a cancelled order must never count
@@ -92,6 +157,54 @@ export const CHECKLIST_STAGE_LABELS: Record<ChecklistStage, string> = {
   out: "Pre-order checklist",
 };
 
+/** The checklist that must be complete before each operational handoff. */
+export function checklistRequiredBeforeStageAdvance(fromStage: string): ChecklistStage | null {
+  if (fromStage === "confirm") return "confirm";
+  if (fromStage === "setup") return "setup";
+  if (fromStage === "out") return "out";
+  return null;
+}
+
+/**
+ * Leaving FOH Setup also needs the packing list itself. Until the day before
+ * the event an order has zero setup rows, so the "no undone item" check alone
+ * passed and an order could leave FOH Setup before its list was ever built.
+ */
+export const PACKING_LIST_NOT_BUILT_ERROR =
+  "No packing list yet. It is built the day before the event, or you can build it on the order page on the event day.";
+
+/**
+ * A build stamps setup_generated_at when it claims the order, a moment before
+ * its rows are inserted, so a fresh stamp can sit beside an empty list. A row
+ * count cannot tell "still building" from "built, nothing to pack": an order
+ * with no paper goods, drinks, sauces or trays legitimately builds zero setup
+ * rows, and the Pre-order items live on the Pickup/Delivery checklist. So the
+ * gate waits until the stamp is older than any build takes. A small list can
+ * be packed inside that window (for example a 4-item rebuild after an
+ * event-day edit), so the refusal names the exact time the move opens rather
+ * than a vague "try again". Every rebuild restarts the wait.
+ */
+export const SETUP_BUILD_SETTLE_MS = 2 * 60 * 1000;
+
+/** Fallback when the stamp cannot be read, so no time can be named. */
+export const PACKING_LIST_BUILDING_ERROR =
+  "The packing list was just rebuilt. Wait two minutes, then move this order on.";
+
+/** Why an order cannot leave FOH Setup yet because of its packing list, or null. */
+export function packingListGateError(
+  setupGeneratedAt: string | null,
+  now: Date = new Date(),
+): string | null {
+  if (!setupGeneratedAt) return PACKING_LIST_NOT_BUILT_ERROR;
+  const stamped = new Date(setupGeneratedAt).getTime();
+  if (Number.isNaN(stamped)) return PACKING_LIST_BUILDING_ERROR;
+  const readyAt = stamped + SETUP_BUILD_SETTLE_MS;
+  if (now.getTime() < readyAt) {
+    return `The packing list was rebuilt at ${formatStoreTime(new Date(stamped))}. You can move this order on at ${formatStoreTime(new Date(readyAt))}.`;
+  }
+  return null;
+}
+
 export const PRE_ORDER_CHECKLIST_ITEMS = [
   "Compare packed items to the receipt",
   "Verify sauces and special instructions",
@@ -105,6 +218,17 @@ export function planPreOrderChecklist(): PlannedChecklistItem[] {
     label,
     sort: 900 + index,
   }));
+}
+
+/**
+ * The Pre-order items an order is still missing. Editing an order wipes and
+ * rebuilds only the packing list (rows with a setup_section), so the
+ * Pre-order rows survive the edit; adding all three again on every rebuild
+ * is what duplicated them.
+ */
+export function planMissingPreOrderChecklist(existingLabels: readonly string[]): PlannedChecklistItem[] {
+  const existing = new Set(existingLabels.map((label) => label.trim().toLowerCase()));
+  return planPreOrderChecklist().filter((item) => !existing.has(item.label.toLowerCase()));
 }
 
 export const FULFILLMENT_METHODS = ["pickup", "delivery"] as const;
@@ -135,16 +259,122 @@ export function isCateringSetupDay(eventDate: string, now: Date = new Date()): b
   return eventDate === addStoreCalendarDays(getStoreLocalDate(now), 1);
 }
 
-/** Generates a packing setup at most once, on the day-before setup date. */
+/**
+ * The store days the cron builds a missing packing list: the day before the
+ * event, and the event day itself. The event day covers same-day orders
+ * (created after the day-before run) and a list wiped by an edit that morning.
+ */
+export function isCateringSetupWindow(eventDate: string, now: Date = new Date()): boolean {
+  const today = getStoreLocalDate(now);
+  return eventDate === today || eventDate === addStoreCalendarDays(today, 1);
+}
+
+/**
+ * Whether a leader may build the packing list by hand. The day-before rule
+ * exists so the list is not built from a receipt that can still change, so
+ * only "too early" is refused. Past events are allowed: an order stuck in FOH
+ * Setup without a list could otherwise never leave it.
+ */
+export function canBuildCateringSetup(eventDate: string, now: Date = new Date()): boolean {
+  return eventDate <= addStoreCalendarDays(getStoreLocalDate(now), 1);
+}
+
+/**
+ * Stages whose packing list may be built or rebuilt, by hand or by the cron
+ * (the cron also stops at FOH Setup). Listed, not "everything but X", so a
+ * stage added later is refused until someone decides it belongs here.
+ */
+export const SETUP_BUILD_STAGES = ["new", "confirm", "setup", "out"] as const;
+const CRON_SETUP_STAGES = ["new", "confirm", "setup"] as const;
+
+export function isSetupBuildStage(stage: string): boolean {
+  return (SETUP_BUILD_STAGES as readonly string[]).includes(stage);
+}
+
+/** Generates a packing setup at most once, on the day before or the event day. */
 export function isCateringSetupDue(
   order: { stage: string; event_date: string; setup_generated_at: string | null },
   now: Date = new Date(),
 ): boolean {
   return (
-    order.stage !== CANCELLED_STAGE &&
-    order.stage !== "closed" &&
+    (CRON_SETUP_STAGES as readonly string[]).includes(order.stage) &&
     !order.setup_generated_at &&
-    isCateringSetupDay(order.event_date, now)
+    isCateringSetupWindow(order.event_date, now)
+  );
+}
+
+/**
+ * The order row is inserted before its items and checklists (createOrder and
+ * the inbound email route), so for a moment it looks like an order with no
+ * call items and no menu. The cron leaves an order alone until it is this
+ * old, so it never builds an empty list or reads a missing call as done.
+ */
+export const NEW_ORDER_SETTLE_MS = 2 * 60 * 1000;
+
+export function isNewOrderSettling(createdAt: string, now: Date = new Date()): boolean {
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return now.getTime() - created < NEW_ORDER_SETTLE_MS;
+}
+
+/**
+ * The call counts as done only when the order has Confirmation Call items
+ * and every one is ticked. Zero items is "not done": it is what a half
+ * created order looks like, and an order with no call list was never called
+ * as far as the app knows.
+ */
+export function isConfirmationCallDone(callItems: readonly { done: boolean }[]): boolean {
+  return callItems.length > 0 && callItems.every((item) => item.done);
+}
+
+/**
+ * Whether a person moved the order's stage during its build window, which
+ * starts at midnight (store time) on the day before the event. A manager's
+ * move back or restore, or a leader's own move, means a person is steering
+ * this order, so the cron must not move it to FOH Setup on top of them.
+ */
+export function isStageTouchedInSetupWindow(order: {
+  event_date: string;
+  stage_changed_at: string | null;
+}): boolean {
+  if (!order.stage_changed_at) return false;
+  const windowStart = storeDateTimeInputToIso(`${addStoreCalendarDays(order.event_date, -1)}T00:00`);
+  if (!windowStart) return false;
+  return new Date(order.stage_changed_at).getTime() >= new Date(windowStart).getTime();
+}
+
+/**
+ * The cron's one rule for moving an order to FOH Setup after building its
+ * list: still in New or Confirmation Call, the call is done (positive gate,
+ * see isConfirmationCallDone), and nobody has moved its stage since the
+ * build window opened.
+ */
+export function canCronMoveToSetup(
+  order: { stage: string; event_date: string; stage_changed_at: string | null },
+  callItems: readonly { done: boolean }[],
+): boolean {
+  return (
+    (order.stage === "new" || order.stage === "confirm") &&
+    isConfirmationCallDone(callItems) &&
+    !isStageTouchedInSetupWindow(order)
+  );
+}
+
+/**
+ * "Call not done" badge: the order is still in New or Confirmation Call, its
+ * event is tomorrow, today, or already past, and the call is not done (an
+ * undone call item, or no call items at all). Past events stay flagged
+ * because the call is still missing. Shown without a schema change.
+ */
+export function isConfirmationCallLate(
+  order: { stage: string; event_date: string },
+  callItems: readonly { done: boolean }[],
+  now: Date = new Date(),
+): boolean {
+  return (
+    (order.stage === "new" || order.stage === "confirm") &&
+    order.event_date <= addStoreCalendarDays(getStoreLocalDate(now), 1) &&
+    !isConfirmationCallDone(callItems)
   );
 }
 
@@ -885,7 +1115,8 @@ export function formatOrderNewMessage(input: {
   headcount: number | null;
 }): string {
   const guests = input.headcount ? `, ${input.headcount} guests` : "";
-  return `${input.guestName} — ${input.eventDate}${guests}`;
+  // Guest names can arrive from an inbound customer email; never let one ping.
+  return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}${guests}`;
 }
 
 /**
@@ -898,5 +1129,25 @@ export function formatStageChangeMessage(input: {
   fromStage: OrderStage;
   toStage: OrderStage;
 }): string {
-  return `${input.guestName} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
+  return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
+}
+
+export type StageOverrideKind = "move_back" | "restore";
+
+/**
+ * Discord body for a manager override. Carries the reason so the catering
+ * channel shows why an order went backwards, not just that it did.
+ */
+export function formatStageOverrideMessage(input: {
+  guestName: string;
+  eventDate: string;
+  fromStage: OrderStage;
+  toStage: OrderStage;
+  kind: StageOverrideKind;
+  reason: string;
+}): string {
+  const action = input.kind === "move_back" ? "Moved back" : "Restored";
+  // formatStageChangeMessage already neutralizes the guest name; the reason is
+  // free text typed by a manager, so it gets the same treatment here.
+  return `${formatStageChangeMessage(input)}. ${action} by a manager: ${neutralizeDiscordMentions(input.reason)}`;
 }
