@@ -10,8 +10,8 @@ let setupQueryResponse: QueryResponse;
 let updateResponse: QueryResponse;
 let setupOrderItemsResponse: QueryResponse;
 let setupUpdateResponses: QueryResponse[];
-/** Undone Confirmation Call items the cron's call check reads. */
-let undoneCallItemsResponse: QueryResponse;
+/** Confirmation Call rows (order_id, done) the cron's call check reads. */
+let callItemsResponse: QueryResponse;
 /** Pre-order labels an order already has, keyed by order id. */
 let existingOutLabels: Record<string, string[]>;
 const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, string]> }> = [];
@@ -73,8 +73,8 @@ function createFakeAdmin() {
 
       if (table === "catering_checklist_items") {
         return {
-          // Two reads: the batched call check (select "order_id") and the
-          // per-order Pre-order label lookup (select "label").
+          // Two reads: the batched call check (select "order_id, done") and
+          // the per-order Pre-order label lookup (select "label").
           select: (columns: string) => {
             const filters: Array<[string, unknown]> = [];
             const query: Record<string, unknown> = {};
@@ -88,9 +88,9 @@ function createFakeAdmin() {
             };
             query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
               let response: QueryResponse;
-              if (columns === "order_id") {
+              if (columns.startsWith("order_id")) {
                 callCheckFilters.push(...filters);
-                response = undoneCallItemsResponse;
+                response = callItemsResponse;
               } else {
                 const orderId = filters.find(([column]) => column === "order_id")?.[1] as string;
                 response = {
@@ -144,6 +144,9 @@ function setupCandidate(fields: Record<string, unknown>) {
     guest_name: "Catering Guest",
     event_date: "2026-08-21",
     setup_generated_at: null,
+    // Created and last moved well before the build window opened.
+    created_at: "2026-08-10T15:00:00.000Z",
+    stage_changed_at: "2026-08-10T15:00:00.000Z",
     headcount: 20,
     paper_goods: true,
     fulfillment: "delivery",
@@ -164,7 +167,7 @@ beforeEach(() => {
   queryResponse = { data: [], error: null };
   setupQueryResponse = { data: [], error: null };
   updateResponse = { data: [], error: null };
-  undoneCallItemsResponse = { data: [], error: null };
+  callItemsResponse = { data: [], error: null };
   existingOutLabels = {};
   updates.length = 0;
   events.length = 0;
@@ -215,6 +218,13 @@ describe("catering cron route", () => {
 
   it("builds the day-before setup from exact receipt condiments and moves a confirmed order to FOH Setup", async () => {
     setupQueryResponse = { data: [setupCandidate({})], error: null };
+    callItemsResponse = {
+      data: [
+        { order_id: "setup-order", done: true },
+        { order_id: "setup-order", done: true },
+      ],
+      error: null,
+    };
     setupUpdateResponses = [
       { data: { id: "setup-order" }, error: null },
       { data: { id: "setup-order" }, error: null },
@@ -229,14 +239,11 @@ describe("catering cron route", () => {
       label: "8oz Chick-fil-A Sauce - 1",
     }));
     expect(insertedRows().some((item) => item.setup_section === "food")).toBe(false);
-    // The call check reads undone Confirmation Call items for the candidates.
-    expect(callCheckFilters).toEqual(
-      expect.arrayContaining([
-        ["order_id", ["setup-order"]],
-        ["stage", "confirm"],
-        ["done", false],
-      ]),
-    );
+    // The call check reads every Confirmation Call row for the candidates.
+    expect(callCheckFilters).toEqual([
+      ["order_id", ["setup-order"]],
+      ["stage", "confirm"],
+    ]);
     expect(events).toContainEqual(expect.objectContaining({ event_key: "catering_stage_change" }));
     const payload = events[0].payload as Record<string, unknown>;
     expect(payload).toMatchObject({ fromStage: "confirm", toStage: "setup" });
@@ -245,7 +252,13 @@ describe("catering cron route", () => {
 
   it("builds the packing list for an order whose call is not done but leaves it where it is", async () => {
     setupQueryResponse = { data: [setupCandidate({ stage: "new" })], error: null };
-    undoneCallItemsResponse = { data: [{ order_id: "setup-order" }], error: null };
+    callItemsResponse = {
+      data: [
+        { order_id: "setup-order", done: true },
+        { order_id: "setup-order", done: false },
+      ],
+      error: null,
+    };
     setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
@@ -255,6 +268,54 @@ describe("catering cron route", () => {
     expect(insertedRows().filter((item) => item.stage === "out")).toHaveLength(PRE_ORDER_CHECKLIST_ITEMS.length);
     expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
     expect(events).toHaveLength(0);
+  });
+
+  it("builds the list but does not undo a manager's move back after an edit wiped it", async () => {
+    // The manager moved it back to Confirmation Call at 11:00 New York on the
+    // day before, then an edit cleared the list. The call is fully ticked.
+    setupQueryResponse = {
+      data: [setupCandidate({ stage: "confirm", stage_changed_at: "2026-08-20T15:00:00.000Z" })],
+      error: null,
+    };
+    callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
+    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("does not move an order that has no Confirmation Call items", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "new" })], error: null };
+    callItemsResponse = { data: [], error: null };
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(insertedRows().length).toBeGreaterThan(0);
+    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips an order created under two minutes ago: no build, no move", async () => {
+    setupQueryResponse = {
+      data: [
+        setupCandidate({
+          stage: "new",
+          created_at: "2026-08-20T17:59:00.000Z",
+          stage_changed_at: "2026-08-20T17:59:00.000Z",
+        }),
+      ],
+      error: null,
+    };
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
+    expect(callCheckFilters).toHaveLength(0);
   });
 
   it("builds a missing packing list on the event day, for same-day orders", async () => {
@@ -299,7 +360,7 @@ describe("catering cron route", () => {
 
   it("moves nothing when the call check cannot be read, but still builds the list", async () => {
     setupQueryResponse = { data: [setupCandidate({})], error: null };
-    undoneCallItemsResponse = { data: null, error: { message: "read failed" } };
+    callItemsResponse = { data: null, error: { message: "read failed" } };
     setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));

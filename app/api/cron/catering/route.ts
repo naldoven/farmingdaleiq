@@ -4,9 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   FULFILLMENT_METHODS,
   buildPhysicalOrderSetup,
+  canCronMoveToSetup,
   formatStageChangeMessage,
   isCateringFollowUpDue,
   isCateringSetupDue,
+  isNewOrderSettling,
   parseOrderItemsFromNotes,
   parseRequestedCondiments,
   planMissingPreOrderChecklist,
@@ -26,9 +28,12 @@ import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
  * without being overwritten by this background job.
  *
  * The job only moves an order to FOH Setup when its Confirmation Call
- * checklist is complete, the same rule a leader's manual move must pass.
- * Otherwise the order keeps its packing list but stays where it is, and the
- * board shows it as "Call not done" (logic.ts isConfirmationCallLate).
+ * checklist exists and is fully ticked, and nobody has moved the order's
+ * stage since its build window opened (logic.ts canCronMoveToSetup).
+ * Otherwise the order keeps its packing list but stays where it is for a
+ * leader to move by hand, and the board shows "Call not done" while the call
+ * is open (logic.ts isConfirmationCallLate). Orders younger than two minutes
+ * are skipped entirely: their items and checklists may still be inserting.
  */
 
 function isAuthorized(request: NextRequest): boolean {
@@ -57,7 +62,7 @@ async function materializeDueSetup(
     selected_condiments: unknown;
   },
   now: Date,
-  confirmationCallDone: boolean,
+  moveToSetup: boolean,
 ): Promise<{ generated: boolean; movedToSetup: boolean; error?: string }> {
   const generatedAt = now.toISOString();
   const { data: claimed, error: claimError } = await supabase
@@ -145,7 +150,7 @@ async function materializeDueSetup(
     return { generated: false, movedToSetup: false, error: insertError.message };
   }
 
-  if (order.stage === "setup" || !confirmationCallDone) return { generated: true, movedToSetup: false };
+  if (!moveToSetup) return { generated: true, movedToSetup: false };
 
   const { data: moved, error: moveError } = await supabase
     .from("catering_orders")
@@ -170,7 +175,9 @@ async function run(request: NextRequest) {
 
   const { data: setupCandidates, error: setupFetchError } = await supabase
     .from("catering_orders")
-    .select("id, stage, guest_name, event_date, setup_generated_at, headcount, paper_goods, fulfillment, notes, selected_condiments")
+    .select(
+      "id, stage, guest_name, event_date, setup_generated_at, stage_changed_at, created_at, headcount, paper_goods, fulfillment, notes, selected_condiments",
+    )
     .in("event_date", [today, tomorrow])
     .in("stage", ["new", "confirm", "setup"])
     .is("setup_generated_at", null);
@@ -178,34 +185,41 @@ async function run(request: NextRequest) {
     return NextResponse.json({ error: setupFetchError.message }, { status: 500 });
   }
 
-  const dueSetups = (setupCandidates ?? []).filter((candidate) => isCateringSetupDue(candidate, now));
+  const dueSetups = (setupCandidates ?? []).filter(
+    (candidate) => isCateringSetupDue(candidate, now) && !isNewOrderSettling(candidate.created_at, now),
+  );
   const errors: string[] = [];
 
-  // Same rule as changeStage's guard before an order leaves Confirmation
-  // Call: the call is done when the order has no undone Confirmation Call
-  // item. One query for every candidate rather than one per order.
-  const callPendingIds = new Set<string>();
+  // Every Confirmation Call item for the candidates still before FOH Setup,
+  // in one query rather than one per order. canCronMoveToSetup decides.
+  const callItemsByOrder = new Map<string, { done: boolean }[]>();
+  let callItemsReadable = true;
   const awaitingCall = dueSetups.filter((order) => order.stage !== "setup").map((order) => order.id);
   if (awaitingCall.length > 0) {
-    const { data: undoneCallItems, error: callFetchError } = await supabase
+    const { data: callItems, error: callFetchError } = await supabase
       .from("catering_checklist_items")
-      .select("order_id")
+      .select("order_id, done")
       .in("order_id", awaitingCall)
-      .eq("stage", "confirm")
-      .eq("done", false);
+      .eq("stage", "confirm");
     if (callFetchError) {
       // Fail safe: still build the packing lists, but move nothing when the
       // call status cannot be read. A leader can move a confirmed order.
       errors.push(`confirmation calls: ${callFetchError.message}`);
-      for (const id of awaitingCall) callPendingIds.add(id);
+      callItemsReadable = false;
     }
-    for (const item of undoneCallItems ?? []) callPendingIds.add(item.order_id);
+    for (const item of callItems ?? []) {
+      const list = callItemsByOrder.get(item.order_id) ?? [];
+      list.push({ done: item.done });
+      callItemsByOrder.set(item.order_id, list);
+    }
   }
 
   let generated = 0;
   const setupOrderIds: string[] = [];
   for (const order of dueSetups) {
-    const result = await materializeDueSetup(supabase, order, now, !callPendingIds.has(order.id));
+    const moveToSetup =
+      callItemsReadable && canCronMoveToSetup(order, callItemsByOrder.get(order.id) ?? []);
+    const result = await materializeDueSetup(supabase, order, now, moveToSetup);
     if (result.error) {
       errors.push(`${order.id}: ${result.error}`);
     } else if (result.generated) {

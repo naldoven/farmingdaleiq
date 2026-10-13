@@ -54,20 +54,27 @@ export default async function CateringPipelinePage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  // Checklist completion per order drives each card's progress bar. Fetched
-  // as a second query (rather than joined into the first) since it only
-  // needs order ids, which the first query already resolved.
+  // Checklist completion per order drives each card's progress bar, and the
+  // Confirmation Call rows drive the "Call not done" badge. Fetched as one
+  // second query (rather than joined into the first) since it only needs
+  // order ids, which the first query already resolved.
   const orderIds = (orders ?? []).map((o) => o.id);
   const { data: checklistCounts } = orderIds.length
-    ? await supabase.from("catering_checklist_items").select("order_id, done").in("order_id", orderIds)
-    : { data: [] as { order_id: string; done: boolean }[] };
+    ? await supabase.from("catering_checklist_items").select("order_id, stage, done").in("order_id", orderIds)
+    : { data: [] as { order_id: string; stage: string; done: boolean }[] };
 
   const progressByOrder = new Map<string, { done: number; total: number }>();
+  const callItemsByOrder = new Map<string, { done: boolean }[]>();
   for (const row of checklistCounts ?? []) {
     const existing = progressByOrder.get(row.order_id) ?? { done: 0, total: 0 };
     existing.total += 1;
     if (row.done) existing.done += 1;
     progressByOrder.set(row.order_id, existing);
+    if (row.stage === "confirm") {
+      const callItems = callItemsByOrder.get(row.order_id) ?? [];
+      callItems.push({ done: row.done });
+      callItemsByOrder.set(row.order_id, callItems);
+    }
   }
 
   const now = new Date();
@@ -84,7 +91,7 @@ export default async function CateringPipelinePage() {
       stage: o.stage as OrderStage,
       checklistDone: progress?.done,
       checklistTotal: progress?.total,
-      callNotDone: isConfirmationCallLate(o, now),
+      callNotDone: isConfirmationCallLate(o, callItemsByOrder.get(o.id) ?? [], now),
     };
   });
 

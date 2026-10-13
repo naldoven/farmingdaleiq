@@ -4,6 +4,7 @@ import {
   computeAnalytics,
   buildPhysicalOrderSetup,
   canBuildCateringSetup,
+  canCronMoveToSetup,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
   computeContactRollups,
@@ -21,7 +22,11 @@ import {
   isCateringSetupDay,
   isCateringSetupDue,
   isCateringSetupWindow,
+  isConfirmationCallDone,
   isConfirmationCallLate,
+  isNewOrderSettling,
+  isSetupBuildStage,
+  isStageTouchedInSetupWindow,
   isoWeekKey,
   normalizePhone,
   parseComponents,
@@ -424,16 +429,75 @@ describe("canBuildCateringSetup", () => {
 describe("isConfirmationCallLate", () => {
   // 2026-08-20 13:00 New York.
   const now = new Date("2026-08-20T17:00:00.000Z");
+  const undone = [{ done: true }, { done: false }];
+  const ticked = [{ done: true }, { done: true }];
 
-  it("flags New and Confirmation Call orders whose event is today or tomorrow", () => {
-    expect(isConfirmationCallLate({ stage: "new", event_date: "2026-08-21" }, now)).toBe(true);
-    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-20" }, now)).toBe(true);
+  it("flags an open call when the event is tomorrow, today, or already past", () => {
+    expect(isConfirmationCallLate({ stage: "new", event_date: "2026-08-21" }, undone, now)).toBe(true);
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-20" }, undone, now)).toBe(true);
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-18" }, undone, now)).toBe(true);
   });
 
-  it("does not flag orders further out or already past the call", () => {
-    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-22" }, now)).toBe(false);
-    expect(isConfirmationCallLate({ stage: "setup", event_date: "2026-08-21" }, now)).toBe(false);
-    expect(isConfirmationCallLate({ stage: "cancelled", event_date: "2026-08-21" }, now)).toBe(false);
+  it("treats an order with no call items as a call not done", () => {
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-21" }, [], now)).toBe(true);
+  });
+
+  it("does not flag a ticked call", () => {
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-21" }, ticked, now)).toBe(false);
+  });
+
+  it("does not flag orders further out or past Confirmation Call", () => {
+    expect(isConfirmationCallLate({ stage: "confirm", event_date: "2026-08-22" }, undone, now)).toBe(false);
+    expect(isConfirmationCallLate({ stage: "setup", event_date: "2026-08-21" }, undone, now)).toBe(false);
+    expect(isConfirmationCallLate({ stage: "cancelled", event_date: "2026-08-21" }, undone, now)).toBe(false);
+  });
+});
+
+describe("cron move to FOH Setup", () => {
+  const order = { stage: "confirm", event_date: "2026-08-21", stage_changed_at: "2026-08-10T15:00:00.000Z" };
+  const ticked = [{ done: true }, { done: true }];
+
+  it("counts the call as done only when call items exist and all are ticked", () => {
+    expect(isConfirmationCallDone(ticked)).toBe(true);
+    expect(isConfirmationCallDone([])).toBe(false);
+    expect(isConfirmationCallDone([{ done: true }, { done: false }])).toBe(false);
+  });
+
+  it("moves a confirmed order nobody has moved since the build window opened", () => {
+    expect(canCronMoveToSetup(order, ticked)).toBe(true);
+    expect(canCronMoveToSetup({ ...order, stage: "new", stage_changed_at: null }, ticked)).toBe(true);
+  });
+
+  it("does not move an order with zero call items", () => {
+    expect(canCronMoveToSetup(order, [])).toBe(false);
+  });
+
+  it("does not move an order a person moved on or after midnight of the day before", () => {
+    // Window opens 2026-08-20 00:00 New York, which is 04:00 UTC in summer.
+    expect(isStageTouchedInSetupWindow({ ...order, stage_changed_at: "2026-08-20T03:59:59.000Z" })).toBe(false);
+    expect(isStageTouchedInSetupWindow({ ...order, stage_changed_at: "2026-08-20T04:00:00.000Z" })).toBe(true);
+    expect(canCronMoveToSetup({ ...order, stage_changed_at: "2026-08-20T15:00:00.000Z" }, ticked)).toBe(false);
+  });
+
+  it("never moves an order already past Confirmation Call", () => {
+    expect(canCronMoveToSetup({ ...order, stage: "setup" }, ticked)).toBe(false);
+  });
+});
+
+describe("isNewOrderSettling", () => {
+  const now = new Date("2026-08-20T17:00:00.000Z");
+
+  it("holds orders younger than two minutes and releases them after", () => {
+    expect(isNewOrderSettling("2026-08-20T16:58:30.000Z", now)).toBe(true);
+    expect(isNewOrderSettling("2026-08-20T16:58:00.000Z", now)).toBe(false);
+    expect(isNewOrderSettling("not a date", now)).toBe(false);
+  });
+});
+
+describe("isSetupBuildStage", () => {
+  it("allows New through Pickup/Delivery only", () => {
+    for (const stage of ["new", "confirm", "setup", "out"]) expect(isSetupBuildStage(stage)).toBe(true);
+    for (const stage of ["followup", "closed", "cancelled", "archived"]) expect(isSetupBuildStage(stage)).toBe(false);
   });
 });
 

@@ -17,6 +17,7 @@ import {
   CHECKLIST_STAGES,
   ORDER_STAGE_LABELS,
   canBuildCateringSetup,
+  isSetupBuildStage,
   filterRevenueOrders,
   type ChecklistStage,
   type OrderStage,
@@ -126,7 +127,7 @@ export default async function CateringOrderPage({
   // order would be noise.
   const canRefreshSetup =
     canManage &&
-    ["new", "confirm", "setup", "out"].includes(order.stage) &&
+    isSetupBuildStage(order.stage) &&
     canBuildCateringSetup(order.event_date);
 
   return (
@@ -149,7 +150,12 @@ export default async function CateringOrderPage({
       <p className="-mt-3 text-[13px] text-muted-ink">
         {order.event_date} {order.event_time ?? ""}
       </p>
-      <StageOverrideControls orderId={order.id} stage={order.stage as OrderStage} canOverride={canOverride} />
+      {/* The override actions need both keys (the write needs catering.manage). */}
+      <StageOverrideControls
+        orderId={order.id}
+        stage={order.stage as OrderStage}
+        canOverride={canOverride && canManage}
+      />
 
       {contactHistory && (
         <SectionCard>

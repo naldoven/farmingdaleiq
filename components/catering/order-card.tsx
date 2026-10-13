@@ -22,7 +22,7 @@ export interface OrderCardData {
    * "no checklist items yet" -- the bar is hidden instead of showing 0%. */
   checklistDone?: number;
   checklistTotal?: number;
-  /** Event is today or tomorrow and the order still waits on its
+  /** Event is tomorrow, today, or past and the order still waits on its
    * confirmation call (logic.ts isConfirmationCallLate). The day-before job
    * does not move these to FOH Setup, so the card says why. */
   callNotDone?: boolean;

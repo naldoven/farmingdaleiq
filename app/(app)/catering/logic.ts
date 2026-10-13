@@ -245,30 +245,103 @@ export function canBuildCateringSetup(eventDate: string, now: Date = new Date())
   return eventDate <= addStoreCalendarDays(getStoreLocalDate(now), 1);
 }
 
+/**
+ * Stages whose packing list may be built or rebuilt, by hand or by the cron
+ * (the cron also stops at FOH Setup). Listed, not "everything but X", so a
+ * stage added later is refused until someone decides it belongs here.
+ */
+export const SETUP_BUILD_STAGES = ["new", "confirm", "setup", "out"] as const;
+const CRON_SETUP_STAGES = ["new", "confirm", "setup"] as const;
+
+export function isSetupBuildStage(stage: string): boolean {
+  return (SETUP_BUILD_STAGES as readonly string[]).includes(stage);
+}
+
 /** Generates a packing setup at most once, on the day before or the event day. */
 export function isCateringSetupDue(
   order: { stage: string; event_date: string; setup_generated_at: string | null },
   now: Date = new Date(),
 ): boolean {
   return (
-    order.stage !== CANCELLED_STAGE &&
-    order.stage !== "closed" &&
+    (CRON_SETUP_STAGES as readonly string[]).includes(order.stage) &&
     !order.setup_generated_at &&
     isCateringSetupWindow(order.event_date, now)
   );
 }
 
 /**
- * Orders the day-before job left in place because their confirmation call is
- * not done: the event is today or tomorrow and the order is still in New or
- * Confirmation Call. Shown as a "Call not done" badge so a leader sees it
- * without a schema change.
+ * The order row is inserted before its items and checklists (createOrder and
+ * the inbound email route), so for a moment it looks like an order with no
+ * call items and no menu. The cron leaves an order alone until it is this
+ * old, so it never builds an empty list or reads a missing call as done.
+ */
+export const NEW_ORDER_SETTLE_MS = 2 * 60 * 1000;
+
+export function isNewOrderSettling(createdAt: string, now: Date = new Date()): boolean {
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return now.getTime() - created < NEW_ORDER_SETTLE_MS;
+}
+
+/**
+ * The call counts as done only when the order has Confirmation Call items
+ * and every one is ticked. Zero items is "not done": it is what a half
+ * created order looks like, and an order with no call list was never called
+ * as far as the app knows.
+ */
+export function isConfirmationCallDone(callItems: readonly { done: boolean }[]): boolean {
+  return callItems.length > 0 && callItems.every((item) => item.done);
+}
+
+/**
+ * Whether a person moved the order's stage during its build window, which
+ * starts at midnight (store time) on the day before the event. A manager's
+ * move back or restore, or a leader's own move, means a person is steering
+ * this order, so the cron must not move it to FOH Setup on top of them.
+ */
+export function isStageTouchedInSetupWindow(order: {
+  event_date: string;
+  stage_changed_at: string | null;
+}): boolean {
+  if (!order.stage_changed_at) return false;
+  const windowStart = storeDateTimeInputToIso(`${addStoreCalendarDays(order.event_date, -1)}T00:00`);
+  if (!windowStart) return false;
+  return new Date(order.stage_changed_at).getTime() >= new Date(windowStart).getTime();
+}
+
+/**
+ * The cron's one rule for moving an order to FOH Setup after building its
+ * list: still in New or Confirmation Call, the call is done (positive gate,
+ * see isConfirmationCallDone), and nobody has moved its stage since the
+ * build window opened.
+ */
+export function canCronMoveToSetup(
+  order: { stage: string; event_date: string; stage_changed_at: string | null },
+  callItems: readonly { done: boolean }[],
+): boolean {
+  return (
+    (order.stage === "new" || order.stage === "confirm") &&
+    isConfirmationCallDone(callItems) &&
+    !isStageTouchedInSetupWindow(order)
+  );
+}
+
+/**
+ * "Call not done" badge: the order is still in New or Confirmation Call, its
+ * event is tomorrow, today, or already past, and the call is not done (an
+ * undone call item, or no call items at all). Past events stay flagged
+ * because the call is still missing. Shown without a schema change.
  */
 export function isConfirmationCallLate(
   order: { stage: string; event_date: string },
+  callItems: readonly { done: boolean }[],
   now: Date = new Date(),
 ): boolean {
-  return (order.stage === "new" || order.stage === "confirm") && isCateringSetupWindow(order.event_date, now);
+  return (
+    (order.stage === "new" || order.stage === "confirm") &&
+    order.event_date <= addStoreCalendarDays(getStoreLocalDate(now), 1) &&
+    !isConfirmationCallDone(callItems)
+  );
 }
 
 export const HISTORY_PERIODS = ["month", "quarter", "year", "all"] as const;

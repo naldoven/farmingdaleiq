@@ -57,7 +57,8 @@ export async function StageQueue({
   }
 
   // Only the Confirmation Calls queue can show the badge: the helper is false
-  // for every stage after Confirmation Call.
+  // for every stage after Confirmation Call. On that queue `checklistItems`
+  // is already the Confirmation Call rows, so the badge needs no extra query.
   const now = new Date();
 
   return (
@@ -74,7 +75,13 @@ export async function StageQueue({
         >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              {isConfirmationCallLate({ stage: orderStage, event_date: order.event_date }, now) && (
+              {isConfirmationCallLate(
+                { stage: orderStage, event_date: order.event_date },
+                checklistStage === "confirm"
+                  ? (checklistItems ?? []).filter((item) => item.order_id === order.id)
+                  : [],
+                now,
+              ) && (
                 <StatusBadge tone="warning">Call not done</StatusBadge>
               )}
               <p className="text-[13px] text-muted-ink">

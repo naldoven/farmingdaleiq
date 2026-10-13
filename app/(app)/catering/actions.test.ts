@@ -289,6 +289,18 @@ describe("moveOrderBack (manager override)", () => {
     expect(client.calls).toHaveLength(0);
   });
 
+  it("is refused for an override holder without catering.manage, before touching the database", async () => {
+    denyKey("catering.manage");
+    client = createFakeClient({});
+
+    const result = await moveOrderBack({ orderId: ORDER_ID, fromStage: "setup", reason });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
+    expect(requirePermissionMock.mock.calls.map(([key]) => key)).toEqual(["catering.override", "catering.manage"]);
+    expect(client.calls).toHaveLength(0);
+    expect(emitEventMock).not.toHaveBeenCalled();
+  });
+
   it("is refused without a reason", async () => {
     client = createFakeClient({});
 
@@ -390,6 +402,18 @@ describe("restoreOrder (manager override)", () => {
     expect(client.calls).toHaveLength(0);
   });
 
+  it("is refused for an override holder without catering.manage, before touching the database", async () => {
+    denyKey("catering.manage");
+    client = createFakeClient({});
+
+    expect(await restoreOrder({ orderId: ORDER_ID, toStage: "confirm", reason })).toEqual({
+      ok: false,
+      error: "You don't have permission to do this.",
+    });
+    expect(client.calls).toHaveLength(0);
+    expect(emitEventMock).not.toHaveBeenCalled();
+  });
+
   it("is refused for an order that is not cancelled", async () => {
     client = createFakeClient({ catering_orders: [order({ stage: "confirm" })] });
 
@@ -469,6 +493,19 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
         .map((item) => item.label)
         .filter((label) => label !== "Compare packed items to the receipt"),
     );
+  });
+
+  it("refuses to rebuild the list on a Follow-up or Closed order", async () => {
+    for (const stage of ["followup", "closed"]) {
+      client = createFakeClient({ catering_orders: [order({ stage, event_date: "2026-08-20" })] });
+
+      expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({
+        ok: false,
+        error: "This order is past Pickup/Delivery, so its packing list can't be rebuilt.",
+      });
+      // Only the read; no delete, reset, or insert.
+      expect(client.calls).toHaveLength(1);
+    }
   });
 
   it("refuses a build two days before the event", async () => {

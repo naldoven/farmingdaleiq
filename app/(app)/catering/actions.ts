@@ -44,6 +44,7 @@ import {
   formatOrderNewMessage,
   formatStageChangeMessage,
   formatStageOverrideMessage,
+  isSetupBuildStage,
   normalizePhone,
   parseOrderItemsFromNotes,
   planChecklistMaterialization,
@@ -148,8 +149,14 @@ async function materializePhysicalOrderSetup(
   if (orderError || !order) {
     return { ok: false, error: orderError?.message ?? "Order not found." };
   }
-  if (order.stage === CANCELLED_STAGE) {
-    return { ok: false, error: "Cancelled orders cannot have a setup." };
+  if (!isSetupBuildStage(order.stage)) {
+    return {
+      ok: false,
+      error:
+        order.stage === CANCELLED_STAGE
+          ? "Cancelled orders cannot have a setup."
+          : "This order is past Pickup/Delivery, so its packing list can't be rebuilt.",
+    };
   }
   if (!canBuildCateringSetup(order.event_date)) {
     return { ok: false, error: "The packing list can't be built until the day before the event." };
@@ -681,14 +688,19 @@ const ORDER_CHANGED_ERROR = "This order has changed. Refresh and try again.";
 /**
  * Manager undo: moves an order back one stage. Shift leaders hold
  * catering.manage and the pipeline is forward-only on purpose, so this is
- * gated on catering.override and logged with the manager's reason on the
+ * gated on catering.override (plus catering.manage, which the write itself
+ * needs) and logged with the manager's reason on the
  * same catering_stage_change event every other move emits (app_events
  * records who via emitted_by). Checklists and the packing list are left as
  * they are: the work already done is still true.
  */
 export async function moveOrderBack(input: MoveOrderBackInput): Promise<ActionResult> {
   try {
+    // Override first, then manage: the catering_orders and
+    // catering_followups RLS write policies require catering.manage, so an
+    // override holder without it would pass here and then fail at the write.
     await requirePermission("catering.override");
+    await requirePermission("catering.manage");
     const parsed = moveOrderBackSchema.parse(input);
 
     const toStage = previousCateringStage(parsed.fromStage);
@@ -780,11 +792,16 @@ export async function moveOrderBack(input: MoveOrderBackInput): Promise<ActionRe
  * pipeline at the stage the manager picks (RESTORE_STAGES). The stage it was
  * cancelled from is not offered as a default: it lives only in app_events,
  * which signed-in users cannot read, and storing it would need a new column.
- * catering.override gated and logged like moveOrderBack.
+ * Gated on catering.override plus catering.manage and logged like
+ * moveOrderBack.
  */
 export async function restoreOrder(input: RestoreOrderInput): Promise<ActionResult> {
   try {
+    // Override first, then manage: the catering_orders and
+    // catering_followups RLS write policies require catering.manage, so an
+    // override holder without it would pass here and then fail at the write.
     await requirePermission("catering.override");
+    await requirePermission("catering.manage");
     const parsed = restoreOrderSchema.parse(input);
     const supabase = await createClient();
 
