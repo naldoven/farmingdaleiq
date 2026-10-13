@@ -37,6 +37,50 @@ describe("buildDiscordMessage", () => {
     expect(msg.content).not.toContain("<@");
   });
 
+  describe("allowed_mentions (no free-text pings)", () => {
+    it("allows no pings at all when there is no recipient", () => {
+      const msg = buildDiscordMessage("maint_request", { title: "Walk-in freezer won't cool" });
+      expect(msg.allowed_mentions).toEqual({ parse: [] });
+    });
+
+    it("treats an empty or null discord id as no recipient", () => {
+      for (const recipientDiscordId of ["", null, undefined]) {
+        const msg = buildDiscordMessage("setup_posted", { title: "x" }, { recipientDiscordId });
+        expect(msg.allowed_mentions).toEqual({ parse: [] });
+      }
+    });
+
+    it("re-allows only the recipient's id, with nothing parsed from content", () => {
+      const msg = buildDiscordMessage(
+        "setup_posted",
+        { title: "You're on Register" },
+        { recipientDiscordId: "123456789" },
+      );
+      expect(msg.allowed_mentions).toEqual({ parse: [], users: ["123456789"] });
+    });
+
+    it("keeps typed @everyone, @here and role pings inert even with a recipient", () => {
+      const msg = buildDiscordMessage(
+        "recognition",
+        { title: "@everyone", message: "@here look <@&987654321> <@555>" },
+        { recipientDiscordId: "123456789" },
+      );
+      // The text still reads as typed; Discord just must not act on it.
+      expect(msg.content).toContain("@everyone");
+      expect(msg.allowed_mentions?.parse).toEqual([]);
+      expect(msg.allowed_mentions?.users).toEqual(["123456789"]);
+    });
+
+    it("allows no pings on the privacy-redacted branch, even with a recipient", () => {
+      const msg = buildDiscordMessage(
+        "infraction_issued",
+        { title: "@everyone" },
+        { recipientDiscordId: "999" },
+      );
+      expect(msg.allowed_mentions).toEqual({ parse: [] });
+    });
+  });
+
   describe("accountability privacy rule", () => {
     it("redacts infraction_issued regardless of payload content", () => {
       const msg = buildDiscordMessage(
