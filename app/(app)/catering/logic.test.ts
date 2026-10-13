@@ -357,6 +357,21 @@ describe("formatStageOverrideMessage", () => {
       formatStageOverrideMessage({ ...base, fromStage: "cancelled", kind: "restore", reason: "Cancelled by mistake" }),
     ).toContain("Restored by a manager: Cancelled by mistake");
   });
+
+  it("never lets a guest name or reason ping the Discord server", () => {
+    const message = formatStageOverrideMessage({
+      guestName: "@everyone",
+      eventDate: "2026-08-21",
+      fromStage: "setup",
+      toStage: "confirm",
+      kind: "move_back",
+      reason: "ask @here and <@123>",
+    });
+    expect(message).not.toMatch(/@everyone|@here|<@\d/);
+    expect(formatOrderNewMessage({ guestName: "@here", eventDate: "2026-08-21", headcount: 5 })).not.toMatch(
+      /@here/,
+    );
+  });
 });
 
 describe("isCateringFollowUpDue", () => {

@@ -1,3 +1,4 @@
+import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
   addStoreCalendarDays,
   storeDateTimeInputToIso,
@@ -1081,7 +1082,8 @@ export function formatOrderNewMessage(input: {
   headcount: number | null;
 }): string {
   const guests = input.headcount ? `, ${input.headcount} guests` : "";
-  return `${input.guestName} — ${input.eventDate}${guests}`;
+  // Guest names can arrive from an inbound customer email; never let one ping.
+  return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}${guests}`;
 }
 
 /**
@@ -1094,7 +1096,7 @@ export function formatStageChangeMessage(input: {
   fromStage: OrderStage;
   toStage: OrderStage;
 }): string {
-  return `${input.guestName} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
+  return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
 }
 
 export type StageOverrideKind = "move_back" | "restore";
@@ -1112,5 +1114,7 @@ export function formatStageOverrideMessage(input: {
   reason: string;
 }): string {
   const action = input.kind === "move_back" ? "Moved back" : "Restored";
-  return `${formatStageChangeMessage(input)}. ${action} by a manager: ${input.reason}`;
+  // formatStageChangeMessage already neutralizes the guest name; the reason is
+  // free text typed by a manager, so it gets the same treatment here.
+  return `${formatStageChangeMessage(input)}. ${action} by a manager: ${neutralizeDiscordMentions(input.reason)}`;
 }
