@@ -59,6 +59,10 @@ interface StoredPayload {
    * store phone only the signed-in leader's own shots are restored and sent;
    * otherwise one leader's photos would post under the next one's name. */
   userId: string;
+  /** Kept on the phone so a closed tab does not forget that the shot was
+   * already sent once, or edited since; see Shot.editedAfterSend. */
+  everSent?: boolean;
+  editedAfterSend?: boolean;
 }
 
 interface Shot {
@@ -74,6 +78,8 @@ interface Shot {
   /** Held for a reason that may clear on its own (connection, server), so
    * coming back online retries it. A refused-details hold waits for a fix. */
   retryable: boolean;
+  /** At least one send was attempted, in this session or before a restore. */
+  everSent: boolean;
   /** Details changed after a send attempt. If the server then says the shot
    * was already saved, those changes did not apply and the leader is told. */
   editedAfterSend: boolean;
@@ -175,7 +181,11 @@ export function WalkthroughCamera({
         // iOS can end the stream when the system camera or another app takes
         // the lens (the phone-camera fallback does exactly that). A frozen
         // viewfinder would keep saving black frames, so restart instead.
-        stream.getVideoTracks()[0]?.addEventListener("ended", () => setCameraKey((k) => k + 1));
+        // Guarded: the standard says our own stop() never fires "ended", but
+        // if a browser did, an unguarded restart would loop forever.
+        stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+          if (!cancelled) setCameraKey((k) => k + 1);
+        });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
@@ -260,7 +270,8 @@ export function WalkthroughCamera({
           attempts: 0,
           error: null,
           retryable: true,
-          editedAfterSend: false,
+          everSent: payload?.everSent ?? false,
+          editedAfterSend: payload?.editedAfterSend ?? false,
         };
       });
       setShots((current) => [...restored.filter((r) => !current.some((c) => c.id === r.id)), ...current]);
@@ -317,6 +328,20 @@ export function WalkthroughCamera({
       const attempts = shot.attempts + 1;
       const decision = decideSend(outcome, attempts);
 
+      // Remember on the phone that this shot has been sent at least once,
+      // so an edit after a restore still triggers the lost-edits warning.
+      if (!shot.everSent && decision !== "done") {
+        void updateShotPayload(id, {
+          v: 1,
+          aspect: shot.aspect,
+          form: shot.form,
+          ready: true,
+          userId,
+          everSent: true,
+          editedAfterSend: shot.editedAfterSend,
+        } satisfies StoredPayload);
+      }
+
       if (decision === "done") {
         void deleteShot(id);
         // An earlier try landed but its answer was lost, and the leader
@@ -331,7 +356,7 @@ export function WalkthroughCamera({
         return;
       }
       if (decision === "retry") {
-        patchShot(id, { status: "waiting", attempts, error: message });
+        patchShot(id, { status: "waiting", attempts, error: message, everSent: true });
         // The timer only clears itself and touches the shot; the "send what
         // is waiting" effect below does the resend, so there is one path in.
         const timer = setTimeout(() => {
@@ -342,9 +367,9 @@ export function WalkthroughCamera({
         return;
       }
       const retryable = outcome.kind === "network" || (outcome.kind === "http" && (outcome.status >= 500 || outcome.status === 408 || outcome.status === 429));
-      patchShot(id, { status: "held", attempts, error: message, retryable });
+      patchShot(id, { status: "held", attempts, error: message, retryable, everSent: true });
     },
-    [patchShot],
+    [patchShot, userId],
   );
 
   // Start sending any shot that is ready and not already in flight or
@@ -403,6 +428,7 @@ export function WalkthroughCamera({
       attempts: 0,
       error: null,
       retryable: true,
+      everSent: false,
       editedAfterSend: false,
     };
     setShots((current) => [...current, shot]);
@@ -439,8 +465,16 @@ export function WalkthroughCamera({
     await addShot(blob, await imageAspect(blob), "file");
   }
 
-  function persistForm(shot: Shot, form: ShotForm, ready: boolean) {
-    void updateShotPayload(shot.id, { v: 1, aspect: shot.aspect, form, ready, userId } satisfies StoredPayload);
+  function persistForm(shot: Shot, form: ShotForm, ready: boolean, editedAfterSend: boolean) {
+    void updateShotPayload(shot.id, {
+      v: 1,
+      aspect: shot.aspect,
+      form,
+      ready,
+      userId,
+      everSent: shot.everSent || shot.attempts > 0,
+      editedAfterSend,
+    } satisfies StoredPayload);
   }
 
   function discard(id: string) {
@@ -688,19 +722,14 @@ export function WalkthroughCamera({
           items={items}
           serverError={active.status === "held" ? active.error : null}
           onSave={(form) => {
-            persistForm(active, form, true);
+            const edited = active.editedAfterSend || active.everSent || active.attempts > 0;
+            persistForm(active, form, true, edited);
             if (form.mode === "new") setZoneId(form.details.zoneId);
-            patchShot(active.id, {
-              form,
-              status: "waiting",
-              attempts: 0,
-              error: null,
-              editedAfterSend: active.editedAfterSend || active.attempts > 0,
-            });
+            patchShot(active.id, { form, status: "waiting", attempts: 0, error: null, editedAfterSend: edited });
             setActiveId(null);
           }}
           onLater={(form) => {
-            persistForm(active, form, false);
+            persistForm(active, form, false, active.editedAfterSend);
             patchShot(active.id, { form });
             setActiveId(null);
           }}

@@ -241,6 +241,40 @@ describe("WalkthroughCamera", () => {
     expect(within(sheet).queryByText("Not mine")).not.toBeInTheDocument();
   });
 
+  it("keeps the lost-edits warning across a closed tab", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, itemId: "x", duplicate: true }));
+    const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    store = memoryStore([
+      {
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        blob,
+        capturedAt: "2026-10-26T22:00:00.000Z",
+        createdAt: 1,
+        payload: {
+          v: 1,
+          aspect: 0.75,
+          form: {
+            mode: "new",
+            details: { zoneId: ZONE_GREEN, name: "Edited before close", kind: "variable", daysOfWeek: [], half: "pm", intervalWeeks: 2, ifNeeded: false, note: "" },
+            existingItemId: null,
+            existingItemName: null,
+            markup: null,
+            captureSource: "live",
+          },
+          ready: true,
+          userId: USER,
+          everSent: true,
+          editedAfterSend: true,
+        },
+      },
+    ]);
+    setShotStoreBackendForTest(store.backend);
+    render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
+    await waitFor(() => expect(screen.getByText("1 saved")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Photo queue/ }));
+    expect(screen.getByText(/Later changes did not apply/)).toBeInTheDocument();
+  });
+
   it("warns when edits after a send did not apply because the first try had landed", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(400, { ok: false, error: "Check its details." }))
