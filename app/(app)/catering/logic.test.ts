@@ -34,6 +34,7 @@ import {
   isSetupBuildStage,
   isStageTouchedInSetupWindow,
   isoWeekKey,
+  moveIdWithin,
   normalizePhone,
   parseComponents,
   parseOrderItemsFromNotes,
@@ -880,6 +881,36 @@ describe("revenue stage exclusion (CAT1/CAT4)", () => {
 
     const rollups = computeContactRollups(countable);
     expect(rollups.get("c1")).toMatchObject({ orderCount: 1, lifetimeSpend: 100 });
+  });
+});
+
+describe("moveIdWithin", () => {
+  const ids = ["a", "b", "c"];
+
+  it("moves an id up one place", () => {
+    expect(moveIdWithin(ids, "b", "up")).toEqual(["b", "a", "c"]);
+  });
+
+  it("moves an id down one place", () => {
+    expect(moveIdWithin(ids, "b", "down")).toEqual(["a", "c", "b"]);
+  });
+
+  it("leaves the order alone at the edges", () => {
+    expect(moveIdWithin(ids, "a", "up")).toEqual(ids);
+    expect(moveIdWithin(ids, "c", "down")).toEqual(ids);
+  });
+
+  it("leaves the order alone when the id is absent", () => {
+    expect(moveIdWithin(ids, "z", "up")).toEqual(ids);
+    expect(moveIdWithin(ids, "z", "down")).toEqual(ids);
+  });
+
+  it("never mutates the input", () => {
+    const input = Object.freeze(["a", "b", "c"]);
+    const out = moveIdWithin(input, "a", "down");
+    expect(out).toEqual(["b", "a", "c"]);
+    expect(input).toEqual(["a", "b", "c"]);
+    expect(out).not.toBe(input);
   });
 });
 

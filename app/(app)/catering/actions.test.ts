@@ -130,7 +130,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // vi.mock(...) calls above are hoisted above this import by Vitest's transform.
-import { changeStage, moveOrderBack, rescaleOrderSetup, restoreOrder } from "./actions";
+import { changeStage, moveOrderBack, reorderChecklistDefaults, rescaleOrderSetup, restoreOrder } from "./actions";
 
 function order(fields: Record<string, unknown>): Response {
   return {
@@ -619,6 +619,63 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
       ok: false,
       error: "The packing list can't be built until the day before the event.",
     });
+    expect(client.calls).toHaveLength(1);
+  });
+});
+
+describe("reorderChecklistDefaults", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const ok: Response = { data: null, error: null };
+
+  it("requires catering.manage", async () => {
+    client = createFakeClient({
+      catering_checklist_defaults: [{ data: [{ id: A }], error: null }, ok],
+    });
+
+    await reorderChecklistDefaults({ stage: "setup", orderedIds: [A] });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.manage");
+  });
+
+  it("writes sort 0..n-1 in the order given", async () => {
+    client = createFakeClient({
+      catering_checklist_defaults: [
+        { data: [{ id: A }, { id: B }, { id: C }], error: null },
+        ok,
+        ok,
+        ok,
+      ],
+    });
+
+    const result = await reorderChecklistDefaults({ stage: "setup", orderedIds: [C, A, B] });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    const updates = client.calls.filter((c) => c.ops.some(([name]) => name === "update"));
+    expect(updates).toHaveLength(3);
+    expect(updates.map((c) => c.ops.find(([name]) => name === "update")![1])).toEqual([
+      [{ sort: 0 }],
+      [{ sort: 1 }],
+      [{ sort: 2 }],
+    ]);
+    expect(updates.map((c) => c.ops.find(([name]) => name === "eq")![1])).toEqual([
+      ["id", C],
+      ["id", A],
+      ["id", B],
+    ]);
+  });
+
+  it("refuses a stale list and writes nothing", async () => {
+    // The database has a default (C) the screen has not seen. Only the read is
+    // queued, so any update would throw.
+    client = createFakeClient({
+      catering_checklist_defaults: [{ data: [{ id: A }, { id: B }, { id: C }], error: null }],
+    });
+
+    const result = await reorderChecklistDefaults({ stage: "setup", orderedIds: [B, A] });
+
+    expect(result).toEqual({ ok: false, error: "The list changed. Refresh and try again." });
     expect(client.calls).toHaveLength(1);
   });
 });

@@ -76,6 +76,7 @@ import {
   orderIdSchema,
   orderItemIdSchema,
   resolveFollowUpSchema,
+  reorderChecklistDefaultsSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
   toggleChecklistItemSchema,
@@ -92,6 +93,7 @@ import {
   type MenuItemInput,
   type MoveOrderBackInput,
   type ResolveFollowUpInput,
+  type ReorderChecklistDefaultsInput,
   type RestoreOrderInput,
   type ToggleChecklistDefaultActiveInput,
   type ToggleChecklistItemInput,
@@ -1314,6 +1316,53 @@ export async function deleteChecklistDefault(input: { id: string }): Promise<Act
       .eq("id", parsed.id);
 
     if (error) return { ok: false, error: error.message };
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Saves a new order for one stage's defaults. The write is idempotent by
+ * construction: it sets sort = position for every id, so running the same
+ * input twice writes the same values.
+ *
+ * It refuses when the ids sent differ from the ids in the database for that
+ * stage. A stale screen must not silently drop or reorder a default another
+ * manager just added or deleted.
+ */
+export async function reorderChecklistDefaults(
+  input: ReorderChecklistDefaultsInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = reorderChecklistDefaultsSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: existing, error: readError } = await supabase
+      .from("catering_checklist_defaults")
+      .select("id")
+      .eq("stage", parsed.stage);
+
+    if (readError) return { ok: false, error: readError.message };
+
+    const sent = new Set(parsed.orderedIds);
+    const current = new Set((existing ?? []).map((row) => row.id));
+    const sameSet =
+      sent.size === parsed.orderedIds.length &&
+      sent.size === current.size &&
+      [...sent].every((id) => current.has(id));
+    if (!sameSet) return { ok: false, error: "The list changed. Refresh and try again." };
+
+    for (const [sort, id] of parsed.orderedIds.entries()) {
+      const { error } = await supabase
+        .from("catering_checklist_defaults")
+        .update({ sort })
+        .eq("id", id);
+      if (error) return { ok: false, error: error.message };
+    }
 
     revalidatePath("/catering/menu");
     return { ok: true, data: undefined };

@@ -7,6 +7,7 @@ import {
   createOrderSchema,
   menuItemSchema,
   moveOrderBackSchema,
+  reorderChecklistDefaultsSchema,
   resolveFollowUpSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
@@ -253,5 +254,21 @@ describe("menuItemSchema", () => {
       componentsText: '{"name":"Sandwich"}',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("reorderChecklistDefaultsSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a stage with a list of ids", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [id] }).success).toBe(true);
+  });
+
+  it("rejects a bad stage", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "nope", orderedIds: [id] }).success).toBe(false);
+  });
+
+  it("rejects an empty list", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [] }).success).toBe(false);
   });
 });
