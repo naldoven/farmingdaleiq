@@ -32,7 +32,7 @@ describe("PERMISSION_KEYS", () => {
     expect(ALL_PERMISSION_KEYS).toContain("breaks.view");
     expect(ALL_PERMISSION_KEYS).toContain("setups.view");
     expect(PERMISSION_KEYS).not.toContain("feed.post_broadcast");
-    expect(PERMISSION_KEYS).not.toContain("breaks.view");
+    expect(PERMISSION_KEYS).toContain("breaks.view");
     expect(PERMISSION_KEYS).not.toContain("setups.view");
   });
 });
@@ -40,7 +40,6 @@ describe("PERMISSION_KEYS", () => {
 describe("hasPermission", () => {
   it("fails dormant feature permissions without querying Supabase", async () => {
     await expect(hasPermission("feed.post_broadcast")).resolves.toBe(false);
-    await expect(hasPermission("breaks.view")).resolves.toBe(false);
     await expect(hasPermission("setups.view")).resolves.toBe(false);
     expect(createClientMock).not.toHaveBeenCalled();
   });

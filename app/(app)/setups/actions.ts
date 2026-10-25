@@ -139,6 +139,7 @@ export async function assignPosition(
     const supabase = await createClient();
 
     const arrivalTime = parsed.arrivalTime ? parsed.arrivalTime : null;
+    const scheduledEnd = parsed.scheduledEnd ? parsed.scheduledEnd : null;
 
     // FIQ-15: upsert on (setup_id, position_id) so concurrent assigns to the
     // same slot update one row instead of racing to create a duplicate that
@@ -149,6 +150,7 @@ export async function assignPosition(
         position_id: parsed.positionId,
         user_id: parsed.userId,
         arrival_time: arrivalTime,
+        scheduled_end: scheduledEnd,
       },
       { onConflict: "setup_id,position_id" },
     );

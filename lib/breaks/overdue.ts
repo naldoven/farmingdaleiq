@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 
-import { isMissed } from "@/lib/breaks/entitlement";
+import { isMissed, isOverdue } from "@/lib/breaks/entitlement";
 import { emitEvent } from "@/lib/events/bus";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { storeDateTimeInputToIso } from "@/lib/time";
@@ -38,9 +38,9 @@ export async function markOverdueBreaks(): Promise<{ flagged: number; missed: nu
 
   let flagged = 0;
   for (const breakRow of authorizedBreaks ?? []) {
-    if (!breakRow.authorized_at) continue;
-    const elapsedMinutes = (now.getTime() - new Date(breakRow.authorized_at).getTime()) / 60_000;
-    if (elapsedMinutes <= 10) continue;
+    // Same grace window the board and tests use (OVERDUE_GRACE_MINUTES), not
+    // a second hardcoded copy that could drift from it.
+    if (!isOverdue(breakRow, now)) continue;
 
     const { data: claimed, error } = await supabase
       .from("breaks")

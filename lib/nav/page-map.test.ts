@@ -100,7 +100,10 @@ describe("resolveHeader", () => {
   it("does not reveal dormant modules when someone guesses their old URLs", () => {
     expect(resolveHeader("/setups").title).toBe("FarmingdaleIQ");
     expect(resolveHeader("/setups/templates").title).toBe("FarmingdaleIQ");
-    expect(resolveHeader("/breaks").title).toBe("FarmingdaleIQ");
+  });
+
+  it("resolves the live Breaks route", () => {
+    expect(resolveHeader("/breaks").title).toBe("Breaks");
   });
 });
 
@@ -132,7 +135,7 @@ describe("navPermissionKeys", () => {
     expect(keys).toContain("checklists.manage_templates");
     expect(keys).toContain("catering.view");
     expect(keys).not.toContain("setups.view");
-    expect(keys).not.toContain("breaks.view");
+    expect(keys).toContain("breaks.view");
     // Ungated items contribute no key.
     expect(keys).not.toContain("");
   });
@@ -147,8 +150,9 @@ describe("visibleNavGroups (S4 nav gating)", () => {
     expect(hrefs).toContain("/settings");
     expect(hrefs).not.toContain("/setups");
     expect(hrefs).not.toContain("/setups/templates");
-    expect(hrefs).not.toContain("/breaks");
-    expect(NAV_GROUPS.map((group) => group.label)).not.toContain("Setups & Shifts");
+    expect(hrefs).toContain("/breaks");
+    // The group survives on Breaks alone while Setups stays dormant.
+    expect(NAV_GROUPS.map((group) => group.label)).toContain("Setups & Shifts");
   });
 
   it("keeps ungated items and drops gated items the user lacks", () => {

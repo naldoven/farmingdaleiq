@@ -6,6 +6,7 @@ import {
   buildBreakPlan,
   canTransition,
   computeBreakDueAt,
+  computeShiftMinutes,
   entitledMinutesForKind,
   expandRuleToBreaks,
   isMissed,
@@ -50,6 +51,52 @@ describe("ageBandFromBirthdate", () => {
 
   it("defaults to adult when birthdate is missing", () => {
     expect(ageBandFromBirthdate(null, NOW)).toBe("adult");
+  });
+
+  it("uses the store calendar day, not the server (UTC) day", () => {
+    // 10pm New York on 2026-07-07 is already 2026-07-08 in UTC. Someone born
+    // 2008-07-08 turns 18 tomorrow in Farmingdale, so they are still a minor.
+    const lateEvening = new Date("2026-07-07T22:00:00-04:00");
+    expect(ageBandFromBirthdate("2008-07-08", lateEvening)).toBe("minor");
+    expect(ageBandFromBirthdate("2008-07-07", lateEvening)).toBe("adult");
+  });
+});
+
+describe("computeShiftMinutes", () => {
+  const arrival = new Date("2026-07-07T10:00:00-04:00");
+  const dayPartStart = new Date("2026-07-07T11:00:00-04:00");
+  const dayPartEnd = new Date("2026-07-07T15:00:00-04:00");
+
+  it("measures arrival to scheduled end when both are known", () => {
+    const scheduledEnd = new Date("2026-07-07T18:00:00-04:00");
+    expect(computeShiftMinutes({ arrival, scheduledEnd, dayPartStart, dayPartEnd })).toBe(480);
+  });
+
+  it("falls back to the day-part end when no scheduled end is recorded", () => {
+    expect(computeShiftMinutes({ arrival, scheduledEnd: null, dayPartStart, dayPartEnd })).toBe(300);
+  });
+
+  it("falls back to the day-part start when no arrival is recorded", () => {
+    const scheduledEnd = new Date("2026-07-07T18:00:00-04:00");
+    expect(computeShiftMinutes({ arrival: null, scheduledEnd, dayPartStart, dayPartEnd })).toBe(420);
+  });
+
+  it("ignores a scheduled end at or before the start instead of going negative", () => {
+    const scheduledEnd = new Date("2026-07-07T09:00:00-04:00");
+    expect(computeShiftMinutes({ arrival, scheduledEnd, dayPartStart, dayPartEnd })).toBe(300);
+  });
+
+  it("is zero with no end at all (a setup without a day-part)", () => {
+    expect(computeShiftMinutes({ arrival, scheduledEnd: null, dayPartStart: null, dayPartEnd: null })).toBe(0);
+  });
+
+  it("lets a scheduled 6-hour shift earn the live adult rule even on a short day-part", () => {
+    // Every seeded day-part is under five hours. Before scheduled_end the
+    // engine measured arrival -> day-part end and no adult ever qualified.
+    const scheduledEnd = new Date("2026-07-07T16:00:00-04:00");
+    const minutes = computeShiftMinutes({ arrival, scheduledEnd, dayPartStart, dayPartEnd });
+    expect(minutes).toBe(360);
+    expect(selectBreakRule(RULES, "adult", minutes)?.id).toBe("rule-adult");
   });
 });
 

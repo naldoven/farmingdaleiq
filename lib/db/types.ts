@@ -2696,6 +2696,7 @@ export type Database = {
           arrival_time: string | null
           id: string
           position_id: string | null
+          scheduled_end: string | null
           setup_id: string
           user_id: string | null
         }
@@ -2703,6 +2704,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id: string
           user_id?: string | null
         }
@@ -2710,6 +2712,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id?: string
           user_id?: string | null
         }

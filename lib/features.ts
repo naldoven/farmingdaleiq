@@ -8,7 +8,9 @@ export type AppFeature = "broadcast" | "breaks" | "setups";
 
 export const APP_FEATURES: Readonly<Record<AppFeature, boolean>> = {
   broadcast: false,
-  breaks: false,
+  // Woken 2026-10-25 (docs/BREAKS-RELEASE-READINESS.md). Turning this on also
+  // arms the /api/cron/breaks-overdue schedule in vercel.json.
+  breaks: true,
   setups: false,
 };
 

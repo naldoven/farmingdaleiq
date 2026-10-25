@@ -8,7 +8,10 @@ const VALID_ID = "123456789012345678";
 describe("buildDiscordMessage", () => {
   it("does not advertise dormant feature routes", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("broadcast");
-    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("break_overdue");
+  });
+
+  it("routes break_overdue now that Breaks is live", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("break_overdue");
   });
 
   it("never routes accountability events to Discord", () => {

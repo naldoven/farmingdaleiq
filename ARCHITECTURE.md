@@ -375,7 +375,7 @@ Shifts & setups:
 - `position_groups` (id, name, sort) / `positions` (id, group_id, name, sort)
 - `setup_templates` (id, name, day_part_id) / `setup_template_positions` (template_id, position_id, sort)
 - `setups` (id, date, day_part_id, template_id, shift_leader_id, posted_at, posted_by)
-- `setup_assignments` (setup_id, position_id, user_id, arrival_time) — arrival_time feeds break sequencing; auto-place suggestions rank candidates by position rating
+- `setup_assignments` (setup_id, position_id, user_id, arrival_time, scheduled_end) — arrival_time feeds break sequencing; arrival_time → scheduled_end is the shift length the break rule is measured against (falls back to the day-part end); auto-place suggestions rank candidates by position rating
 - `shift_notes` (setup_id, author_id, body, created_at)
 - `store_layouts` (id, name, day_part_id, active) / `layout_tiles` (layout_id, position_id, x, y, w, h, area_label) — visual setup board
 - `break_rules` (id, min_shift_minutes, max_shift_minutes, age_band: adult|minor, rest_minutes_paid, meal_minutes_unpaid, sort) — NY presets seeded
