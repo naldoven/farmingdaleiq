@@ -338,6 +338,21 @@ export async function selectTopPerformer(
       return { ok: false, error: "A Top Performer was already selected for this shift." };
     }
 
+    // The pick must be someone who actually worked this setup. The board only
+    // offers assigned people, but UI hiding is not security: top_performer
+    // mints tokens (SEED-DEFAULT 20) and posts to the team feed, so a crafted
+    // call must not be able to award them to anyone else.
+    const { data: assignment } = await supabase
+      .from("setup_assignments")
+      .select("id")
+      .eq("setup_id", parsed.setupId)
+      .eq("user_id", parsed.userId)
+      .limit(1)
+      .maybeSingle();
+    if (!assignment) {
+      return { ok: false, error: "Top Performer must be someone assigned to this setup." };
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();

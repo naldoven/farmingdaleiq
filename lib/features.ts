@@ -11,7 +11,10 @@ export const APP_FEATURES: Readonly<Record<AppFeature, boolean>> = {
   // Woken 2026-10-25 (docs/BREAKS-RELEASE-READINESS.md). Turning this on also
   // arms the /api/cron/breaks-overdue schedule in vercel.json.
   breaks: true,
-  setups: false,
+  // Woken 2026-10-25 (docs/SETUPS-RELEASE-READINESS.md). Turning this on lets
+  // setup_posted fan out again (notifications, Lead Duties tasks) and returns
+  // lead_duty tasks to the task lists.
+  setups: true,
 };
 
 const PERMISSION_FEATURE: Readonly<Record<string, AppFeature>> = {

@@ -127,12 +127,9 @@ describe("resolveHeader", () => {
     expect(activeNavGroupLabel("/guide")).toBeNull();
   });
 
-  it("does not reveal dormant modules when someone guesses their old URLs", () => {
-    expect(resolveHeader("/setups").title).toBe("FarmingdaleIQ");
-    expect(resolveHeader("/setups/templates").title).toBe("FarmingdaleIQ");
-  });
-
-  it("resolves the live Breaks route", () => {
+  it("resolves the live Setups and Breaks routes", () => {
+    expect(resolveHeader("/setups").title).toBe("Setup board");
+    expect(resolveHeader("/setups/templates").title).toBe("Setup templates");
     expect(resolveHeader("/breaks").title).toBe("Breaks");
   });
 });
@@ -192,7 +189,7 @@ describe("navPermissionKeys", () => {
     expect(keys).toContain("settings.manage");
     expect(keys).toContain("checklists.manage_templates");
     expect(keys).toContain("catering.view");
-    expect(keys).not.toContain("setups.view");
+    expect(keys).toContain("setups.view");
     expect(keys).toContain("breaks.view");
     // Ungated items contribute no key.
     expect(keys).not.toContain("");
@@ -206,10 +203,9 @@ describe("visibleNavGroups (S4 nav gating)", () => {
     expect(hrefs).toHaveLength(total);
     expect(hrefs).toContain("/reports");
     expect(hrefs).toContain("/settings");
-    expect(hrefs).not.toContain("/setups");
-    expect(hrefs).not.toContain("/setups/templates");
+    expect(hrefs).toContain("/setups");
+    expect(hrefs).toContain("/setups/templates");
     expect(hrefs).toContain("/breaks");
-    // The group survives on Breaks alone while Setups stays dormant.
     expect(NAV_GROUPS.map((group) => group.label)).toContain("Setups & Shifts");
   });
 

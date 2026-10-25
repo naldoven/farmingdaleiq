@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import {
   deleteLayout,
   deleteTile,
   moveLayoutTile,
+  seedDefaultLayout,
   setLayoutActive,
   upsertTile,
 } from "@/app/(app)/setups/templates/actions";
@@ -79,6 +80,14 @@ export function LayoutEditor({
 
   const positionName = new Map(positions.map((p) => [p.id, p.name]));
   const currentTiles = tiles.filter((t) => t.layout_id === selectedLayoutId);
+
+  // A position tile reads as its position; the area label is only the name
+  // of an area-only tile (no position). The live default layout stored the
+  // group name as every tile's area label, which made every tile read
+  // "Front Counter" instead of "Register 1" when the label was preferred.
+  function tileLabel(tile: LayoutTileRow): string {
+    return (tile.position_id ? positionName.get(tile.position_id) : undefined) || tile.area_label || "Tile";
+  }
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -279,9 +288,7 @@ export function LayoutEditor({
                   }}
                   title="Drag to move"
                 >
-                  <span className="truncate">
-                    {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")}
-                  </span>
+                  <span className="truncate">{tileLabel(tile)}</span>
                 </div>
               ))}
             </div>
@@ -290,10 +297,34 @@ export function LayoutEditor({
               {currentTiles.map((tile) => (
                 <div key={tile.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                   <span className="text-[13px] text-ink">
-                    {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")} — x:
-                    {tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
+                    {tileLabel(tile)} — x:{tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
                   </span>
+                  {/* Phones have no HTML5 drag-and-drop, so the list view is the only
+                      way a leader on a phone can arrange tiles. It needs all four
+                      directions, not just left/right. */}
                   <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="Move up"
+                      disabled={isPending}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
+                      onClick={() =>
+                        run(() => moveLayoutTile({ tileId: tile.id, x: tile.x, y: Math.max(0, tile.y - 1) }))
+                      }
+                    >
+                      <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Move down"
+                      disabled={isPending}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
+                      onClick={() =>
+                        run(() => moveLayoutTile({ tileId: tile.id, x: tile.x, y: Math.min(GRID_ROWS - 1, tile.y + 1) }))
+                      }
+                    >
+                      <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                    </button>
                     <button
                       type="button"
                       aria-label="Move left"
@@ -310,7 +341,9 @@ export function LayoutEditor({
                       aria-label="Move right"
                       disabled={isPending}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-ink hover:bg-secondary disabled:opacity-30"
-                      onClick={() => run(() => moveLayoutTile({ tileId: tile.id, x: tile.x + 1, y: tile.y }))}
+                      onClick={() =>
+                        run(() => moveLayoutTile({ tileId: tile.id, x: Math.min(GRID_COLUMNS - 1, tile.x + 1), y: tile.y }))
+                      }
                     >
                       <ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </button>
@@ -335,7 +368,19 @@ export function LayoutEditor({
       )}
 
       {layouts.length === 0 && (
-        <p className="text-[13px] text-muted-ink">Create a layout above to start placing tiles.</p>
+        <div className="rounded-xl border border-dashed border-line bg-accent-soft/40 p-3 text-[13px] text-muted-ink">
+          No store layout yet.{" "}
+          <button
+            type="button"
+            className="font-semibold text-accent hover:underline disabled:opacity-50"
+            disabled={isPending}
+            onClick={() => run(() => seedDefaultLayout())}
+          >
+            Start from the default floor plan
+          </button>{" "}
+          (front counter, drive thru, dining room, kitchen line, back of house), then drag or step any tile to
+          match the store. Or create an empty layout above.
+        </div>
       )}
     </div>
   );
