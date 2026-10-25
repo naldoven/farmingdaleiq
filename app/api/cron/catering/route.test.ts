@@ -151,6 +151,15 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+// The digest has its own tests (digest.test.ts). Mocking it keeps this file's
+// fake client from needing the job_cursors tables.
+const queueTomorrowDigest = vi.fn(async (): Promise<{ status: string; error?: string }> => ({
+  status: "too_early",
+}));
+vi.mock("./digest", () => ({
+  queueTomorrowDigest: (...args: unknown[]) => (queueTomorrowDigest as (...a: unknown[]) => unknown)(...args),
+}));
+
 import { GET, POST } from "./route";
 
 function makeRequest(authHeader?: string): NextRequest {
@@ -200,6 +209,8 @@ beforeEach(() => {
   callCheckFilters.length = 0;
   setupOrderItemsResponse = { data: [], error: null };
   setupUpdateResponses = [];
+  queueTomorrowDigest.mockReset();
+  queueTomorrowDigest.mockResolvedValue({ status: "too_early" });
   vi.useFakeTimers();
   // 2026-08-20 14:00 New York: today is 08-20, tomorrow is 08-21.
   vi.setSystemTime(new Date("2026-08-20T18:00:00.000Z"));
@@ -232,7 +243,13 @@ describe("catering cron route", () => {
     updateResponse = { data: [{ id: "due-order" }], error: null };
 
     const res = await POST(makeRequest("Bearer test-secret"));
-    expect(await res.json()).toEqual({ ok: true, scanned: 1, advanced: 1, errors: [] });
+    expect(await res.json()).toEqual({
+      ok: true,
+      scanned: 1,
+      advanced: 1,
+      digest: "too_early",
+      errors: [],
+    });
     expect(updates).toHaveLength(1);
     expect(updates[0].values.stage).toBe("followup");
     expect(updates[0].filters).toContainEqual(["stage", "out"]);
@@ -418,5 +435,16 @@ describe("catering cron route", () => {
     expect(body.errors).toEqual(["confirmation calls: read failed"]);
     expect(insertedRows().length).toBeGreaterThan(0);
     expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+  });
+
+  it("reports a digest failure in errors without hiding the other work", async () => {
+    queueTomorrowDigest.mockResolvedValue({ status: "error", error: "boom" });
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.digest).toBe("error");
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]).toMatch(/^digest:/);
   });
 });

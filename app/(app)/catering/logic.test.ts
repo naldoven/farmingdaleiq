@@ -20,6 +20,7 @@ import {
   formatScaledLabel,
   formatStageChangeMessage,
   formatStageOverrideMessage,
+  formatTomorrowDigest,
   isCateringFollowUpDue,
   isCateringSetupDay,
   isCateringSetupDue,
@@ -845,5 +846,95 @@ describe("cancelled orders list", () => {
   it("cancelledOnLabel says so when the cancel time was never stamped", () => {
     expect(cancelledOnLabel(null)).toBe("Cancel time not recorded");
     expect(cancelledOnLabel("not a date")).toBe("Cancel time not recorded");
+  });
+});
+
+describe("formatTomorrowDigest", () => {
+  const order = (fields: Partial<Parameters<typeof formatTomorrowDigest>[0]["orders"][number]> = {}) => ({
+    guestName: "Pat Lee",
+    eventTime: "11:30:00",
+    headcount: 25,
+    fulfillment: "delivery",
+    stage: "setup",
+    callDone: true,
+    ...fields,
+  });
+
+  it("says so when there are no orders", () => {
+    expect(formatTomorrowDigest({ tomorrow: "2026-10-26", orders: [] })).toBe(
+      "Mon, Oct 26: no catering orders.",
+    );
+  });
+
+  it("uses the singular and says all calls are done", () => {
+    expect(formatTomorrowDigest({ tomorrow: "2026-10-26", orders: [order()] })).toBe(
+      "Mon, Oct 26: 1 order, all confirmation calls done\n• 11:30 AM · Pat Lee · 25 guests · delivery",
+    );
+  });
+
+  it("counts open calls with correct plurals and flags each one", () => {
+    const one = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order(), order({ guestName: "Sam Roe", callDone: false })],
+    });
+    expect(one.split("\n")[0]).toBe("Mon, Oct 26: 2 orders, 1 still needs a confirmation call");
+    expect(one).toContain("Sam Roe · 25 guests · delivery · CALL NOT DONE");
+    expect(one).not.toContain("Pat Lee · 25 guests · delivery · CALL NOT DONE");
+
+    const two = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order({ callDone: false }), order({ guestName: "Sam Roe", callDone: false })],
+    });
+    expect(two.split("\n")[0]).toBe("Mon, Oct 26: 2 orders, 2 still need a confirmation call");
+  });
+
+  it("sorts by event time with missing times last, then by guest name", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [
+        order({ guestName: "Zed", eventTime: null }),
+        order({ guestName: "Bea", eventTime: "13:00:00" }),
+        order({ guestName: "Amy", eventTime: null }),
+        order({ guestName: "Cal", eventTime: "09:05:00" }),
+      ],
+    });
+    const lines = text.split("\n").slice(1);
+    expect(lines[0]).toContain("9:05 AM · Cal");
+    expect(lines[1]).toContain("1:00 PM · Bea");
+    expect(lines[2]).toContain("Time TBD · Amy");
+    expect(lines[3]).toContain("Time TBD · Zed");
+  });
+
+  it("leaves out missing headcount and fulfillment, and renders noon and midnight", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [
+        order({ guestName: "Noon", eventTime: "12:00:00", headcount: null, fulfillment: null }),
+        order({ guestName: "Late", eventTime: "00:15:00", headcount: 1 }),
+      ],
+    });
+    const lines = text.split("\n").slice(1);
+    expect(lines[0]).toBe("• 12:15 AM · Late · 1 guest · delivery");
+    expect(lines[1]).toBe("• 12:00 PM · Noon");
+  });
+
+  it("caps the list at 20 orders and counts the rest", () => {
+    const orders = Array.from({ length: 23 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")}`, eventTime: "10:00:00" }),
+    );
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    expect(lines[0]).toContain("23 orders");
+    expect(lines).toHaveLength(1 + 20 + 1);
+    expect(lines[lines.length - 1]).toBe("+3 more on the board");
+  });
+
+  it("neutralizes mentions in guest names and never uses an em dash", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order({ guestName: "@everyone Lee", callDone: false })],
+    });
+    expect(text).not.toContain("@everyone");
+    expect(text).toContain("@\u200beveryone");
+    expect(text).not.toContain("\u2014");
   });
 });
