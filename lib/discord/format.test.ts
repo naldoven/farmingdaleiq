@@ -11,6 +11,17 @@ describe("buildDiscordMessage", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("break_overdue");
   });
 
+  it("routes the nightly catering digest and posts its payload title and message", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("catering_tomorrow_digest");
+    const msg = buildDiscordMessage("catering_tomorrow_digest", {
+      title: "Tomorrow's catering",
+      message: "Mon, Oct 26: 1 order, all confirmation calls done",
+    });
+    expect(msg.content).toContain("Tomorrow's catering");
+    expect(msg.content).toContain("Mon, Oct 26: 1 order, all confirmation calls done");
+    expect(msg.content).toContain("🍽️");
+  });
+
   it("never routes accountability events to Discord", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("infraction_issued");
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("disciplinary_triggered");

@@ -29,6 +29,7 @@ const CHAIN_METHODS = [
   "is",
   "not",
   "in",
+  "ilike",
   "order",
   "limit",
   "insert",
@@ -130,7 +131,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // vi.mock(...) calls above are hoisted above this import by Vitest's transform.
-import { bulkCloseStaleOrders, changeStage, moveOrderBack, rescaleOrderSetup, restoreOrder } from "./actions";
+import { bulkCloseStaleOrders, changeStage, moveOrderBack, reorderChecklistDefaults, rescaleOrderSetup, restoreOrder, searchCateringOrders } from "./actions";
 
 function order(fields: Record<string, unknown>): Response {
   return {
@@ -707,5 +708,142 @@ describe("bulkCloseStaleOrders (manager cleanup)", () => {
       ok: false,
       error: "Closing stale orders needs catering.override and catering.manage.",
     });
+  });
+});
+
+describe("searchCateringOrders", () => {
+  const row = {
+    id: ORDER_ID,
+    guest_name: "Jane Doe",
+    event_date: "2026-08-20",
+    event_time: "11:30:00",
+    stage: "confirm",
+    headcount: 25,
+  };
+
+  beforeEach(() => {
+    requirePermissionMock.mockClear();
+  });
+
+  it("requires catering.view and maps rows without phone or email", async () => {
+    client = createFakeClient({
+      catering_orders: [{ data: [{ ...row, phone: "5551234567", email: "j@example.com" }], error: null }],
+    });
+
+    const result = await searchCateringOrders({ query: "Jane" });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.view");
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        {
+          id: ORDER_ID,
+          guestName: "Jane Doe",
+          eventDate: "2026-08-20",
+          eventTime: "11:30:00",
+          stage: "confirm",
+          headcount: 25,
+        },
+      ],
+    });
+    expect(opArgs(client, "catering_orders", "limit")).toEqual([20]);
+    expect(opArgs(client, "catering_orders", "order")).toEqual(["event_date", { ascending: false }]);
+  });
+
+  it("matches a phone query on phone with a percent pattern between digits", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "(555) 123" });
+
+    expect(opArgs(client, "catering_orders", "ilike")).toEqual(["phone", "%5%5%5%1%2%3%"]);
+  });
+
+  it("matches a text query on guest_name and escapes wildcards", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "50%_Jo" });
+
+    expect(opArgs(client, "catering_orders", "ilike")).toEqual(["guest_name", "%50\\%\\_Jo%"]);
+  });
+
+  it("matches a date query on event_date", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "2026-08-20" });
+
+    expect(filtersOn(client, "catering_orders", "select")).toContainEqual(["event_date", "2026-08-20"]);
+    expect(opArgs(client, "catering_orders", "ilike")).toBeUndefined();
+  });
+
+  it("makes no database call for an empty query", async () => {
+    client = createFakeClient({});
+
+    expect(await searchCateringOrders({ query: " a" })).toEqual({ ok: true, data: [] });
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("returns the database error text", async () => {
+    client = createFakeClient({ catering_orders: [{ data: null, error: { message: "boom" } }] });
+
+    const result = await searchCateringOrders({ query: "Jane" });
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("reorderChecklistDefaults", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const ok: Response = { data: null, error: null };
+
+  it("requires catering.manage", async () => {
+    client = createFakeClient({
+      catering_checklist_defaults: [{ data: [{ id: A }], error: null }, ok],
+    });
+
+    await reorderChecklistDefaults({ stage: "setup", orderedIds: [A] });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.manage");
+  });
+
+  it("writes sort 0..n-1 in the order given", async () => {
+    client = createFakeClient({
+      catering_checklist_defaults: [
+        { data: [{ id: A }, { id: B }, { id: C }], error: null },
+        ok,
+        ok,
+        ok,
+      ],
+    });
+
+    const result = await reorderChecklistDefaults({ stage: "setup", orderedIds: [C, A, B] });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    const updates = client.calls.filter((c) => c.ops.some(([name]) => name === "update"));
+    expect(updates).toHaveLength(3);
+    expect(updates.map((c) => c.ops.find(([name]) => name === "update")![1])).toEqual([
+      [{ sort: 0 }],
+      [{ sort: 1 }],
+      [{ sort: 2 }],
+    ]);
+    expect(updates.map((c) => c.ops.find(([name]) => name === "eq")![1])).toEqual([
+      ["id", C],
+      ["id", A],
+      ["id", B],
+    ]);
+  });
+
+  it("refuses a stale list and writes nothing", async () => {
+    // The database has a default (C) the screen has not seen. Only the read is
+    // queued, so any update would throw.
+    client = createFakeClient({
+      catering_checklist_defaults: [{ data: [{ id: A }, { id: B }, { id: C }], error: null }],
+    });
+
+    const result = await reorderChecklistDefaults({ stage: "setup", orderedIds: [B, A] });
+
+    expect(result).toEqual({ ok: false, error: "The list changed. Refresh and try again." });
+    expect(client.calls).toHaveLength(1);
   });
 });

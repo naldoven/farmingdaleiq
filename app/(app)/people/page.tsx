@@ -108,6 +108,14 @@ export default async function PeoplePage({
         >
           Teams
         </Link>
+        {canManage && (
+          <Link
+            href="/people/rollout"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-ink hover:bg-secondary"
+          >
+            Rollout
+          </Link>
+        )}
         {canManageRoles && (
           <Link
             href="/people/roles"
