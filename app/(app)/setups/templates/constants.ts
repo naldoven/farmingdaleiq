@@ -33,6 +33,16 @@ export const SEED_DEFAULT_POSITION_GROUPS: { name: string; positions: string[] }
 /** Name of the layout seedDefaultLayout() creates. Matches the layout hand-built on the live store. */
 export const SEED_DEFAULT_LAYOUT_NAME = "Main Floor (Default)";
 
+/**
+ * Fixed primary key for the seeded layout. store_layouts has no unique rule on
+ * name or active, so two leaders tapping "Create default layout" at once could
+ * both pass the "no layout yet" count and insert two ACTIVE defaults. Using a
+ * constant id lets the primary key act as the arbiter: the second insert fails
+ * with 23505 and seedDefaultLayout() treats that as "already seeded". No
+ * migration needed. The id is only ever reused after the row was deleted.
+ */
+export const SEED_DEFAULT_LAYOUT_ID = "5eed0000-1a70-4000-8000-000000000001";
+
 export interface SeedLayoutTile {
   /** Position name from SEED_DEFAULT_POSITION_GROUPS; the tile is skipped when no such position exists. */
   position: string;

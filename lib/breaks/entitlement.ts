@@ -204,6 +204,33 @@ export function isMissed(breakRow: BreakRow, shiftEnd: Date, now: Date): boolean
 }
 
 /**
+ * The instant after which an open break is swept to 'missed' (final).
+ *
+ * Not the day-part end on its own: a break becomes due at arrival plus the
+ * rule's min_shift_minutes (360 for the live Farmingdale rule) and every
+ * seeded day-part is five hours or less. An adult working 06:00 to 14:00 on
+ * the Morning setup (06:00 to 11:00) is due at 12:00, so sweeping at 11:00
+ * would mark the break missed an hour before the person can even take it.
+ * The cutoff is therefore the LATEST of the day-part end, the person's
+ * scheduled end, and the break's own due time. Returns null when there is no
+ * day-part end to anchor on (an "any day-part" setup is left alone).
+ */
+export function computeMissedCutoff(input: {
+  dayPartEnd: Date | null;
+  scheduledEnd: Date | null;
+  dueAt: Date | null;
+}): Date | null {
+  if (!input.dayPartEnd || Number.isNaN(input.dayPartEnd.getTime())) return null;
+  let cutoff = input.dayPartEnd.getTime();
+  for (const candidate of [input.scheduledEnd, input.dueAt]) {
+    if (candidate && !Number.isNaN(candidate.getTime()) && candidate.getTime() > cutoff) {
+      cutoff = candidate.getTime();
+    }
+  }
+  return new Date(cutoff);
+}
+
+/**
  * Real "Needs Break" due time (P2 wiring fix — the board previously hardcoded
  * `breakDueAt: null` or passed `authorized_at`, so the pending-but-due branch
  * of `needsBreakBadge` never fired). A break becomes due once the person has

@@ -21,6 +21,7 @@ import { clampTileToBounds, moveTile } from "@/lib/setups/layout-grid";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/setups/action-types";
 import {
+  SEED_DEFAULT_LAYOUT_ID,
   SEED_DEFAULT_LAYOUT_NAME,
   SEED_DEFAULT_POSITION_GROUPS,
   addTemplatePositionSchema,
@@ -447,9 +448,16 @@ export async function seedDefaultLayout(): Promise<ActionResult<{ tiles: number 
     ];
     const tiles = buildDefaultLayoutTiles(ordered);
 
+    // The count above is check-then-insert and store_layouts has no unique
+    // rule on name or active, so two leaders tapping at once could both pass
+    // it and create two active default layouts. The fixed id makes the
+    // primary key the arbiter: the loser gets 23505 and returns as already
+    // seeded. Only the seed-vs-seed race is closed this way; a layout a
+    // leader creates by hand during the same instant has its own random id
+    // and is not blocked (it would be inactive anyway, see createLayout).
     const { data: layout, error: layoutError } = await supabase
       .from("store_layouts")
-      .insert({ name: SEED_DEFAULT_LAYOUT_NAME, day_part_id: null, active: true })
+      .insert({ id: SEED_DEFAULT_LAYOUT_ID, name: SEED_DEFAULT_LAYOUT_NAME, day_part_id: null, active: true })
       .select("id")
       .single();
     if (layoutError || !layout) {

@@ -32,7 +32,7 @@ vi.mock("@/lib/supabase/server", () => ({
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { createLayout, deletePosition, deletePositionGroup, seedDefaultLayout } from "./actions";
-import { SEED_DEFAULT_LAYOUT_NAME } from "./constants";
+import { SEED_DEFAULT_LAYOUT_ID, SEED_DEFAULT_LAYOUT_NAME } from "./constants";
 
 const mockRequirePermission = vi.mocked(requirePermission);
 const mockCreateClient = vi.mocked(createClient);
@@ -113,6 +113,7 @@ describe("seedDefaultLayout", () => {
 
     expect(result).toEqual({ ok: true, data: { tiles: 2 } });
     expect(layoutBuilder.insert).toHaveBeenCalledWith({
+      id: SEED_DEFAULT_LAYOUT_ID,
       name: SEED_DEFAULT_LAYOUT_NAME,
       day_part_id: null,
       active: true,
@@ -127,6 +128,34 @@ describe("seedDefaultLayout", () => {
       expect(row.layout_id).toBe("L1");
       expect(row.area_label).toBeNull();
     }
+  });
+
+  it("treats a concurrent seed (23505 on the fixed id) as already seeded and places no tiles", async () => {
+    // Two leaders tap at once: both pass the count, the second insert hits the
+    // primary key on the fixed seed id. Without that arbiter there would be two
+    // active default layouts.
+    const countBuilder = makeQueryResult({ data: null, error: null, count: 0 });
+    const positionsBuilder = makeQueryResult({
+      data: [{ id: "setup-reg1", name: "Register 1", sort: 0, position_groups: { name: "Front Counter" } }],
+      error: null,
+    });
+    const layoutBuilder = makeQueryResult({
+      data: null,
+      error: { code: "23505", message: "duplicate key value violates unique constraint" },
+    });
+    const tilesBuilder = makeQueryResult({ data: null, error: null });
+    const from = vi.fn((table: string) => {
+      if (table === "positions") return positionsBuilder;
+      if (table === "layout_tiles") return tilesBuilder;
+      return from.mock.calls.filter((c) => c[0] === "store_layouts").length === 1 ? countBuilder : layoutBuilder;
+    });
+    mockCreateClient.mockResolvedValue({ from } as never);
+
+    const result = await seedDefaultLayout();
+
+    expect(result).toEqual({ ok: true, data: { tiles: 0 } });
+    expect(layoutBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({ id: SEED_DEFAULT_LAYOUT_ID }));
+    expect(tilesBuilder.upsert).not.toHaveBeenCalled();
   });
 });
 
