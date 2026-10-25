@@ -797,6 +797,178 @@ export type Database = {
         }
         Relationships: []
       }
+      cleaning_coordinators: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_coordinators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_item_photos: {
+        Row: {
+          capture_source: string
+          captured_at: string | null
+          created_at: string
+          id: string
+          item_id: string
+          kind: string
+          markup: Json | null
+          storage_path: string
+          taken_by: string
+        }
+        Insert: {
+          capture_source: string
+          captured_at?: string | null
+          created_at?: string
+          id: string
+          item_id: string
+          kind?: string
+          markup?: Json | null
+          storage_path: string
+          taken_by?: string
+        }
+        Update: {
+          capture_source?: string
+          captured_at?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          kind?: string
+          markup?: Json | null
+          storage_path?: string
+          taken_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_item_photos_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_photos_taken_by_fkey"
+            columns: ["taken_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_items: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          days_of_week: number[] | null
+          half: string
+          id: string
+          if_needed: boolean
+          interval_weeks: number | null
+          kind: string
+          name: string
+          note: string | null
+          sort: number
+          start_on: string | null
+          status: string
+          zone_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          days_of_week?: number[] | null
+          half: string
+          id?: string
+          if_needed?: boolean
+          interval_weeks?: number | null
+          kind: string
+          name: string
+          note?: string | null
+          sort?: number
+          start_on?: string | null
+          status?: string
+          zone_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          days_of_week?: number[] | null
+          half?: string
+          id?: string
+          if_needed?: boolean
+          interval_weeks?: number | null
+          kind?: string
+          name?: string
+          note?: string | null
+          sort?: number
+          start_on?: string | null
+          status?: string
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_items_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_zones: {
+        Row: {
+          active: boolean
+          areas: string
+          color: string
+          id: string
+          name: string
+          side: string
+          sort: number
+        }
+        Insert: {
+          active?: boolean
+          areas: string
+          color: string
+          id?: string
+          name: string
+          side: string
+          sort: number
+        }
+        Update: {
+          active?: boolean
+          areas?: string
+          color?: string
+          id?: string
+          name?: string
+          side?: string
+          sort?: number
+        }
+        Relationships: []
+      }
       course_attachments: {
         Row: {
           course_id: string
@@ -3837,6 +4009,7 @@ export type Database = {
       }
     }
     Functions: {
+      can_plan_cleaning: { Args: never; Returns: boolean }
       current_store_id: { Args: never; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
       redeem_reward: {

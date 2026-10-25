@@ -80,6 +80,14 @@ export const ALL_PERMISSION_KEYS = [
   "catering.view",
   "catering.override",
 
+  // Cleaning (docs/CLEANING-PLAN.md). `plan` is the board and master list;
+  // the store's cleaning coordinator gets planning rights through the
+  // cleaning_coordinators tag instead (see canPlanCleaning), so she keeps her
+  // leader role.
+  "cleaning.plan",
+  "cleaning.complete",
+  "cleaning.view_reports",
+
   // Reporting
   "reports.view",
 
