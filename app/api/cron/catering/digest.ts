@@ -41,14 +41,11 @@ export async function queueTomorrowDigest(
   const dayStartIso = storeDateTimeInputToIso(`${storeLocalDate(now)}T00:00`);
   if (!dayStartIso) return { status: "error", error: "could not compute store midnight" };
 
-  // The row must exist before the compare-and-set can match anything. A no-op
-  // when an earlier run already created it.
-  const { error: seedError } = await supabase
-    .from("job_cursors")
-    .upsert({ job_name: JOB, updated_at: nowIso }, { onConflict: "job_name", ignoreDuplicates: true });
-  if (seedError) return { status: "error", error: seedError.message };
-
-  // Remember the old value so a failure after the claim can put it back.
+  // Fast path: after the digest goes out, the remaining ~hundreds of runs that
+  // night stop here with one read instead of an upsert and an update each. It
+  // is only an optimization. The compare-and-set below stays the real
+  // once-a-night guard, so two runs that both pass this check still race
+  // safely on it. The value is also kept to restore if the claim must be released.
   const { data: cursor, error: cursorError } = await supabase
     .from("job_cursors")
     .select("last_event_at")
@@ -56,6 +53,16 @@ export async function queueTomorrowDigest(
     .maybeSingle();
   if (cursorError) return { status: "error", error: cursorError.message };
   const previousValue: string | null = cursor?.last_event_at ?? null;
+  if (previousValue && new Date(previousValue).getTime() >= new Date(dayStartIso).getTime()) {
+    return { status: "already_sent" };
+  }
+
+  // The row must exist before the compare-and-set can match anything. A no-op
+  // when an earlier run already created it.
+  const { error: seedError } = await supabase
+    .from("job_cursors")
+    .upsert({ job_name: JOB, updated_at: nowIso }, { onConflict: "job_name", ignoreDuplicates: true });
+  if (seedError) return { status: "error", error: seedError.message };
 
   const { data: claimed, error: claimError } = await supabase
     .from("job_cursors")

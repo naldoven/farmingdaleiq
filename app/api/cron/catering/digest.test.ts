@@ -13,6 +13,7 @@ let ordersResponse: QueryResponse;
 let callsResponse: QueryResponse;
 let eventInsertResponse: { error: { message: string } | null };
 let touchedTables: string[];
+let cursorReads: number;
 let upserts: Array<{ values: Record<string, unknown>; options: unknown }>;
 let updates: Array<{ values: Record<string, unknown>; filters: Filters }>;
 let events: Array<Record<string, unknown>>;
@@ -37,8 +38,10 @@ function createFakeAdmin() {
           select: () => {
             const query: Record<string, unknown> = {};
             query.eq = () => query;
-            query.maybeSingle = () =>
-              Promise.resolve({ data: { last_event_at: previousCursor }, error: null });
+            query.maybeSingle = () => {
+              cursorReads += 1;
+              return Promise.resolve({ data: { last_event_at: previousCursor }, error: null });
+            };
             return query;
           },
           update: (values: Record<string, unknown>) => {
@@ -118,6 +121,7 @@ beforeEach(() => {
   };
   eventInsertResponse = { error: null };
   touchedTables = [];
+  cursorReads = 0;
   upserts = [];
   updates = [];
   events = [];
@@ -192,6 +196,18 @@ describe("queueTomorrowDigest", () => {
     expect(result).toEqual({ status: "queued" });
     expect(touchedTables).not.toContain("catering_checklist_items");
     expect((events[0].payload as Record<string, unknown>).message).toBe("Mon, Oct 26: no catering orders.");
+  });
+
+  it("stops after one read when the cursor is already stamped today", async () => {
+    vi.setSystemTime(new Date("2026-10-25T23:30:00.000Z"));
+    previousCursor = "2026-10-25T22:05:00.000Z";
+    const result = await queueTomorrowDigest(supabase(), new Date());
+    expect(result).toEqual({ status: "already_sent" });
+    expect(cursorReads).toBe(1);
+    expect(touchedTables).toEqual(["job_cursors"]);
+    expect(upserts).toEqual([]);
+    expect(updates).toEqual([]);
+    expect(events).toEqual([]);
   });
 
   it("returns already_sent and writes nothing when another run won the claim", async () => {
