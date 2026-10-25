@@ -436,6 +436,13 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "S10",
       },
       {
+        href: "/settings/positions",
+        permission: "settings.manage",
+        label: "Positions",
+        description: "Position groups and positions: the Ratings matrix columns and the Training stations.",
+        owner: "S10",
+      },
+      {
         href: "/settings/discord",
         permission: "discord.manage",
         label: "Discord",

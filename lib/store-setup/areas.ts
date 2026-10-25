@@ -55,7 +55,7 @@ export const STORE_SETUP_AREAS: readonly StoreSetupArea[] = [
     title: "Positions and groups",
     description:
       "The Avondale station list (Front Counter, Drive Thru, Dining Room, Kitchen, BOH Support). Ratings and setups use it. Check the names match how Farmingdale runs.",
-    href: null,
+    href: "/settings/positions",
     editPermission: "settings.manage",
     money: false,
     source: "app/(app)/setups/templates/constants.ts and the training seed",
