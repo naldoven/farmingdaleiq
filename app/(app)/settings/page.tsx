@@ -72,15 +72,13 @@ export default async function SettingsPage() {
             description="Infraction types, the disciplinary ladder, and period settings."
             href="/accountability"
           />
-          {APP_FEATURES.setups && (
-            <ListRow
-              icon={Layers}
-              iconTone="info"
-              title="Areas"
-              description="Position groups and the store layout editor."
-              href="/setups/templates"
-            />
-          )}
+          <ListRow
+            icon={Layers}
+            iconTone="info"
+            title="Positions"
+            description="Position groups and positions for ratings and training."
+            href="/settings/positions"
+          />
           {APP_FEATURES.breaks && (
             <ListRow
               icon={Coffee}

@@ -20,7 +20,7 @@ refuses a row whose `confirmed_by` is not the signed-in user.
 
 | Area | What shipped | Editor today | Edit needs | Money |
 |---|---|---|---|---|
-| Positions and groups | Avondale list in `app/(app)/setups/templates/constants.ts` (Front Counter, Drive Thru, Dining Room, Kitchen, BOH Support) plus 21 FOH onboarding stations from the training seed. Ratings and setups both read it. | None reachable. The only editor is `/setups/templates`, and the Setups module is switched off in `lib/features.ts`. | `settings.manage` (next PR) | No |
+| Positions and groups | Avondale list in `app/(app)/setups/templates/constants.ts` (Front Counter, Drive Thru, Dining Room, Kitchen, BOH Support) plus 21 FOH onboarding stations from the training seed. Ratings and setups both read it. | `/settings/positions` (the old `/setups/templates` editor is under the dormant Setups module) | `settings.manage` | No |
 | Waste items and costs | 31 real item names from KitchenIQ screenshots. 12 items carry a `$0.10` placeholder cost; Chicken Noodle Soup and Tortilla Soup are priced per ounce at what look like per-cup prices. | `/waste?tab=admin` (Items card) | `waste.manage` | Yes |
 | Token earning rules | `task_complete` 5, `checklist_complete` 5, `top_performer` 20. All placeholders. | `/tokens` (Earning rules) | `tokens.manage` | Yes |
 | Rewards and prices | First 7 rewards and prices are real; the tail of the KitchenIQ list was never captured. | `/rewards` (Manage rewards) | `rewards.manage` | Yes |
@@ -114,7 +114,7 @@ for every money area.
 1. This PR: the audit, the `store_setup_areas` migration, the Store setup page,
    and the "Default, not confirmed" tag on every existing editor.
 2. Positions and groups editor at `/settings/positions` (the dormant Setups
-   editor stays off).
+   editor stays off). Done.
 3. Catering scaling rules as a row editor instead of raw JSON.
 4. Rating rubrics editor at `/settings/rubrics`. Done.
 5. Roadmap stations and pipeline creation, if Naldo wants them before launch.
