@@ -63,11 +63,14 @@ function kindLabel(kind: string): string {
 
 export function BreakBoard({
   setupId,
+  setupsEnabled,
   canManage,
   breaks,
   profiles,
 }: {
   setupId: string | null;
+  /** Whether the Setups module is live; breaks are generated from posted setups. */
+  setupsEnabled: boolean;
   canManage: boolean;
   breaks: BreakRow[];
   profiles: ProfileOption[];
@@ -94,8 +97,9 @@ export function BreakBoard({
   if (!setupId) {
     return (
       <p className="px-4 py-3 text-[13px] text-muted-ink">
-        No setup exists for this date and day-part yet. Create and post one from
-        the setup board first.
+        {setupsEnabled
+          ? "No setup exists for this date and day-part yet. Create and post one from the setup board first."
+          : "No setup exists for this date and day-part yet. Breaks are planned from posted setups, and the setup board is not switched on yet."}
       </p>
     );
   }

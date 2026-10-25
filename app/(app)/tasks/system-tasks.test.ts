@@ -404,6 +404,8 @@ describe("processTaskEvents", () => {
 
     const result = await processTaskEvents(supabase);
 
-    expect(result).toEqual({ created: 0, skipped: 0 });
+    // setup_posted is live again, so the event is scanned; with no
+    // leader_user_id it maps to nothing and is counted as skipped, not thrown.
+    expect(result).toEqual({ created: 0, skipped: 1 });
   });
 });

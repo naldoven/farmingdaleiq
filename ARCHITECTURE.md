@@ -290,7 +290,12 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
   who may move back or restore, so a direct write cannot get around the app; the
   checklist and packing-list checks stay in the app. Cancelled orders drop off the
   board, so `/catering/cancelled` lists them, newest first, with a link to each
-  order page where a manager can restore it.
+  order page where a manager can restore it. There is one exception to the step
+  order: a manager with `catering.override` (plus `catering.manage`) can close an
+  order whose event date has passed in one step from the Stale orders screen
+  (`/catering/stale`). The manager gives a reason, which is logged on each order.
+  That close posts nothing to Discord and queues no re-book call. Orders for
+  today or later still move one step at a time.
 - **Contacts and follow-up**: every guest becomes a contact carrying order count,
   lifetime spend, and last event date. Closing an order queues a follow-up call to
   re-book; the History page lists follow-ups due and the full order history with
@@ -390,7 +395,7 @@ Shifts & setups:
 - `position_groups` (id, name, sort) / `positions` (id, group_id, name, sort)
 - `setup_templates` (id, name, day_part_id) / `setup_template_positions` (template_id, position_id, sort)
 - `setups` (id, date, day_part_id, template_id, shift_leader_id, posted_at, posted_by)
-- `setup_assignments` (setup_id, position_id, user_id, arrival_time) — arrival_time feeds break sequencing; auto-place suggestions rank candidates by position rating
+- `setup_assignments` (setup_id, position_id, user_id, arrival_time, scheduled_end) — arrival_time feeds break sequencing; arrival_time → scheduled_end is the shift length the break rule is measured against (falls back to the day-part end); auto-place suggestions rank candidates by position rating
 - `shift_notes` (setup_id, author_id, body, created_at)
 - `store_layouts` (id, name, day_part_id, active) / `layout_tiles` (layout_id, position_id, x, y, w, h, area_label) — visual setup board
 - `break_rules` (id, min_shift_minutes, max_shift_minutes, age_band: adult|minor, rest_minutes_paid, meal_minutes_unpaid, sort) — NY presets seeded
@@ -523,6 +528,7 @@ Discord:
 | `/catering/orders/[id]` | Order detail: items, stage, all checklists, notes, guest history |
 | `/catering/history` | Contacts, follow-ups due, order history with period filters |
 | `/catering/cancelled` | Cancelled orders, newest first, each linking to its order page |
+| `/catering/stale` | Stale orders: past-event orders still open, oldest first (200 at a time), closed by a manager with one logged reason |
 | `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
 | `/catering/menu` | Menu item catalog admin (components, scaling rules); prices are read-only in the app |
 | `/reports` | Store dashboard + per-module reports, CSV export |
@@ -612,7 +618,10 @@ inventory, course inventory. Still open:
    names) vs. quick-rate only?
 6. **Org chart**: Farmingdale's tiers and goal counts per department.
 7. **Store layout**: a photo/sketch of your setup whiteboard or floor plan so the
-   layout editor's default arrangement matches your store.
+   layout editor's default arrangement matches your store. Until then the app
+   ships a SEED-DEFAULT "Main Floor (Default)" layout (front counter, drive
+   thru, dining room, kitchen line, back of house) that leaders can rearrange
+   tile by tile from Setup templates > Store layout.
 8. **Permissions**: per-role permission differences from the defaults (role list
    itself is captured).
 9. **Reports**: which reports you actually pull weekly/monthly.

@@ -1,10 +1,12 @@
 import { ProgressBar, SectionCard, StatusBadge } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { CreateCourseForm } from "@/components/training/create-course-form";
 import { PassportCard } from "@/components/training/passport-card";
 import { TrainingPageTabs } from "@/components/training/training-page-tabs";
 import { TrainingRoster, type RosterRow } from "@/components/training/training-roster";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { CourseAttachmentsPanel } from "@/app/(app)/training/course-attachments-panel";
 import { CourseFeedbackForm } from "@/app/(app)/training/course-feedback-form";
 
@@ -27,6 +29,8 @@ export default async function TrainingPage() {
   const canStamp = await hasPermission("training.stamp");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
   const { data: userData } = await supabase.auth.getUser();
   const currentUserId = userData.user?.id ?? null;
 
@@ -173,7 +177,10 @@ export default async function TrainingPage() {
   const passportsContent = (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
-        <p className="text-[13px] font-semibold text-muted-ink">Position Passports</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[13px] font-semibold text-muted-ink">Position Passports</p>
+          <SetupDefaultTag area="passports" confirmed={setupAreas.keys} />
+        </div>
         {positionPassports.map((passport) => (
           <PassportCard key={passport.id} {...buildCardProps(passport)} />
         ))}

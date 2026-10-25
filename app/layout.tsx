@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: "FarmingdaleIQ",
     template: "%s - FarmingdaleIQ",
   },
-  description: "FarmingdaleIQ: checklists, tasks, and team tools for the store.",
+  description: "FarmingdaleIQ: shift setups, checklists, tasks, and team tools for the store.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

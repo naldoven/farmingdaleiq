@@ -111,6 +111,10 @@ export type DeleteTileInput = z.infer<typeof deleteTileSchema>;
 // ./constants so the client positions-manager can import them without pulling
 // zod into the browser; re-exported here for server/action code and tests.
 export {
+  buildDefaultLayoutTiles,
   hasSeedPositionGroups,
+  SEED_DEFAULT_LAYOUT_ID,
+  SEED_DEFAULT_LAYOUT_NAME,
+  SEED_DEFAULT_LAYOUT_TILES,
   SEED_DEFAULT_POSITION_GROUPS,
 } from "./constants";

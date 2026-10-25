@@ -1,8 +1,10 @@
 import { MenuItemForm } from "@/components/catering/menu-item-form";
 import { MenuItemRowActions } from "@/components/catering/menu-item-row-actions";
 import { ListRow, SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { ChecklistDefaultsManager } from "@/app/(app)/catering/menu/checklist-defaults-manager";
 import type { ChecklistStage } from "@/app/(app)/catering/logic";
 
@@ -21,6 +23,8 @@ export default async function CateringMenuPage() {
   const canManage = await hasPermission("catering.manage");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
   const [{ data: menuItems }, { data: checklistDefaults }] = await Promise.all([
     supabase
       .from("catering_menu_items")
@@ -35,7 +39,9 @@ export default async function CateringMenuPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionLabel>Catering menu</SectionLabel>
+      <SectionLabel action={<SetupDefaultTag area="catering_menu" confirmed={setupAreas.keys} />}>
+        Catering menu
+      </SectionLabel>
 
       {canManage && <MenuItemForm />}
 
@@ -76,7 +82,10 @@ export default async function CateringMenuPage() {
       </SectionCard>
 
       {canManage && (
-        <SectionCard title="Per-stage checklist defaults">
+        <SectionCard
+          title="Per-stage checklist defaults"
+          action={<SetupDefaultTag area="catering_checklists" confirmed={setupAreas.keys} />}
+        >
           <ChecklistDefaultsManager
             defaults={(checklistDefaults ?? []).map((d) => ({
               id: d.id,

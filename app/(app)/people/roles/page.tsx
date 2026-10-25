@@ -2,8 +2,10 @@ import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RolePermissionMatrix } from "@/components/people/role-permission-matrix";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { groupPermissionKeys } from "@/app/(app)/people/roles/permission-groups";
 
 /**
@@ -17,6 +19,8 @@ export default async function RolesPermissionsPage() {
   await requirePermission("roles.manage");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   const [{ data: roles }, { data: rolePermissions }] = await Promise.all([
     supabase.from("roles").select("id, name, rank").order("rank"),
@@ -31,7 +35,10 @@ export default async function RolesPermissionsPage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Roles &amp; permissions</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold">Roles &amp; permissions</h1>
+          <SetupDefaultTag area="role_permissions" confirmed={setupAreas.keys} />
+        </div>
         <Link href="/people" className="text-sm text-muted-foreground hover:underline">
           &larr; Roster
         </Link>

@@ -139,6 +139,7 @@ export async function assignPosition(
     const supabase = await createClient();
 
     const arrivalTime = parsed.arrivalTime ? parsed.arrivalTime : null;
+    const scheduledEnd = parsed.scheduledEnd ? parsed.scheduledEnd : null;
 
     // FIQ-15: upsert on (setup_id, position_id) so concurrent assigns to the
     // same slot update one row instead of racing to create a duplicate that
@@ -149,6 +150,7 @@ export async function assignPosition(
         position_id: parsed.positionId,
         user_id: parsed.userId,
         arrival_time: arrivalTime,
+        scheduled_end: scheduledEnd,
       },
       { onConflict: "setup_id,position_id" },
     );
@@ -334,6 +336,21 @@ export async function selectTopPerformer(
 
     if (alreadySelected === true) {
       return { ok: false, error: "A Top Performer was already selected for this shift." };
+    }
+
+    // The pick must be someone who actually worked this setup. The board only
+    // offers assigned people, but UI hiding is not security: top_performer
+    // mints tokens (SEED-DEFAULT 20) and posts to the team feed, so a crafted
+    // call must not be able to award them to anyone else.
+    const { data: assignment } = await supabase
+      .from("setup_assignments")
+      .select("id")
+      .eq("setup_id", parsed.setupId)
+      .eq("user_id", parsed.userId)
+      .limit(1)
+      .maybeSingle();
+    if (!assignment) {
+      return { ok: false, error: "Top Performer must be someone assigned to this setup." };
     }
 
     const {

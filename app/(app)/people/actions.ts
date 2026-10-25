@@ -40,6 +40,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
 import { requirePermission } from "@/lib/auth/permissions";
+import { DISCORD_ID_TAKEN_MESSAGE, isUniqueViolation } from "@/lib/discord/id-conflict";
 import { toActionError } from "@/lib/errors/action-error";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/people/action-types";
@@ -98,7 +99,15 @@ export async function updateProfile(
       .eq("profile_id", parsed.id);
 
     if (privateError) {
-      return { ok: false, error: privateError.message };
+      // The only unique constraint this update can hit is the partial unique
+      // index on discord_user_id (migration 20261025020000): the ID typed here
+      // already belongs to another profile.
+      return {
+        ok: false,
+        error: isUniqueViolation(privateError)
+          ? DISCORD_ID_TAKEN_MESSAGE
+          : privateError.message,
+      };
     }
 
     revalidatePath("/people");

@@ -26,6 +26,10 @@
  *     database transaction (catering_replace_setup) that locks the order,
  *     so a double click rebuilds the list twice in turn and never leaves two
  *     lists side by side.
+ *   - bulkCloseStaleOrders runs in the database (catering_bulk_close), which
+ *     reports an order that is already closed as already_closed instead of
+ *     closing it again, so a double tap or a retried batch logs each order
+ *     once and queues nothing.
  */
 
 import { revalidatePath } from "next/cache";
@@ -35,7 +39,7 @@ import { requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/db/types";
-import type { ActionResult } from "@/app/(app)/catering/action-types";
+import type { ActionResult, OrderSearchResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
   CHECKLIST_STAGE_LABELS,
@@ -43,7 +47,9 @@ import {
   canBuildCateringSetup,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
+  classifyOrderSearch,
   defaultFollowUpDueDate,
+  escapeLikePattern,
   formatOrderNewMessage,
   formatStageChangeMessage,
   formatStageOverrideMessage,
@@ -55,15 +61,19 @@ import {
   planPreOrderRows,
   planSetupRows,
   parseRequestedCondiments,
+  phoneLikePattern,
   previousCateringStage,
   SETUP_BUILD_STAGES,
   setupPlanInputs,
   stageOverrideTargetError,
+  summarizeBulkClose,
+  type BulkCloseSummary,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
   addChecklistItemSchema,
   addOrderItemSchema,
+  bulkCloseStaleOrdersSchema,
   cancelOrderSchema,
   changeStageSchema,
   checklistDefaultIdSchema,
@@ -74,8 +84,10 @@ import {
   menuItemSchema,
   moveOrderBackSchema,
   orderIdSchema,
+  orderSearchSchema,
   orderItemIdSchema,
   resolveFollowUpSchema,
+  reorderChecklistDefaultsSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
   toggleChecklistItemSchema,
@@ -85,13 +97,16 @@ import {
   updateOrderItemQtySchema,
   type AddChecklistItemInput,
   type AddOrderItemInput,
+  type BulkCloseStaleOrdersInput,
   type CancelOrderInput,
   type ChangeStageInput,
   type ChecklistDefaultInput,
   type CreateOrderInput,
   type MenuItemInput,
   type MoveOrderBackInput,
+  type OrderSearchInput,
   type ResolveFollowUpInput,
+  type ReorderChecklistDefaultsInput,
   type RestoreOrderInput,
   type ToggleChecklistDefaultActiveInput,
   type ToggleChecklistItemInput,
@@ -836,6 +851,47 @@ export async function restoreOrder(input: RestoreOrderInput): Promise<ActionResu
   }
 }
 
+/**
+ * Manager cleanup for past-event orders nobody worked: closes a batch in one
+ * database call with one shared reason. The work happens in
+ * catering_bulk_close (supabase/migrations/20261026020000_catering_bulk_close.sql):
+ * it re-checks catering.override and catering.manage itself, the update goes
+ * through the catering_orders RLS policy and the stage guard, every closed
+ * order gets a catering_stage_change audit row with the reason and the
+ * manager's id, and nothing posts to Discord and no re-book follow-up is
+ * queued (the event is over; a flood of stale posts helps nobody). Orders
+ * that are not past, already closed, or cancelled are reported, not changed.
+ */
+export async function bulkCloseStaleOrders(
+  input: BulkCloseStaleOrdersInput,
+): Promise<ActionResult<BulkCloseSummary>> {
+  try {
+    // Override first, then manage, same order as moveOrderBack: the RLS
+    // update policy needs catering.manage, so an override holder without it
+    // would otherwise pass here and fail inside the function.
+    await requirePermission("catering.override");
+    await requirePermission("catering.manage");
+    const parsed = bulkCloseStaleOrdersSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: rows, error } = await supabase.rpc("catering_bulk_close", {
+      p_order_ids: parsed.orderIds,
+      p_reason: parsed.reason,
+    });
+    if (error) return { ok: false, error: error.message };
+
+    const summary = summarizeBulkClose(rows ?? []);
+    revalidateCatering();
+    revalidatePath("/catering/stale");
+    for (const row of rows ?? []) {
+      if (row.outcome === "closed") revalidatePath(`/catering/orders/${row.order_id}`);
+    }
+    return { ok: true, data: summary };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
 export async function addOrderItem(input: AddOrderItemInput): Promise<ActionResult> {
   try {
     await requirePermission("catering.manage");
@@ -1338,6 +1394,100 @@ export async function deleteChecklistDefault(input: { id: string }): Promise<Act
       .eq("id", parsed.id);
 
     if (error) return { ok: false, error: error.message };
+
+    revalidatePath("/catering/menu");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Order search for the /catering home screen. A read lives in the actions
+ * file because the search box is a client component: it needs a server round
+ * trip, and the per-request client keeps RLS applied. Exactly one filter
+ * method is used per query. Never build a PostgREST .or(...) string from
+ * typed text (see findOrCreateContact): commas and parentheses corrupt it.
+ * Phone and email are matched but never returned.
+ */
+export async function searchCateringOrders(
+  input: OrderSearchInput,
+): Promise<ActionResult<OrderSearchResult[]>> {
+  try {
+    await requirePermission("catering.view");
+    const parsed = orderSearchSchema.parse(input);
+    const search = classifyOrderSearch(parsed.query);
+    if (search.kind === "empty") return { ok: true, data: [] };
+
+    const supabase = await createClient();
+    let query = supabase
+      .from("catering_orders")
+      .select("id, guest_name, event_date, event_time, stage, headcount");
+    if (search.kind === "text") {
+      query = query.ilike("guest_name", `%${escapeLikePattern(search.text)}%`);
+    } else if (search.kind === "phone") {
+      query = query.ilike("phone", phoneLikePattern(search.digits));
+    } else {
+      query = query.eq("event_date", search.isoDate);
+    }
+    const { data, error } = await query.order("event_date", { ascending: false }).limit(20);
+    if (error) return { ok: false, error: toActionError(error) };
+
+    return {
+      ok: true,
+      data: (data ?? []).map((row) => ({
+        id: row.id,
+        guestName: row.guest_name,
+        eventDate: row.event_date,
+        eventTime: row.event_time,
+        stage: row.stage as OrderStage,
+        headcount: row.headcount,
+      })),
+    };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Saves a new order for one stage's defaults. The write is idempotent by
+ * construction: it sets sort = position for every id, so running the same
+ * input twice writes the same values.
+ *
+ * It refuses when the ids sent differ from the ids in the database for that
+ * stage. A stale screen must not silently drop or reorder a default another
+ * manager just added or deleted.
+ */
+export async function reorderChecklistDefaults(
+  input: ReorderChecklistDefaultsInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("catering.manage");
+    const parsed = reorderChecklistDefaultsSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: existing, error: readError } = await supabase
+      .from("catering_checklist_defaults")
+      .select("id")
+      .eq("stage", parsed.stage);
+
+    if (readError) return { ok: false, error: readError.message };
+
+    const sent = new Set(parsed.orderedIds);
+    const current = new Set((existing ?? []).map((row) => row.id));
+    const sameSet =
+      sent.size === parsed.orderedIds.length &&
+      sent.size === current.size &&
+      [...sent].every((id) => current.has(id));
+    if (!sameSet) return { ok: false, error: "The list changed. Refresh and try again." };
+
+    for (const [sort, id] of parsed.orderedIds.entries()) {
+      const { error } = await supabase
+        .from("catering_checklist_defaults")
+        .update({ sort })
+        .eq("id", id);
+      if (error) return { ok: false, error: error.message };
+    }
 
     revalidatePath("/catering/menu");
     return { ok: true, data: undefined };

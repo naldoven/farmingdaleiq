@@ -6,6 +6,7 @@ import {
   StatusBadge,
 } from "@/components/mobile";
 import { AccountabilitySettingsForm } from "@/components/accountability/settings-form";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { AcknowledgeButton } from "@/components/accountability/acknowledge-button";
 import {
   DeleteDisciplinaryActionTypeButton,
@@ -16,6 +17,7 @@ import { InfractionTypeCreateForm } from "@/components/accountability/infraction
 import { IssueInfractionForm } from "@/components/accountability/issue-infraction-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { formatStoreDate } from "@/lib/time";
 import { computeActivePoints } from "@/app/(app)/accountability/logic";
 import { fetchMyInfractions } from "@/app/(app)/accountability/queries";
@@ -39,6 +41,8 @@ export const metadata = { title: "Accountability" };
 
 export default async function AccountabilityPage() {
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -237,7 +241,10 @@ export default async function AccountabilityPage() {
             )}
           </SectionCard>
 
-          <SectionCard title="Infraction types">
+          <SectionCard
+            title="Infraction types"
+            action={<SetupDefaultTag area="infractions" confirmed={setupAreas.keys} />}
+          >
             <div className="flex flex-col gap-3">
               <InfractionTypeCreateForm />
               {allInfractionTypes.length === 0 ? (
