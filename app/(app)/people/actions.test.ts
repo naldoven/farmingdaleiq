@@ -211,7 +211,7 @@ describe("PPL2b: PII writes are routed to profiles_private", () => {
       id: PROFILE_ID,
       name: "Jamie Rivera",
       phone: "555-0100",
-      discordUserId: "424242",
+      discordUserId: "123456789012345678",
       birthdate: "2010-05-01",
       hiredOn: "2024-01-01",
       avatarUrl: "",
@@ -230,7 +230,7 @@ describe("PPL2b: PII writes are routed to profiles_private", () => {
     expect(fromMock).toHaveBeenCalledWith("profiles_private");
     expect(privateResult.update).toHaveBeenCalledWith({
       phone: "555-0100",
-      discord_user_id: "424242",
+      discord_user_id: "123456789012345678",
       birthdate: "2010-05-01",
       hired_on: "2024-01-01",
     });

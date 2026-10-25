@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
 
+// 18 digits, the usual length of a Discord user id (snowflake).
+const VALID_ID = "123456789012345678";
+
 describe("buildDiscordMessage", () => {
   it("does not advertise dormant feature routes", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("broadcast");
@@ -27,9 +30,9 @@ describe("buildDiscordMessage", () => {
     const msg = buildDiscordMessage(
       "setup_posted",
       { title: "You're on Register" },
-      { recipientDiscordId: "123456789" },
+      { recipientDiscordId: VALID_ID },
     );
-    expect(msg.content).toContain("<@123456789>");
+    expect(msg.content).toContain(`<@${VALID_ID}>`);
   });
 
   it("omits the mention when no discord id is available", () => {
@@ -54,28 +57,44 @@ describe("buildDiscordMessage", () => {
       const msg = buildDiscordMessage(
         "setup_posted",
         { title: "You're on Register" },
-        { recipientDiscordId: "123456789" },
+        { recipientDiscordId: VALID_ID },
       );
-      expect(msg.allowed_mentions).toEqual({ parse: [], users: ["123456789"] });
+      expect(msg.allowed_mentions).toEqual({ parse: [], users: [VALID_ID] });
+    });
+
+    it("sends a plain no-ping post when the stored id is not a numeric snowflake", () => {
+      // A username or a short number would make Discord reject the whole
+      // webhook message with a 400, so the post goes out without a mention.
+      for (const recipientDiscordId of ["jamie", "@jamie", "1234567890", "12345678901234x6"]) {
+        const msg = buildDiscordMessage(
+          "recognition",
+          { title: "Great shift" },
+          { recipientDiscordId },
+        );
+        expect(msg.content).toContain("Great shift");
+        expect(msg.content).not.toContain("<@");
+        expect(msg.content).not.toContain(recipientDiscordId);
+        expect(msg.allowed_mentions).toEqual({ parse: [] });
+      }
     });
 
     it("keeps typed @everyone, @here and role pings inert even with a recipient", () => {
       const msg = buildDiscordMessage(
         "recognition",
         { title: "@everyone", message: "@here look <@&987654321> <@555>" },
-        { recipientDiscordId: "123456789" },
+        { recipientDiscordId: VALID_ID },
       );
       // The text still reads as typed; Discord just must not act on it.
       expect(msg.content).toContain("@everyone");
       expect(msg.allowed_mentions?.parse).toEqual([]);
-      expect(msg.allowed_mentions?.users).toEqual(["123456789"]);
+      expect(msg.allowed_mentions?.users).toEqual([VALID_ID]);
     });
 
     it("allows no pings on the privacy-redacted branch, even with a recipient", () => {
       const msg = buildDiscordMessage(
         "infraction_issued",
         { title: "@everyone" },
-        { recipientDiscordId: "999" },
+        { recipientDiscordId: VALID_ID },
       );
       expect(msg.allowed_mentions).toEqual({ parse: [] });
     });
@@ -86,7 +105,7 @@ describe("buildDiscordMessage", () => {
       const msg = buildDiscordMessage(
         "infraction_issued",
         { title: "3 points — tardy", points: 3, infractionType: "tardiness" },
-        { recipientName: "Jamie Rivera", recipientDiscordId: "999" },
+        { recipientName: "Jamie Rivera", recipientDiscordId: VALID_ID },
       );
       expect(msg.content).toBe("⚠️ A private accountability event was recorded in FarmingdaleIQ.");
       expect(msg.content).not.toContain("point");
