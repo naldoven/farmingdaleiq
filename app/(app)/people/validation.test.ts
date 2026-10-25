@@ -41,6 +41,40 @@ describe("updateProfileSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  describe("discordUserId", () => {
+    it("accepts an empty id (clears it)", () => {
+      expect(updateProfileSchema.safeParse({ ...base, discordUserId: "" }).success).toBe(true);
+    });
+
+    it("accepts a missing id", () => {
+      const withoutId: Partial<typeof base> = { ...base };
+      delete withoutId.discordUserId;
+      expect(updateProfileSchema.safeParse(withoutId).success).toBe(true);
+    });
+
+    it("accepts an 18 digit id and trims surrounding spaces", () => {
+      const result = updateProfileSchema.safeParse({
+        ...base,
+        discordUserId: "  123456789012345678 ",
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.discordUserId).toBe("123456789012345678");
+    });
+
+    it("rejects a username with a message a manager can act on", () => {
+      const result = updateProfileSchema.safeParse({ ...base, discordUserId: "jamie" });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe(
+        "Discord ID must be the 17 to 20 digit number from Discord, not a username.",
+      );
+    });
+
+    it("rejects a 10 digit number", () => {
+      const result = updateProfileSchema.safeParse({ ...base, discordUserId: "1234567890" });
+      expect(result.success).toBe(false);
+    });
+  });
+
   it("rejects a non-uuid id", () => {
     const result = updateProfileSchema.safeParse({ ...base, id: "not-a-uuid" });
     expect(result.success).toBe(false);

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isDiscordUserId } from "@/lib/discord/user-id";
+
 /**
  * Input validation for the People server actions (app/(app)/people/actions.ts).
  * Kept in a plain module (no "use server") so it's unit-testable on its own
@@ -10,7 +12,15 @@ export const updateProfileSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1, "Name is required"),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
-  discordUserId: z.string().trim().max(50).optional().or(z.literal("")),
+  // Empty clears the id. Anything else must be the numeric id: a username here
+  // makes Discord reject the whole webhook message (see lib/discord/user-id.ts).
+  discordUserId: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || isDiscordUserId(value), {
+      message: "Discord ID must be the 17 to 20 digit number from Discord, not a username.",
+    })
+    .optional(),
   birthdate: z.string().trim().optional().or(z.literal("")),
   hiredOn: z.string().trim().optional().or(z.literal("")),
   avatarUrl: z.string().trim().url("Enter a valid URL").max(2048).optional().or(z.literal("")),

@@ -1,6 +1,7 @@
 import type { EventKey, EventPayload } from "@/lib/events/bus";
 import type { DiscordAllowedMentions, DiscordWebhookMessage } from "@/lib/discord/client";
 import { enabledEventKeys } from "@/lib/features";
+import { isDiscordUserId } from "@/lib/discord/user-id";
 
 /**
  * Event keys Discord auto-posts (ARCHITECTURE.md "Discord integration" >
@@ -80,8 +81,8 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_stage_change: "Catering order stage change",
 };
 
-function mention(discordUserId: string | null | undefined): string {
-  return discordUserId ? `<@${discordUserId}>` : "";
+function mention(discordUserId: string): string {
+  return `<@${discordUserId}>`;
 }
 
 export interface BuildDiscordMessageOptions {
@@ -119,8 +120,14 @@ export function buildDiscordMessage(
     (typeof payload.message === "string" && payload.message) ||
     (typeof payload.body === "string" && payload.body) ||
     undefined;
-  const recipientId = opts.recipientDiscordId || undefined;
-  const mentionText = mention(recipientId);
+  // A stored id that is not a real snowflake (an older row, or a value written
+  // around the form) must not reach Discord: a malformed `<@id>` or `users`
+  // entry makes it reject the whole message with a 400, and the post is lost
+  // once the outbox runs out of retries. Fall back to a plain, no-ping post.
+  const recipientId = isDiscordUserId(opts.recipientDiscordId)
+    ? opts.recipientDiscordId
+    : undefined;
+  const mentionText = recipientId ? mention(recipientId) : "";
 
   const parts = [`${emoji} **${title}**`];
   if (detail) parts.push(detail);
