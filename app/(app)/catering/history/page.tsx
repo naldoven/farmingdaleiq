@@ -71,7 +71,15 @@ export default async function CateringHistoryPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionLabel>History</SectionLabel>
+      <SectionLabel
+        action={
+          <Link href="/catering/cancelled" className="text-[13px] font-semibold text-accent hover:underline">
+            Cancelled orders
+          </Link>
+        }
+      >
+        History
+      </SectionLabel>
 
       <SectionCard title="Follow-ups due" flush>
         <div className="divide-y divide-line">
