@@ -16,6 +16,7 @@ import { setEventRoute } from "@/app/(app)/settings/discord/actions";
 import type { ChannelRow } from "@/components/settings/channel-list";
 import { EVENT_LABELS } from "@/components/settings/event-labels";
 
+
 interface RouteConfig {
   event_key: string;
   channel_id: string | null;

@@ -21,6 +21,7 @@ export const EVENT_LABELS: Record<string, string> = {
   reward_claim: "Reward claim",
   catering_order_new: "New catering order",
   catering_stage_change: "Catering stage change",
+  catering_tomorrow_digest: "Tomorrow's catering digest (6 PM)",
   infraction_issued: "Infraction issued (name only, no points)",
   disciplinary_triggered: "Disciplinary action (name only, no points)",
 };
