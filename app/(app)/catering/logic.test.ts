@@ -36,16 +36,16 @@ import {
   parseRequestedCondiments,
   parseScalingRules,
   nextCateringStage,
-  planMissingPreOrderChecklist,
   planPreOrderChecklist,
+  planPreOrderRows,
+  planSetupRows,
   periodRange,
   previousCateringStage,
   stageOverrideTargetError,
   planChecklistMaterialization,
+  setupPlanInputs,
   storeLocalDate,
-  PACKING_LIST_BUILDING_ERROR,
   PACKING_LIST_NOT_BUILT_ERROR,
-  SETUP_BUILD_SETTLE_MS,
   packingListGateError,
 } from "@/app/(app)/catering/logic";
 
@@ -322,16 +322,89 @@ describe("planPreOrderChecklist", () => {
   });
 });
 
-describe("planMissingPreOrderChecklist", () => {
-  it("adds all three Pre-order items to an order that has none", () => {
-    expect(planMissingPreOrderChecklist([])).toEqual(planPreOrderChecklist());
+describe("planPreOrderRows", () => {
+  it("sends every Pre-order item as label and sort; the database adds only the missing ones", () => {
+    expect(planPreOrderRows()).toEqual([
+      { label: "Compare packed items to the receipt", sort: 900 },
+      { label: "Verify sauces and special instructions", sort: 901 },
+      { label: "Cold items packed last", sort: 902 },
+    ]);
+    expect(planPreOrderRows().map((row) => row.label)).toEqual(PRE_ORDER_LABELS);
+  });
+});
+
+describe("planSetupRows", () => {
+  it("bakes the quantity into the label, keeps the section, and numbers from 1000", () => {
+    expect(
+      planSetupRows([
+        { section: "paper_goods", label: "Plates", qty: 20 },
+        { section: "sauces_dressings", label: "8oz Chick-fil-A Sauce", qty: 1 },
+      ]),
+    ).toEqual([
+      { label: "Plates - 20", setup_section: "paper_goods", sort: 1000 },
+      { label: "8oz Chick-fil-A Sauce - 1", setup_section: "sauces_dressings", sort: 1001 },
+    ]);
   });
 
-  it("skips Pre-order items the order already has, so a rebuild cannot duplicate them", () => {
-    expect(
-      planMissingPreOrderChecklist(["Compare packed items to the receipt", " cold items packed last ", "Tender out"]),
-    ).toEqual([{ stage: "out", label: "Verify sauces and special instructions", sort: 901 }]);
-    expect(planMissingPreOrderChecklist([...PRE_ORDER_LABELS])).toEqual([]);
+  it("gives every generated row a setup_section, which is how the next build replaces it", () => {
+    const rows = planSetupRows(
+      buildPhysicalOrderSetup({
+        items: [
+          { name: "Large Hot Chick-fil-A Nuggets Tray", qty: 1 },
+          { name: "Gallon Sweet Tea", qty: 1 },
+        ],
+        selectedCondiments: [{ name: "8oz Chick-fil-A Sauce", qty: 2 }],
+        headcount: 12,
+        paperGoods: true,
+        fulfillment: "pickup",
+      }),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => Boolean(row.setup_section))).toBe(true);
+  });
+});
+
+describe("setupPlanInputs", () => {
+  const RECEIPT_NOTES = ["Items:", "- 1x Gallon Sweet Tea"].join("\n");
+
+  it("keeps exactly the fields catering_replace_setup compares, and nothing else", () => {
+    const order = {
+      id: "order-1",
+      stage: "setup",
+      guest_name: "Guest",
+      headcount: 12,
+      paper_goods: true,
+      fulfillment: "delivery",
+      notes: RECEIPT_NOTES,
+      selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 2 }],
+    };
+    const items = [{ id: "row-1", menu_item_id: "menu-1", qty: 3 }];
+
+    expect(setupPlanInputs(order, items)).toEqual({
+      headcount: 12,
+      paper_goods: true,
+      fulfillment: "delivery",
+      notes: RECEIPT_NOTES,
+      selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 2 }],
+      items: [{ menu_item_id: "menu-1", qty: 3 }],
+    });
+  });
+
+  it("sends missing values as null, so they survive JSON and match the database", () => {
+    const inputs = setupPlanInputs(
+      { headcount: null, paper_goods: false, fulfillment: null, notes: null, selected_condiments: [] },
+      [],
+    );
+    // JSON.stringify drops undefined keys; a dropped key would make every
+    // build look like the order changed.
+    expect(JSON.parse(JSON.stringify(inputs))).toEqual({
+      headcount: null,
+      paper_goods: false,
+      fulfillment: null,
+      notes: null,
+      selected_condiments: [],
+      items: [],
+    });
   });
 });
 
@@ -516,24 +589,13 @@ describe("isNewOrderSettling", () => {
 });
 
 describe("packingListGateError", () => {
-  const now = new Date("2026-08-20T17:00:00.000Z");
-
   it("refuses when no list was built", () => {
-    expect(packingListGateError(null, now)).toBe(PACKING_LIST_NOT_BUILT_ERROR);
+    expect(packingListGateError(null)).toBe(PACKING_LIST_NOT_BUILT_ERROR);
   });
 
-  it("refuses while a fresh stamp may still sit beside an empty, inserting list", () => {
-    // 16:59:30Z is 12:59 PM in New York (EDT); the move opens two minutes later.
-    expect(packingListGateError("2026-08-20T16:59:30.000Z", now)).toBe(
-      "The packing list was rebuilt at 12:59 PM. You can move this order on at 1:01 PM.",
-    );
-    expect(packingListGateError("2026-08-20T16:58:00.001Z", now)).toContain("You can move this order on at 1:00 PM.");
-    expect(packingListGateError("not a date", now)).toBe(PACKING_LIST_BUILDING_ERROR);
-  });
-
-  it("passes once the stamp is older than any build takes", () => {
-    expect(packingListGateError(new Date(now.getTime() - SETUP_BUILD_SETTLE_MS).toISOString(), now)).toBeNull();
-    expect(packingListGateError("2026-08-19T04:00:00.000Z", now)).toBeNull();
+  it("passes the moment a list is stamped: the stamp and the rows commit together", () => {
+    expect(packingListGateError(new Date().toISOString())).toBeNull();
+    expect(packingListGateError("2026-08-19T04:00:00.000Z")).toBeNull();
   });
 });
 
