@@ -3,7 +3,7 @@ import { SectionLabel } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { storeLocalDate } from "@/lib/time";
-import { STALE_CLOSABLE_STAGES, type OrderStage } from "@/app/(app)/catering/logic";
+import { BULK_CLOSE_MAX_ORDERS, STALE_CLOSABLE_STAGES, type OrderStage } from "@/app/(app)/catering/logic";
 
 /**
  * /catering/stale: manager cleanup for past-event orders nobody worked. On
@@ -25,12 +25,18 @@ export default async function StaleCateringOrdersPage() {
   // not stale at 9 PM New York even though it is already tomorrow in UTC.
   const today = storeLocalDate(new Date());
 
-  const { data: orders } = await supabase
+  // Oldest events first, capped at what one bulk close accepts. The exact
+  // count tells the screen when more are waiting behind this batch. Without
+  // the cap a long backlog loads every row, and "Select all" then picks more
+  // than the action allows ("Close at most 200").
+  const { data: orders, count } = await supabase
     .from("catering_orders")
-    .select("id, guest_name, event_date, event_time, headcount, stage")
+    .select("id, guest_name, event_date, event_time, headcount, stage", { count: "exact" })
     .lt("event_date", today)
     .in("stage", [...STALE_CLOSABLE_STAGES])
-    .order("event_date", { ascending: false });
+    .order("event_date", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(BULK_CLOSE_MAX_ORDERS);
 
   const rows: StaleOrderRow[] = (orders ?? []).map((order) => ({
     id: order.id,
@@ -48,7 +54,7 @@ export default async function StaleCateringOrdersPage() {
         Orders whose event date has passed and that never reached Closed. Closing them here logs your reason on
         each order, posts nothing to Discord, and queues no re-book calls.
       </p>
-      <StaleOrdersCloser orders={rows} canClose={canManage} />
+      <StaleOrdersCloser orders={rows} totalCount={Math.max(count ?? 0, rows.length)} canClose={canManage} />
     </div>
   );
 }

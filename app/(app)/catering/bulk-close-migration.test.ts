@@ -12,7 +12,7 @@ import {
 } from "@/app/(app)/catering/logic";
 
 /**
- * The bulk close migration (supabase/migrations/20261026000000_catering_bulk_close.sql)
+ * The bulk close migration (supabase/migrations/20261026020000_catering_bulk_close.sql)
  * recreates the stage guard trigger and adds catering_bulk_close. Both keep
  * their own copies of the stage order, the labels and the outcome names,
  * because SQL cannot import the TypeScript constants. These tests read the
@@ -21,7 +21,7 @@ import {
  */
 
 const MIGRATION = readFileSync(
-  path.resolve(__dirname, "..", "..", "..", "supabase", "migrations", "20261026000000_catering_bulk_close.sql"),
+  path.resolve(__dirname, "..", "..", "..", "supabase", "migrations", "20261026020000_catering_bulk_close.sql"),
   "utf8",
 );
 

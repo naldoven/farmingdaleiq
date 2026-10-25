@@ -12,6 +12,7 @@ import { bulkCloseStaleOrders } from "@/app/(app)/catering/actions";
 import {
   ORDER_STAGE_LABELS,
   describeBulkCloseSummary,
+  staleListNotice,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 
@@ -31,8 +32,20 @@ export interface StaleOrderRow {
  * server action re-checks catering.override and catering.manage, and the
  * database function closes nothing that is not past, so this screen is a
  * convenience on top of those controls, never the control itself.
+ *
+ * `orders` is the slice the page loaded (the oldest ones, at most one bulk
+ * close worth) and `totalCount` is how many are open in all. "Select all"
+ * picks only the loaded rows, so it never exceeds what the action accepts.
  */
-export function StaleOrdersCloser({ orders, canClose }: { orders: StaleOrderRow[]; canClose: boolean }) {
+export function StaleOrdersCloser({
+  orders,
+  totalCount,
+  canClose,
+}: {
+  orders: StaleOrderRow[];
+  totalCount: number;
+  canClose: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -47,6 +60,7 @@ export function StaleOrdersCloser({ orders, canClose }: { orders: StaleOrderRow[
   const selectedIds = Array.from(selected).filter((id) => listedIds.has(id));
   const allSelected = orders.length > 0 && selectedIds.length === orders.length;
   const reasonReady = reason.trim().length >= 3;
+  const listNotice = staleListNotice(orders.length, totalCount);
 
   const toggle = (id: string, checked: boolean) => {
     setConfirming(false);
@@ -160,7 +174,12 @@ export function StaleOrdersCloser({ orders, canClose }: { orders: StaleOrderRow[
         </p>
       )}
 
-      <SectionCard title={`Past-event orders still open (${orders.length})`} flush>
+      <SectionCard title={`Past-event orders still open (${totalCount})`} flush>
+        {listNotice && (
+          <p className="border-b border-line px-4 py-3 text-[13px] text-muted-ink" role="status">
+            {listNotice}
+          </p>
+        )}
         <div className="divide-y divide-line">
           {orders.map((order) => {
             const checked = selected.has(order.id);

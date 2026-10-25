@@ -51,6 +51,8 @@ import {
   describeBulkCloseSummary,
   isStaleOpenOrder,
   summarizeBulkClose,
+  BULK_CLOSE_MAX_ORDERS,
+  staleListNotice,
 } from "@/app/(app)/catering/logic";
 
 const PRE_ORDER_LABELS = planPreOrderChecklist().map((item) => item.label);
@@ -924,6 +926,19 @@ describe("stale order bulk close", () => {
     expect(describeBulkCloseSummary({ closed: 1, alreadyClosed: 0, cancelled: 2, notPast: 1, notFound: 3 })).toBe(
       "Closed 1 order. 2 orders are cancelled and stayed that way. 1 order is not past yet and stayed open. 3 orders could not be found.",
     );
+  });
+
+  it("loads no more orders than one bulk close accepts", () => {
+    expect(BULK_CLOSE_MAX_ORDERS).toBe(200);
+  });
+
+  it("says it is showing the oldest slice only when more are open than shown", () => {
+    expect(staleListNotice(200, 372)).toBe(
+      "Showing the oldest 200 of 372 past-event orders. The next batch appears after you close these.",
+    );
+    expect(staleListNotice(200, 200)).toBeNull();
+    expect(staleListNotice(40, 40)).toBeNull();
+    expect(staleListNotice(0, 0)).toBeNull();
   });
 });
 

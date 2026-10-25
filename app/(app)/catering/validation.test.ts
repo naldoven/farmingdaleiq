@@ -274,6 +274,11 @@ describe("bulkCloseStaleOrdersSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts a full screen of exactly 200, which is all the stale page loads", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: Array(200).fill(id), reason: "Event passed" });
+    expect(result.success).toBe(true);
+  });
+
   it("needs the same short reason as the other manager overrides", () => {
     expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: " x " }).success).toBe(false);
     expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: "a".repeat(301) }).success).toBe(false);

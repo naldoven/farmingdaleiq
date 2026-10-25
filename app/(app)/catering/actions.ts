@@ -847,7 +847,7 @@ export async function restoreOrder(input: RestoreOrderInput): Promise<ActionResu
 /**
  * Manager cleanup for past-event orders nobody worked: closes a batch in one
  * database call with one shared reason. The work happens in
- * catering_bulk_close (supabase/migrations/20261026000000_catering_bulk_close.sql):
+ * catering_bulk_close (supabase/migrations/20261026020000_catering_bulk_close.sql):
  * it re-checks catering.override and catering.manage itself, the update goes
  * through the catering_orders RLS policy and the stage guard, every closed
  * order gets a catering_stage_change audit row with the reason and the

@@ -142,7 +142,7 @@ export const STALE_CLOSABLE_STAGES = ORDER_STAGES.filter(
  * Whether an order is a past-event order still open on the pipeline: the
  * event date is before today's store date and the stage is one a manager may
  * bulk close. Same rule the catering_bulk_close function and the stage guard
- * apply in the database (supabase/migrations/20261026000000_catering_bulk_close.sql).
+ * apply in the database (supabase/migrations/20261026020000_catering_bulk_close.sql).
  */
 export function isStaleOpenOrder(
   order: { stage: string; event_date: string },
@@ -151,6 +151,22 @@ export function isStaleOpenOrder(
   return (
     (STALE_CLOSABLE_STAGES as readonly string[]).includes(order.stage) && order.event_date < today
   );
+}
+
+/**
+ * Most orders one bulk close takes (bulkCloseStaleOrdersSchema rejects more),
+ * and so the most the stale-orders screen loads. Loading more than this would
+ * let "Select all" pick a batch the action refuses.
+ */
+export const BULK_CLOSE_MAX_ORDERS = 200;
+
+/**
+ * The note shown above the stale-orders list when the screen holds only the
+ * oldest slice of a longer backlog. Null when everything fits.
+ */
+export function staleListNotice(shown: number, total: number): string | null {
+  if (total <= shown) return null;
+  return `Showing the oldest ${shown} of ${total} past-event orders. The next batch appears after you close these.`;
 }
 
 /** Per-order results catering_bulk_close returns, mirrored here for the summary text. */

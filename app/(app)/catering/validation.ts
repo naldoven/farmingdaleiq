@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  BULK_CLOSE_MAX_ORDERS,
   CHECKLIST_STAGES,
   FULFILLMENT_METHODS,
   HISTORY_PERIODS,
@@ -118,13 +119,14 @@ export const restoreOrderSchema = z.object({
 export type RestoreOrderInput = z.infer<typeof restoreOrderSchema>;
 
 // Bulk close of stale orders (manager override). The reason is shared by the
-// whole batch and lands on every order's audit event. 200 caps one database
-// call at a month or two of neglect; the screen can be used twice.
+// whole batch and lands on every order's audit event. The cap (200) bounds one
+// database call at a month or two of neglect; the screen can be used twice.
+// The stale-orders page loads the same number, so "Select all" always fits.
 export const bulkCloseStaleOrdersSchema = z.object({
   orderIds: z
     .array(z.string().uuid())
     .min(1, "Pick at least one order.")
-    .max(200, "Close at most 200 orders at a time."),
+    .max(BULK_CLOSE_MAX_ORDERS, `Close at most ${BULK_CLOSE_MAX_ORDERS} orders at a time.`),
   reason: overrideReasonSchema,
 });
 export type BulkCloseStaleOrdersInput = z.infer<typeof bulkCloseStaleOrdersSchema>;
