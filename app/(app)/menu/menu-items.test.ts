@@ -105,6 +105,7 @@ describe("menu data", () => {
     expect(keys).toEqual([
       "settings",
       "checklists",
+      "breaks",
       "ratings",
       "training",
       "waste",
@@ -125,7 +126,6 @@ describe("menu data", () => {
   it("does not expose dormant features", () => {
     expect(SEND_ACTIONS.map((item) => item.key)).not.toContain("broadcast");
     expect(VIEW_ITEMS.map((item) => item.key)).not.toContain("setups");
-    expect(VIEW_ITEMS.map((item) => item.key)).not.toContain("breaks");
   });
 
   it("files every module under a known section", () => {

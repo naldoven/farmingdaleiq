@@ -59,6 +59,8 @@ export interface AssignmentRow {
   position_id: string | null;
   user_id: string | null;
   arrival_time: string | null;
+  /** When the person is scheduled to leave; drives break entitlement. */
+  scheduled_end: string | null;
 }
 
 export interface BreakStatusRow {
@@ -350,6 +352,7 @@ export function SetupBoard({
                             positionId: assignment.position_id ?? "",
                             userId: value === UNASSIGNED ? null : value,
                             arrivalTime: assignment.arrival_time ?? "",
+                            scheduledEnd: assignment.scheduled_end ?? "",
                           }),
                         )
                       }
@@ -385,6 +388,32 @@ export function SetupBoard({
                               positionId: assignment.position_id ?? "",
                               userId: assignment.user_id,
                               arrivalTime: localInputToIso(value),
+                              scheduledEnd: assignment.scheduled_end ?? "",
+                            }),
+                          );
+                        }}
+                      />
+                    )}
+                    {assignment.user_id && (
+                      <Input
+                        aria-label="Scheduled end"
+                        type="datetime-local"
+                        // The break rule is "scheduled 6 hours earns one
+                        // 30-minute break", so the leader records when the
+                        // person is scheduled to leave. Same New York
+                        // wall-clock round trip as the arrival field above.
+                        defaultValue={isoToLocalInput(assignment.scheduled_end)}
+                        className="w-48 rounded-full"
+                        onBlur={(e) => {
+                          const value = e.target.value;
+                          if (!value) return;
+                          run(() =>
+                            assignPosition({
+                              setupId: setup.id,
+                              positionId: assignment.position_id ?? "",
+                              userId: assignment.user_id,
+                              arrivalTime: assignment.arrival_time ?? "",
+                              scheduledEnd: localInputToIso(value),
                             }),
                           );
                         }}

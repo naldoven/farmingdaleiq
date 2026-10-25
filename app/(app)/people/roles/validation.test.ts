@@ -34,11 +34,20 @@ describe("setRolePermissionSchema", () => {
   });
 
   it("rejects permissions belonging to dormant features", () => {
-    for (const permissionKey of ["feed.post_broadcast", "breaks.view", "setups.view"]) {
+    for (const permissionKey of ["feed.post_broadcast", "setups.view"]) {
       expect(
         setRolePermissionSchema.safeParse({ roleId, permissionKey, granted: true }).success,
         permissionKey,
       ).toBe(false);
+    }
+  });
+
+  it("accepts the live Breaks permissions in the role editor", () => {
+    for (const permissionKey of ["breaks.view", "breaks.manage"]) {
+      expect(
+        setRolePermissionSchema.safeParse({ roleId, permissionKey, granted: true }).success,
+        permissionKey,
+      ).toBe(true);
     }
   });
 
