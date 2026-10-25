@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChannelForm } from "@/components/settings/channel-form";
 import { ChannelList } from "@/components/settings/channel-list";
 import { EventRouteTable } from "@/components/settings/event-route-table";
+import { SilentEventsChecklist } from "@/components/settings/silent-events-checklist";
+import { silentEventKeys } from "@/app/(app)/settings/discord/logic";
 import { DISCORD_ROUTABLE_EVENT_KEYS } from "@/lib/discord/format";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -35,6 +37,7 @@ export default async function DiscordSettingsPage() {
   ]);
 
   const routeByKey = new Map((routes ?? []).map((r) => [r.event_key, r]));
+  const silent = silentEventKeys(DISCORD_ROUTABLE_EVENT_KEYS, routes ?? [], channels ?? []);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -57,6 +60,22 @@ export default async function DiscordSettingsPage() {
         <CardContent className="flex flex-col gap-4">
           <ChannelForm />
           <ChannelList channels={channels ?? []} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Still silent</CardTitle>
+          <CardDescription>
+            Events the app can send that have no working Discord channel yet. Until each one
+            is routed, nobody hears about it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SilentEventsChecklist
+            silent={silent}
+            totalCount={DISCORD_ROUTABLE_EVENT_KEYS.length}
+          />
         </CardContent>
       </Card>
 

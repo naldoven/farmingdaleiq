@@ -104,6 +104,34 @@ describe("resolveHeader", () => {
   });
 });
 
+describe("catering cancelled list", () => {
+  it("is in the Catering group behind the same view key as its siblings", () => {
+    const group = NAV_GROUPS.find((g) => g.label === "Catering");
+    const item = group?.items.find((i) => i.href === "/catering/cancelled");
+    expect(item).toBeDefined();
+    expect(item?.permission).toBe("catering.view");
+    expect(item?.permission).toBe(group?.items.find((i) => i.href === "/catering/history")?.permission);
+  });
+
+  it("resolves a titled, backable header", () => {
+    expect(resolveHeader("/catering/cancelled")).toMatchObject({
+      variant: "subpage",
+      title: "Cancelled",
+      showBack: true,
+    });
+  });
+
+  it("is the one current item on its own page, not the Pipeline landing page", () => {
+    expect(activeNavHref("/catering/cancelled")).toBe("/catering/cancelled");
+    expect(activeNavGroupLabel("/catering/cancelled")).toBe("Catering");
+  });
+
+  it("shows to a viewer with catering.view and hides without it", () => {
+    expect(allItems(visibleNavGroups(new Set(["catering.view"])))).toContain("/catering/cancelled");
+    expect(allItems(visibleNavGroups(new Set<string>()))).not.toContain("/catering/cancelled");
+  });
+});
+
 describe("initialsFromName", () => {
   it("takes up to two initials, uppercased", () => {
     expect(initialsFromName("dana cruz reyes")).toBe("DC");
@@ -294,5 +322,20 @@ describe("nav group icons", () => {
     for (const group of NAV_GROUPS) {
       expect(group.icon, `${group.label} is missing an icon`).toBeTruthy();
     }
+  });
+});
+
+describe("People > Rollout entry", () => {
+  it("is gated by people.manage and hidden from base roles", () => {
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.href === "/people/rollout");
+    expect(item).toMatchObject({ label: "Rollout", permission: "people.manage" });
+    expect(allItems(visibleNavGroups(new Set(["people.view"])))).not.toContain("/people/rollout");
+    expect(allItems(visibleNavGroups(new Set(["people.manage"])))).toContain("/people/rollout");
+  });
+
+  it("resolves its header and active state without lighting up the roster", () => {
+    expect(resolveHeader("/people/rollout")).toMatchObject({ title: "Rollout", backHref: "/people" });
+    expect(activeNavHref("/people/rollout")).toBe("/people/rollout");
+    expect(activeNavGroupLabel("/people/rollout")).toBe("People");
   });
 });

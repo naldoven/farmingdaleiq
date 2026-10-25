@@ -276,6 +276,19 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
 - **Views**: a This Week calendar (day-by-day order cards for staffing and prep
   planning) and stage work queues (Confirmation Calls, FOH Setup, Pickup/Delivery)
   that show only orders sitting in that stage.
+- **Stage rules**: an order moves forward one step at a time and never skips a
+  stage. The Confirmation Call, FOH Setup, and Pickup/Delivery checklists must be
+  complete before the order can leave that stage, and it cannot leave FOH Setup
+  until its packing list is built. The day-before job builds packing lists, and it
+  only moves an order to FOH Setup when its confirmation call is done. Any shift
+  leader can cancel an order. A manager with `catering.override` (plus
+  `catering.manage`) can move an order back one step, or restore a cancelled order
+  to any active stage short of Closed. Each of those needs a reason, which is
+  logged with the stage-change event. A database trigger enforces the step order and
+  who may move back or restore, so a direct write cannot get around the app; the
+  checklist and packing-list checks stay in the app. Cancelled orders drop off the
+  board, so `/catering/cancelled` lists them, newest first, with a link to each
+  order page where a manager can restore it.
 - **Contacts and follow-up**: every guest becomes a contact carrying order count,
   lifetime spend, and last event date. Closing an order queues a follow-up call to
   re-book; the History page lists follow-ups due and the full order history with
@@ -456,7 +469,7 @@ Maintenance:
 Catering:
 - `catering_menu_items` (id, name, category, components jsonb, scaling_rules jsonb, active): components list what a line item expands to; scaling_rules drive utensil/sauce quantities per headcount
 - `catering_contacts` (id, name, phone, email, notes, created_at): order count, lifetime spend, and last event are computed from orders
-- `catering_orders` (id, contact_id, guest_name, phone, email, event_date, event_time, headcount, amount numeric, stage: new|confirm|setup|out|followup|closed, fulfillment: pickup|delivery, delivery_address, paper_goods bool, source, notes, created_by, created_at, stage_changed_at)
+- `catering_orders` (id, contact_id, guest_name, phone, email, event_date, event_time, headcount, amount numeric, stage: new|confirm|setup|out|followup|closed|cancelled, fulfillment: pickup|delivery, delivery_address, paper_goods bool, source, notes, created_by, created_at, stage_changed_at)
 - `catering_order_items` (order_id, menu_item_id, qty)
 - `catering_checklist_defaults` (id, stage: confirm|setup|kitchen_prep|out, label, sort, active): per-stage template items
 - `catering_checklist_items` (id, order_id, stage, label, done bool, done_by, done_at, sort): materialized per order, add/remove allowed
@@ -507,6 +520,7 @@ Discord:
 | `/catering/dispatch` | Pickup/delivery queue with handoff checklist |
 | `/catering/orders/[id]` | Order detail: items, stage, all checklists, notes, guest history |
 | `/catering/history` | Contacts, follow-ups due, order history with period filters |
+| `/catering/cancelled` | Cancelled orders, newest first, each linking to its order page |
 | `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
 | `/catering/menu` | Menu item catalog admin (components, scaling rules) |
 | `/reports` | Store dashboard + per-module reports, CSV export |

@@ -238,6 +238,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Editable org chart: tiers, goal counts, filled and vacant slots.",
         owner: "S4",
       },
+      {
+        href: "/people/rollout",
+        permission: "people.manage",
+        label: "Rollout",
+        description: "Who has signed in, linked Discord, and turned on push.",
+        owner: "P0",
+      },
     ],
   },
   {
@@ -365,6 +372,13 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "catering.view",
         label: "History",
         description: "Contacts, follow-ups due, order history with period filters.",
+        owner: "S9",
+      },
+      {
+        href: "/catering/cancelled",
+        permission: "catering.view",
+        label: "Cancelled",
+        description: "Cancelled orders, newest first, each linking to its order page.",
         owner: "S9",
       },
       {
