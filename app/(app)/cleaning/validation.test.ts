@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addCleanSchema,
+  completeSchema,
   itemDetailsSchema,
   markupSchema,
+  moveCleanSchema,
+  rejectCleanSchema,
+  skipCleanSchema,
+  slotCapsSchema,
   walkthroughSaveSchema,
+  weekStartSchema,
 } from "@/app/(app)/cleaning/validation";
 
 const ZONE = "11111111-1111-4111-8111-111111111111";
@@ -140,5 +147,41 @@ describe("walkthroughSaveSchema", () => {
         target: { mode: "existing", itemId: ZONE },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("board schemas", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("refuses Sunday moves and adds", () => {
+    expect(moveCleanSchema.safeParse({ id, date: "2026-11-01", half: "am" }).success).toBe(false);
+    expect(moveCleanSchema.safeParse({ id, date: "2026-10-31", half: "pm" }).success).toBe(true);
+    expect(addCleanSchema.safeParse({ itemId: id, date: "2026-11-01", half: "pm" }).success).toBe(false);
+  });
+
+  it("refuses 'either' as a slot half", () => {
+    expect(moveCleanSchema.safeParse({ id, date: "2026-10-30", half: "either" }).success).toBe(false);
+  });
+
+  it("requires a skip reason and a reject note", () => {
+    expect(skipCleanSchema.safeParse({ id, reason: "   " }).success).toBe(false);
+    expect(skipCleanSchema.safeParse({ id, reason: "Health inspection" }).success).toBe(true);
+    expect(rejectCleanSchema.safeParse({ id, note: "" }).success).toBe(false);
+  });
+
+  it("defaults notNeeded to false on completion", () => {
+    const parsed = completeSchema.parse({ assignmentId: id, photoId: id });
+    expect(parsed.notNeeded).toBe(false);
+  });
+
+  it("only accepts a Monday week start", () => {
+    expect(weekStartSchema.safeParse({ weekStart: "2026-10-26" }).success).toBe(true);
+    expect(weekStartSchema.safeParse({ weekStart: "2026-10-27" }).success).toBe(false);
+  });
+
+  it("bounds slot caps to 0..20", () => {
+    expect(slotCapsSchema.safeParse({ caps: [{ weekday: 1, half: "am", maxVariables: 0 }] }).success).toBe(true);
+    expect(slotCapsSchema.safeParse({ caps: [{ weekday: 7, half: "am", maxVariables: 2 }] }).success).toBe(false);
+    expect(slotCapsSchema.safeParse({ caps: [{ weekday: 1, half: "pm", maxVariables: 21 }] }).success).toBe(false);
   });
 });

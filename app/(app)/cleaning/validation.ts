@@ -109,3 +109,68 @@ export const updateItemSchema = z.object({
 });
 
 export const itemIdSchema = z.object({ id: z.string().uuid() });
+
+// Weekly board (docs/CLEANING-PLAN.md "How a week runs") --------------------------
+
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Bad date")
+  .refine((v) => !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime()), "Bad date");
+
+/** Mon to Sat only; Sunday is closed, mirroring cleaning_assignments_open_day. */
+const openDate = isoDate.refine((v) => new Date(`${v}T00:00:00Z`).getUTCDay() !== 0, "The store is closed Sunday.");
+
+const slotHalf = z.enum(["am", "pm"]);
+
+export const SKIP_REASON_MAX = 200;
+export const REJECT_NOTE_MAX = 300;
+
+/** Multipart payload beside the photo on /api/cleaning/complete. */
+export const completeSchema = z.object({
+  assignmentId: z.string().uuid(),
+  photoId: z.string().uuid(),
+  notNeeded: z.boolean().default(false),
+});
+
+export const moveCleanSchema = z.object({
+  id: z.string().uuid(),
+  date: openDate,
+  half: slotHalf,
+});
+
+export const skipCleanSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().trim().min(1, "Give a reason for skipping.").max(SKIP_REASON_MAX),
+});
+
+export const addCleanSchema = z.object({
+  itemId: z.string().uuid(),
+  date: openDate,
+  half: slotHalf,
+});
+
+export const rejectCleanSchema = z.object({
+  id: z.string().uuid(),
+  note: z.string().trim().min(1, "Say what needs redoing.").max(REJECT_NOTE_MAX),
+});
+
+export const weekStartSchema = z.object({
+  weekStart: isoDate.refine((v) => new Date(`${v}T00:00:00Z`).getUTCDay() === 1, "Weeks start Monday."),
+});
+
+export const slotCapsSchema = z.object({
+  caps: z
+    .array(
+      z.object({
+        weekday: z.number().int().min(1).max(6),
+        half: slotHalf,
+        maxVariables: z.number().int().min(0).max(20),
+      }),
+    )
+    .min(1)
+    .max(12),
+});
+
+export const zoneActiveSchema = z.object({ id: z.string().uuid(), active: z.boolean() });
+
+export const coordinatorSchema = z.object({ userId: z.string().uuid() });

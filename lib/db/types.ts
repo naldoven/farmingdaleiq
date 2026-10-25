@@ -797,6 +797,84 @@ export type Database = {
         }
         Relationships: []
       }
+      cleaning_assignments: {
+        Row: {
+          carried_from_id: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          created_by: string | null
+          date: string
+          half: string
+          id: string
+          item_id: string
+          origin: string
+          owner_user_id: string | null
+          photo_path: string | null
+          reject_note: string | null
+          rejected_at: string | null
+          rejected_by: string | null
+          skip_reason: string | null
+          status: string
+          week_start: string
+        }
+        Insert: {
+          carried_from_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          date: string
+          half: string
+          id?: string
+          item_id: string
+          origin: string
+          owner_user_id?: string | null
+          photo_path?: string | null
+          reject_note?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          skip_reason?: string | null
+          status?: string
+          week_start: string
+        }
+        Update: {
+          carried_from_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          half?: string
+          id?: string
+          item_id?: string
+          origin?: string
+          owner_user_id?: string | null
+          photo_path?: string | null
+          reject_note?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          skip_reason?: string | null
+          status?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_assignments_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_assignments_week_start_fkey"
+            columns: ["week_start"]
+            isOneToOne: false
+            referencedRelation: "cleaning_weeks"
+            referencedColumns: ["week_start"]
+          },
+        ]
+      }
       cleaning_coordinators: {
         Row: {
           added_at: string
@@ -938,6 +1016,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cleaning_slot_caps: {
+        Row: {
+          half: string
+          max_variables: number
+          weekday: number
+        }
+        Insert: {
+          half: string
+          max_variables?: number
+          weekday: number
+        }
+        Update: {
+          half?: string
+          max_variables?: number
+          weekday?: number
+        }
+        Relationships: []
+      }
+      cleaning_weeks: {
+        Row: {
+          build_started_at: string | null
+          built_at: string | null
+          created_at: string
+          id: string
+          published_at: string | null
+          week_start: string
+        }
+        Insert: {
+          build_started_at?: string | null
+          built_at?: string | null
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          week_start: string
+        }
+        Update: {
+          build_started_at?: string | null
+          built_at?: string | null
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          week_start?: string
+        }
+        Relationships: []
       }
       cleaning_zones: {
         Row: {
@@ -4008,6 +4131,13 @@ export type Database = {
       }
     }
     Views: {
+      cleaning_item_last_done: {
+        Row: {
+          item_id: string | null
+          last_done_at: string | null
+        }
+        Relationships: []
+      }
       my_infractions: {
         Row: {
           expires_at: string | null
@@ -4039,8 +4169,17 @@ export type Database = {
     }
     Functions: {
       can_plan_cleaning: { Args: never; Returns: boolean }
+      close_cleaning_days: { Args: { p_today: string }; Returns: Json }
+      complete_cleaning_assignment: {
+        Args: { p_assignment_id: string; p_photo_path: string; p_not_needed?: boolean }
+        Returns: string
+      }
       current_store_id: { Args: never; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
+      reject_cleaning_assignment: {
+        Args: { p_assignment_id: string; p_note: string; p_redo_date: string; p_redo_half: string }
+        Returns: string
+      }
       redeem_reward: {
         Args: { p_reward_id: string; p_request_id?: string | null }
         Returns: {

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { PermissionError } from "@/lib/auth/permissions";
 import type { Database } from "@/lib/db/types";
+import { storeLocalNow } from "@/app/(app)/checklists/logic";
 import { PHOTO_BUCKET } from "@/app/(app)/cleaning/constants";
+import { lastDoneDates } from "@/app/(app)/cleaning/week-logic";
 
 type Client = SupabaseClient<Database>;
 
@@ -78,4 +80,58 @@ export async function signPhotoUrls(supabase: Client, paths: string[], ttlSecond
     if (entry.path && entry.signedUrl) urls.set(entry.path, entry.signedUrl);
   }
   return urls;
+}
+
+export type AssignmentRow = Database["public"]["Tables"]["cleaning_assignments"]["Row"];
+export type WeekRow = Database["public"]["Tables"]["cleaning_weeks"]["Row"];
+
+export interface StoreClock {
+  /** Store-local "YYYY-MM-DD". */
+  today: string;
+  /** Store-local "HH:MM:SS". */
+  timeOfDay: string;
+  timeZone: string;
+}
+
+/**
+ * Store-local today, never the server clock (FIQ-12): Vercel runs in UTC, and
+ * from 8pm Eastern the UTC date is already tomorrow.
+ */
+export async function loadStoreClock(supabase: Client, now = new Date()): Promise<StoreClock> {
+  const { data: store } = await supabase.from("stores").select("timezone").limit(1).maybeSingle();
+  const timeZone = store?.timezone || "America/New_York";
+  const { date, timeOfDay } = storeLocalNow(now, timeZone);
+  return { today: date, timeOfDay, timeZone };
+}
+
+/** Keyed "weekday|half", the shape planWeek reads. */
+export async function loadSlotCaps(supabase: Client): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from("cleaning_slot_caps").select("*");
+  if (error) throw new Error(`Could not load slot caps: ${error.message}`);
+  return new Map((data ?? []).map((c) => [`${c.weekday}|${c.half}`, c.max_variables]));
+}
+
+/** Store-local date of each item's last counted clean. */
+export async function loadLastDone(supabase: Client, timeZone: string): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from("cleaning_item_last_done").select("*");
+  if (error) throw new Error(`Could not load last-cleaned dates: ${error.message}`);
+  return lastDoneDates(data ?? [], timeZone);
+}
+
+export async function loadWeek(supabase: Client, weekStart: string): Promise<WeekRow | null> {
+  const { data, error } = await supabase.from("cleaning_weeks").select("*").eq("week_start", weekStart).maybeSingle();
+  if (error) throw new Error(`Could not load the week: ${error.message}`);
+  return data;
+}
+
+export async function loadWeekAssignments(supabase: Client, weekStart: string): Promise<AssignmentRow[]> {
+  const { data, error } = await supabase
+    .from("cleaning_assignments")
+    .select("*")
+    .eq("week_start", weekStart)
+    .order("date")
+    .order("half")
+    .order("created_at");
+  if (error) throw new Error(`Could not load the week's cleans: ${error.message}`);
+  return data ?? [];
 }
