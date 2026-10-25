@@ -1,6 +1,12 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/mobile/app-shell";
+import { DiscordLinkGate } from "@/components/onboarding/discord-link-gate";
+import {
+  DISCORD_LINK_SKIP_COOKIE,
+  needsDiscordLink,
+} from "@/app/(app)/onboarding/discord-link/logic";
 import { hasPermission } from "@/lib/auth/permissions";
 import { navPermissionKeys } from "@/lib/nav/page-map";
 import { createClient } from "@/lib/supabase/server";
@@ -69,13 +75,32 @@ export default async function AuthenticatedLayout({
   const navGrants = await Promise.all(navKeys.map((key) => hasPermission(key)));
   const navPermissions = navKeys.filter((_, i) => navGrants[i]);
 
+  // First-login Discord step (rollout pack, PR 1). Every notification in this
+  // product goes through Discord, so a person with no numeric Discord id gets
+  // nothing. Until they save one (or skip for this window), the gate replaces
+  // the page content on every route. Read through the per-request client:
+  // RLS returns only the caller's own profiles_private row.
+  const [{ data: privateRow }, cookieStore] = await Promise.all([
+    supabase
+      .from("profiles_private")
+      .select("discord_user_id")
+      .eq("profile_id", user.id)
+      .maybeSingle(),
+    cookies(),
+  ]);
+  const showDiscordGate = needsDiscordLink({
+    discordUserId: privateRow?.discord_user_id ?? null,
+    skipCookieValue: cookieStore.get(DISCORD_LINK_SKIP_COOKIE)?.value,
+    userId: user.id,
+  });
+
   return (
     <AppShell
       user={currentUser}
       hasUnread={hasVisibleUnread}
       navPermissions={navPermissions}
     >
-      {children}
+      {showDiscordGate ? <DiscordLinkGate /> : children}
     </AppShell>
   );
 }
