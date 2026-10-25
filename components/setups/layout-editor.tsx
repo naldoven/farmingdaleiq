@@ -297,7 +297,7 @@ export function LayoutEditor({
               {currentTiles.map((tile) => (
                 <div key={tile.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                   <span className="text-[13px] text-ink">
-                    {tileLabel(tile)} — x:{tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
+                    {tileLabel(tile)}, x:{tile.x} y:{tile.y} w:{tile.w} h:{tile.h}
                   </span>
                   {/* Phones have no HTML5 drag-and-drop, so the list view is the only
                       way a leader on a phone can arrange tiles. It needs all four

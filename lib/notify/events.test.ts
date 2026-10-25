@@ -263,6 +263,78 @@ describe("processAppEvents", () => {
     expect(recipients).toEqual(["u1", "u2"]);
   });
 
+  it("does not @mention an arbitrary employee on a store-wide broadcast, but still notifies everyone", async () => {
+    // The broadcast fan-out widens recipients to every active profile; the
+    // Discord step used to ping the FIRST of them. u1 has a linked Discord id,
+    // so a regression would put <@u1's id> and allowed_mentions.users on the post.
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "broadcast",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { title: "Store closes early Friday" },
+        },
+      ],
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_event_routes: [{ event_key: "broadcast", channel_id: "chan-1", enabled: true }],
+      discord_outbox: [],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [
+        { id: "u1", name: "Jamie", active: true },
+        { id: "u2", name: "Sam", active: true },
+      ],
+      profiles_private: [
+        { profile_id: "u1", discord_user_id: "123456789012345678" },
+        { profile_id: "u2", discord_user_id: "223456789012345678" },
+      ],
+    });
+
+    const result = await processAppEvents(200, client);
+
+    expect(result.notificationsCreated).toBe(2);
+    expect(result.discordQueued).toBe(1);
+    const payload = db.rowsOf("discord_outbox")[0].payload as {
+      content: string;
+      allowed_mentions: { parse: string[]; users?: string[] };
+    };
+    expect(payload.content).toContain("Store closes early Friday");
+    expect(payload.content).not.toContain("<@");
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("still @mentions the one person a non-broadcast event is about", async () => {
+    const { db, client } = makeClient({
+      app_events: [
+        {
+          id: "evt-1",
+          event_key: "work_order_status",
+          created_at: "2026-07-07T10:00:00.000Z",
+          payload: { title: "Fryer fixed", user_id: "u1" },
+        },
+      ],
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_event_routes: [{ event_key: "work_order_status", channel_id: "chan-1", enabled: true }],
+      discord_outbox: [],
+      job_cursors: [],
+      notifications: [],
+      push_subscriptions: [],
+      profiles: [{ id: "u1", name: "Jamie", active: true }],
+      profiles_private: [{ profile_id: "u1", discord_user_id: "123456789012345678" }],
+    });
+
+    await processAppEvents(200, client);
+
+    const payload = db.rowsOf("discord_outbox")[0].payload as {
+      content: string;
+      allowed_mentions: { users?: string[] };
+    };
+    expect(payload.content).toContain("<@123456789012345678>");
+    expect(payload.allowed_mentions.users).toEqual(["123456789012345678"]);
+  });
+
   it("honors a per-instance discord_channel_id override over the global route (parity #8)", async () => {
     const { db, client } = makeClient({
       app_events: [

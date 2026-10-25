@@ -17,7 +17,7 @@ Switched on 2026-10-25 by flipping `broadcast` in `lib/features.ts`. Turning the
 ## What already held up under review
 
 - `createBroadcast` calls `requirePermission("feed.post_broadcast")` first, then inserts through the per-request client. The `feed_posts` insert policy independently requires the same permission, `kind = 'broadcast'`, and an author of the caller or null. The `app_events` insert policy requires the same permission for a `broadcast` event, so nobody can forge a store-wide announcement by writing the event directly.
-- The Discord message never lets Discord parse mentions out of user-typed text, so a typed "@everyone" in a broadcast does not ping the server.
+- The Discord message never lets Discord parse mentions out of user-typed text, so a typed "@everyone" in a broadcast does not ping the server. A broadcast also @mentions nobody: it is addressed to every active employee, so the Discord post carries no `<@id>` and no `allowed_mentions.users` (notifications and push still go to everyone).
 - The notification drain is idempotent per event and recipient, and the Discord outbox is idempotent per event and channel, so a re-scanned event cannot double-notify.
 - Broadcast posts render with the author's name and a "Broadcast" badge, and anyone can like or comment, the same as recognitions.
 

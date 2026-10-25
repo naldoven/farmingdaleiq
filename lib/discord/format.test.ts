@@ -42,6 +42,28 @@ describe("buildDiscordMessage", () => {
     expect(msg.content).toContain("🔧");
   });
 
+  it("joins title, detail and mention with plain colons, never an em dash", () => {
+    const plain = buildDiscordMessage("maint_request", {
+      title: "Walk-in freezer won't cool",
+      message: "Reported by Jamie",
+    });
+    expect(plain.content).toBe("🔧 **Walk-in freezer won't cool**: Reported by Jamie");
+
+    const mentioned = buildDiscordMessage(
+      "recognition",
+      { title: "Great shift", message: "Thanks for covering" },
+      { recipientDiscordId: VALID_ID },
+    );
+    expect(mentioned.content).toBe(`🎉 **Great shift**: Thanks for covering: <@${VALID_ID}>`);
+
+    const titleOnly = buildDiscordMessage("equipment_down", { title: "Fryer #2 down" });
+    expect(titleOnly.content).toBe("🔴 **Fryer #2 down**");
+
+    for (const msg of [plain, mentioned, titleOnly]) {
+      expect(msg.content).not.toMatch(/[\u2013\u2014]/);
+    }
+  });
+
   it("embeds an @mention when a discord id is provided", () => {
     const msg = buildDiscordMessage(
       "setup_posted",

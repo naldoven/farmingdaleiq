@@ -90,7 +90,7 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
 export const DISCORD_CONTENT_MAX_CHARS = 2000;
 
 function assembleContent(title: string, detail: string | undefined, mentionText: string): string {
-  const separator = " — ";
+  const separator = ": ";
   const tail = mentionText ? `${separator}${mentionText}` : "";
   let content = detail ? `${title}${separator}${detail}` : title;
   const budget = DISCORD_CONTENT_MAX_CHARS - tail.length;
