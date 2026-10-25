@@ -6,6 +6,7 @@ import {
   activeNavGroupLabel,
   activeNavHref,
   avatarColor,
+  findNavItem,
   initialsFromName,
   isNavItemActive,
   navPermissionKeys,
@@ -97,6 +98,35 @@ describe("resolveHeader", () => {
     }
   });
 
+  it("titles the first-shift guide as a sub-page that backs out to Home", () => {
+    expect(resolveHeader("/guide")).toMatchObject({
+      variant: "subpage",
+      title: "First-shift guide",
+      backHref: "/",
+      showBack: true,
+    });
+  });
+
+  it("keeps the guide in the page map but out of the sidebar rows", () => {
+    expect(findNavItem("/guide")).toMatchObject({ label: "First-shift guide", hidden: true });
+    expect(allItems(visibleNavGroups(null))).not.toContain("/guide");
+    expect(allItems(visibleNavGroups(new Set<string>()))).not.toContain("/guide");
+    expect(allItems(visibleNavGroups(new Set(navPermissionKeys())))).not.toContain("/guide");
+  });
+
+  it("leaves Home a single-destination group so its rail icon still navigates", () => {
+    for (const allowed of [null, new Set<string>(), new Set(navPermissionKeys())]) {
+      const home = visibleNavGroups(allowed).find((g) => g.label === "Home");
+      expect(home?.items.map((i) => i.href)).toEqual(["/"]);
+    }
+  });
+
+  it("never lets the sidebar treat a hidden route as the current item", () => {
+    expect(activeNavHref("/guide")).toBeNull();
+    expect(activeNavHref("/guide", visibleNavGroups(null))).toBeNull();
+    expect(activeNavGroupLabel("/guide")).toBeNull();
+  });
+
   it("does not reveal dormant modules when someone guesses their old URLs", () => {
     expect(resolveHeader("/setups").title).toBe("FarmingdaleIQ");
     expect(resolveHeader("/setups/templates").title).toBe("FarmingdaleIQ");
@@ -172,7 +202,7 @@ describe("navPermissionKeys", () => {
 describe("visibleNavGroups (S4 nav gating)", () => {
   it("shows every item when no permission set is provided (err toward showing)", () => {
     const hrefs = allItems(visibleNavGroups(null));
-    const total = NAV_GROUPS.flatMap((g) => g.items).length;
+    const total = NAV_GROUPS.flatMap((g) => g.items).filter((i) => !i.hidden).length;
     expect(hrefs).toHaveLength(total);
     expect(hrefs).toContain("/reports");
     expect(hrefs).toContain("/settings");
@@ -233,7 +263,7 @@ describe("visibleNavGroups (S4 nav gating)", () => {
   it("shows an admin every gated item when they hold every key", () => {
     const all = new Set(navPermissionKeys());
     const hrefs = allItems(visibleNavGroups(all));
-    const total = NAV_GROUPS.flatMap((g) => g.items).length;
+    const total = NAV_GROUPS.flatMap((g) => g.items).filter((i) => !i.hidden).length;
     expect(hrefs).toHaveLength(total);
   });
 });
@@ -326,5 +356,20 @@ describe("nav group icons", () => {
     for (const group of NAV_GROUPS) {
       expect(group.icon, `${group.label} is missing an icon`).toBeTruthy();
     }
+  });
+});
+
+describe("People > Rollout entry", () => {
+  it("is gated by people.manage and hidden from base roles", () => {
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.href === "/people/rollout");
+    expect(item).toMatchObject({ label: "Rollout", permission: "people.manage" });
+    expect(allItems(visibleNavGroups(new Set(["people.view"])))).not.toContain("/people/rollout");
+    expect(allItems(visibleNavGroups(new Set(["people.manage"])))).toContain("/people/rollout");
+  });
+
+  it("resolves its header and active state without lighting up the roster", () => {
+    expect(resolveHeader("/people/rollout")).toMatchObject({ title: "Rollout", backHref: "/people" });
+    expect(activeNavHref("/people/rollout")).toBe("/people/rollout");
+    expect(activeNavGroupLabel("/people/rollout")).toBe("People");
   });
 });

@@ -2,12 +2,14 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { KanbanBoard } from "@/components/catering/kanban-board";
+import { OrderSearch } from "@/components/catering/order-search";
 import type { OrderCardData } from "@/components/catering/order-card";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
   CANCELLED_STAGE,
+  STALE_CLOSABLE_STAGES,
   isConfirmationCallLate,
   storeLocalDate,
   type OrderStage,
@@ -22,7 +24,10 @@ export const metadata = { title: "Catering" };
 
 export default async function CateringPipelinePage() {
   await requirePermission("catering.view");
-  const canManage = await hasPermission("catering.manage");
+  const [canManage, canOverride] = await Promise.all([
+    hasPermission("catering.manage"),
+    hasPermission("catering.override"),
+  ]);
 
   const supabase = await createClient();
 
@@ -32,7 +37,7 @@ export default async function CateringPipelinePage() {
   const { data: store } = await supabase.from("stores").select("timezone").limit(1).maybeSingle();
   const today = storeLocalDate(new Date(), store?.timezone || "America/New_York");
 
-  const [{ data: orders }, { data: todaysIntake }] = await Promise.all([
+  const [{ data: orders }, { data: todaysIntake }, { count: staleCount }] = await Promise.all([
     supabase
       .from("catering_orders")
       .select("id, guest_name, event_date, event_time, headcount, amount, fulfillment, stage")
@@ -52,6 +57,16 @@ export default async function CateringPipelinePage() {
       // the intake this strip exists to surface.
       .neq("stage", CANCELLED_STAGE)
       .order("created_at", { ascending: false }),
+    // How many past-event orders are still open, for the manager strip below.
+    // Count only (head): the list itself lives on /catering/stale. Zero for
+    // anyone without catering.override, who never sees the strip.
+    canOverride
+      ? supabase
+          .from("catering_orders")
+          .select("id", { count: "exact", head: true })
+          .lt("event_date", today)
+          .in("stage", [...STALE_CLOSABLE_STAGES])
+      : Promise.resolve({ count: 0 }),
   ]);
 
   // Checklist completion per order drives each card's progress bar, and the
@@ -113,6 +128,8 @@ export default async function CateringPipelinePage() {
         Pipeline
       </SectionLabel>
 
+      <OrderSearch />
+
       {(todaysIntake ?? []).length > 0 && (
         <SectionCard title="New orders today">
           <div className="flex flex-wrap gap-2">
@@ -123,6 +140,17 @@ export default async function CateringPipelinePage() {
             ))}
           </div>
         </SectionCard>
+      )}
+
+      {canOverride && (staleCount ?? 0) > 0 && (
+        <Link href="/catering/stale" className="block">
+          <SectionCard title="Stale orders" action={<StatusBadge tone="warning">{staleCount}</StatusBadge>}>
+            <p className="text-[13px] text-muted-ink">
+              {staleCount === 1 ? "One past-event order is" : `${staleCount} past-event orders are`} still open on
+              the board. Tap to review and close them with one reason.
+            </p>
+          </SectionCard>
+        </Link>
       )}
 
       <KanbanBoard orders={cards} canManage={canManage} />

@@ -288,7 +288,12 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
   who may move back or restore, so a direct write cannot get around the app; the
   checklist and packing-list checks stay in the app. Cancelled orders drop off the
   board, so `/catering/cancelled` lists them, newest first, with a link to each
-  order page where a manager can restore it.
+  order page where a manager can restore it. There is one exception to the step
+  order: a manager with `catering.override` (plus `catering.manage`) can close an
+  order whose event date has passed in one step from the Stale orders screen
+  (`/catering/stale`). The manager gives a reason, which is logged on each order.
+  That close posts nothing to Discord and queues no re-book call. Orders for
+  today or later still move one step at a time.
 - **Contacts and follow-up**: every guest becomes a contact carrying order count,
   lifetime spend, and last event date. Closing an order queues a follow-up call to
   re-book; the History page lists follow-ups due and the full order history with
@@ -521,6 +526,7 @@ Discord:
 | `/catering/orders/[id]` | Order detail: items, stage, all checklists, notes, guest history |
 | `/catering/history` | Contacts, follow-ups due, order history with period filters |
 | `/catering/cancelled` | Cancelled orders, newest first, each linking to its order page |
+| `/catering/stale` | Stale orders: past-event orders still open, oldest first (200 at a time), closed by a manager with one logged reason |
 | `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
 | `/catering/menu` | Menu item catalog admin (components, scaling rules) |
 | `/reports` | Store dashboard + per-module reports, CSV export |
