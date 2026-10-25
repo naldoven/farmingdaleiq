@@ -324,3 +324,18 @@ describe("nav group icons", () => {
     }
   });
 });
+
+describe("People > Rollout entry", () => {
+  it("is gated by people.manage and hidden from base roles", () => {
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.href === "/people/rollout");
+    expect(item).toMatchObject({ label: "Rollout", permission: "people.manage" });
+    expect(allItems(visibleNavGroups(new Set(["people.view"])))).not.toContain("/people/rollout");
+    expect(allItems(visibleNavGroups(new Set(["people.manage"])))).toContain("/people/rollout");
+  });
+
+  it("resolves its header and active state without lighting up the roster", () => {
+    expect(resolveHeader("/people/rollout")).toMatchObject({ title: "Rollout", backHref: "/people" });
+    expect(activeNavHref("/people/rollout")).toBe("/people/rollout");
+    expect(activeNavGroupLabel("/people/rollout")).toBe("People");
+  });
+});

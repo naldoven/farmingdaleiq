@@ -238,6 +238,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Editable org chart: tiers, goal counts, filled and vacant slots.",
         owner: "S4",
       },
+      {
+        href: "/people/rollout",
+        permission: "people.manage",
+        label: "Rollout",
+        description: "Who has signed in, linked Discord, and turned on push.",
+        owner: "P0",
+      },
     ],
   },
   {
