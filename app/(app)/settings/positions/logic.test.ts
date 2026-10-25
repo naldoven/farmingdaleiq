@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { groupPositions, moveInList, trainingStationIds } from "./logic";
+import {
+  deleteRefusalMessage,
+  describeHistory,
+  groupPositions,
+  hasHistory,
+  moveInList,
+  shouldOfferDefaultList,
+  trainingStationIds,
+} from "./logic";
 
 const groups = [
   { id: "g2", name: "Kitchen", sort: 2 },
@@ -59,5 +67,68 @@ describe("trainingStationIds", () => {
     expect(trainingStationIds([{ position_id: "p5" }, { position_id: "p5" }, { position_id: null }])).toEqual(
       new Set(["p5"]),
     );
+  });
+});
+
+describe("shouldOfferDefaultList", () => {
+  it("offers the Avondale list only when there are no positions", () => {
+    expect(shouldOfferDefaultList(0)).toBe(true);
+    expect(shouldOfferDefaultList(1)).toBe(false);
+    expect(shouldOfferDefaultList(19)).toBe(false);
+  });
+
+  it("stays hidden after the seed groups are renamed, because positions still exist", () => {
+    // Regression: the banner used to key off the five seed group names, so a
+    // rename brought it back and one tap added 19 duplicate positions.
+    const renamedGroups = [{ id: "g1", name: "Counter", sort: 0 }];
+    const positions = [{ id: "p1", group_id: "g1", name: "Register 1", sort: 0, is_rateable: true }];
+    expect(renamedGroups.length).toBeGreaterThan(0);
+    expect(shouldOfferDefaultList(positions.length)).toBe(false);
+  });
+});
+
+describe("hasHistory", () => {
+  it("is true when any one count is above zero", () => {
+    expect(hasHistory({ ratings: 0, enrollments: 0, itemRecords: 0 })).toBe(false);
+    expect(hasHistory({ ratings: 1, enrollments: 0, itemRecords: 0 })).toBe(true);
+    expect(hasHistory({ ratings: 0, enrollments: 1, itemRecords: 0 })).toBe(true);
+    expect(hasHistory({ ratings: 0, enrollments: 0, itemRecords: 1 })).toBe(true);
+  });
+});
+
+describe("describeHistory", () => {
+  it("names only what exists, with plurals", () => {
+    expect(describeHistory({ ratings: 1, enrollments: 0, itemRecords: 0 })).toBe("1 rating");
+    expect(describeHistory({ ratings: 12, enrollments: 0, itemRecords: 3 })).toBe(
+      "12 ratings and 3 passport item records",
+    );
+    expect(describeHistory({ ratings: 12, enrollments: 1, itemRecords: 40 })).toBe(
+      "12 ratings, 1 trainee passport enrollment, and 40 passport item records",
+    );
+  });
+});
+
+describe("deleteRefusalMessage", () => {
+  it("returns null when there is nothing to lose", () => {
+    expect(deleteRefusalMessage({ kind: "position", name: "Curbside" }, { ratings: 0, enrollments: 0, itemRecords: 0 })).toBeNull();
+  });
+
+  it("names the position, what exists, and the hide-from-Ratings alternative", () => {
+    const message = deleteRefusalMessage(
+      { kind: "position", name: "Register 1" },
+      { ratings: 12, enrollments: 3, itemRecords: 0 },
+    );
+    expect(message).toContain('"Register 1"');
+    expect(message).toContain("12 ratings and 3 trainee passport enrollments");
+    expect(message).toContain("Show as a column on the Ratings matrix");
+  });
+
+  it("says the group's positions hold the history", () => {
+    const message = deleteRefusalMessage(
+      { kind: "group", name: "Kitchen" },
+      { ratings: 0, enrollments: 0, itemRecords: 2 },
+    );
+    expect(message).toContain('group "Kitchen"');
+    expect(message).toContain("its positions have 2 passport item records");
   });
 });

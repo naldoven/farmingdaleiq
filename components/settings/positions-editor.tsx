@@ -27,8 +27,11 @@ import {
   setPositionRateable,
   updatePosition,
 } from "@/app/(app)/settings/positions/actions";
-import { groupPositions, moveInList } from "@/app/(app)/settings/positions/logic";
-import { hasSeedPositionGroups } from "@/app/(app)/setups/templates/constants";
+import {
+  groupPositions,
+  moveInList,
+  shouldOfferDefaultList,
+} from "@/app/(app)/settings/positions/logic";
 import { safeAction } from "@/lib/errors/safe-action";
 
 export interface PositionGroupRow {
@@ -76,16 +79,30 @@ function useRun() {
   return { run, isPending, error };
 }
 
+/** What a position delete removes, for the confirm prompt. Keep in step with delete_position (20260718010300). */
+function positionDeleteConfirm(name: string): string {
+  return `Delete "${name}"? This permanently removes the position, its training passport and the passport's items, its rating rubric, any open re-rate reminders, and its setup assignments, setup template slots, and layout tiles. It cannot be undone.\n\nIf anyone has a rating here or has started its passport, nothing is deleted and you will be told why.`;
+}
+
+/** What a group delete removes, for the confirm prompt. Keep in step with delete_position_group (20260718010300). */
+function groupDeleteConfirm(name: string, positionCount: number): string {
+  const members = `${positionCount} position${positionCount === 1 ? "" : "s"}`;
+  return `Delete the group "${name}" and its ${members}? This permanently removes the group and every position in it, including each position's training passport and its items, rating rubric, open re-rate reminders, setup assignments, setup template slots, and layout tiles. It cannot be undone.\n\nIf any position in the group has a rating or a started passport, nothing is deleted and you will be told why.`;
+}
+
 function PositionItem({
   position,
   groups,
   isTrainingStation,
+  reorderBusy,
   onMoveUp,
   onMoveDown,
 }: {
   position: PositionRow;
   groups: PositionGroupRow[];
   isTrainingStation: boolean;
+  /** The group is saving a new order. The arrows wait so two taps cannot send overlapping orders. */
+  reorderBusy: boolean;
   onMoveUp: (() => void) | undefined;
   onMoveDown: (() => void) | undefined;
 }) {
@@ -103,7 +120,7 @@ function PositionItem({
             size="icon"
             variant="ghost"
             className="h-8 w-8"
-            disabled={isPending || !onMoveUp}
+            disabled={isPending || reorderBusy || !onMoveUp}
             onClick={onMoveUp}
             aria-label={`Move ${position.name} up`}
           >
@@ -114,7 +131,7 @@ function PositionItem({
             size="icon"
             variant="ghost"
             className="h-8 w-8"
-            disabled={isPending || !onMoveDown}
+            disabled={isPending || reorderBusy || !onMoveDown}
             onClick={onMoveDown}
             aria-label={`Move ${position.name} down`}
           >
@@ -204,7 +221,7 @@ function PositionItem({
               disabled={isPending || isTrainingStation}
               title={isTrainingStation ? "Used by a training roadmap; remove it there first." : undefined}
               onClick={() => {
-                if (!window.confirm(`Delete "${position.name}"? Its ratings history goes with it.`)) return;
+                if (!window.confirm(positionDeleteConfirm(position.name))) return;
                 run(() => deletePosition({ id: position.id }));
               }}
             >
@@ -275,12 +292,7 @@ function GroupCard({
               className="rounded-full text-danger"
               disabled={isPending}
               onClick={() => {
-                if (
-                  !window.confirm(
-                    `Delete group "${group.name}" and its ${positions.length} position${positions.length === 1 ? "" : "s"}?`,
-                  )
-                )
-                  return;
+                if (!window.confirm(groupDeleteConfirm(group.name, positions.length))) return;
                 run(() => deletePositionGroup({ id: group.id }));
               }}
             >
@@ -321,6 +333,7 @@ function GroupCard({
             position={position}
             groups={groups}
             isTrainingStation={trainingStations.has(position.id)}
+            reorderBusy={isPending}
             onMoveUp={index > 0 ? () => move(position.id, -1) : undefined}
             onMoveDown={index < positions.length - 1 ? () => move(position.id, 1) : undefined}
           />
@@ -382,11 +395,13 @@ export function PositionsEditor({
   const [newGroup, setNewGroup] = useState("");
   const trainingStations = new Set(trainingStationIds);
   const { grouped, ungrouped } = groupPositions(groups, positions);
-  const hasSeedGroups = hasSeedPositionGroups(groups.map((g) => g.name));
+  // Only an empty store gets the offer. Keying it off the seed group names
+  // brought it back after a rename, and one tap then added 19 duplicates.
+  const offerDefaultList = shouldOfferDefaultList(positions.length);
 
   return (
     <div className="flex flex-col gap-4">
-      {!hasSeedGroups && (
+      {offerDefaultList && (
         <div className="rounded-xl border border-dashed border-line bg-accent-soft/40 p-3 text-[13px] text-muted-ink">
           No setup positions yet.{" "}
           <button

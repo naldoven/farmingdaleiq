@@ -38,6 +38,10 @@ export default async function PositionsSettingsPage() {
         </p>
         <SetupDefaultTag area="positions" confirmed={setupAreas.keys} />
       </div>
+      <p className="text-[13px] text-muted-ink">
+        The Ratings matrix sorts its columns by position order across all groups, not group by group,
+        so every group&apos;s first position comes before any group&apos;s second.
+      </p>
       <PositionsEditor
         groups={groups ?? []}
         positions={positions ?? []}
