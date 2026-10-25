@@ -113,6 +113,7 @@ export type DeleteTileInput = z.infer<typeof deleteTileSchema>;
 export {
   buildDefaultLayoutTiles,
   hasSeedPositionGroups,
+  SEED_DEFAULT_LAYOUT_ID,
   SEED_DEFAULT_LAYOUT_NAME,
   SEED_DEFAULT_LAYOUT_TILES,
   SEED_DEFAULT_POSITION_GROUPS,

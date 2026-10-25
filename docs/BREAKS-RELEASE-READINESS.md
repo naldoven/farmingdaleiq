@@ -26,7 +26,7 @@ Checked against the live database on 2026-10-25.
 
 - **First cron tick (within 5 minutes of deploy).** `breaks` has zero rows and `setups` has zero rows, so the sweep finds nothing to flag or mark missed, emits no events, and returns `{ flagged: 0, missed: 0 }`. The route needs `CRON_SECRET` on Vercel; without it the route refuses every call with 403, which is the safe failure.
 - **First Discord post.** None. `break_overdue` is now routable, but `discord_event_routes` has no row for it and the only configured channel is Catering Notifications. Until a leaders channel is wired in Settings, overdue and missed breaks write an `app_events` row and nothing else. They do not create in-app notifications either (`break_overdue` is not in the notifiable list), so today a leader learns about an overdue break from the red badge on the board.
-- **Old events.** Four `setup_posted` and one `broadcast` event from July 2026 sit in `app_events`. The notification drain's cursor is already past them (last advanced 2026-10-24), so they will not replay.
+- **Old events.** The `setup_posted` and `broadcast` events from July 2026 sit in `app_events` (the setup_posted count and how the tasks drain treats them are in `docs/SETUPS-RELEASE-READINESS.md`). The notification drain's cursor is already past them (last advanced 2026-10-24), so they will not replay.
 - **Breaks need posted setups.** Until the Setups module is woken, no setup can be created or posted, so no break rows can appear. The Breaks page and compliance report render empty states. Nothing can misfire because nothing can be created.
 
 ## Database change (applied by the agent only after Naldo's go)

@@ -13,7 +13,7 @@ Switched on 2026-10-25 by flipping `setups` in `lib/features.ts`. Turning the fl
 
 The live store already has one layout, "Main Floor (Default)", active for every day-part, with 12 tiles placed by hand. The repo did not know how to create it, so a fresh environment had no board at all. This pass adds:
 
-- A seedable default layout with the same name, covering all 19 seeded positions (front counter and drive thru across the top, dining room beneath, kitchen line, back of house at the bottom). It appears as a one-tap "Start from the default floor plan" when the store has no layout. It is idempotent: any existing layout means the store already decided, and nothing is inserted. On the live store it does nothing.
+- A seedable default layout with the same name, covering all 19 seeded positions (front counter and drive thru across the top, dining room beneath, kitchen line, back of house at the bottom). It appears as a one-tap "Start from the default floor plan" when the store has no layout. It is idempotent: any existing layout means the store already decided, and nothing is inserted. Two leaders tapping at once still create one layout, because the seed uses a fixed id and the primary key rejects the second insert. On the live store it does nothing.
 - Tile labels now read as the position name. The live tiles stored the group name as the area label, and the canvas preferred the label, so every tile read "Front Counter" or "Kitchen" instead of "Register 1" or "Breading". No data change was needed.
 - Up and down arrows in the list view beside the existing left and right. Phones have no drag-and-drop, so the list view is the only way to arrange tiles from a phone, and it could only move sideways.
 
