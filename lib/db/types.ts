@@ -3911,6 +3911,22 @@ export type Database = {
         Args: { p_group_id: string }
         Returns: undefined
       }
+      catering_replace_setup: {
+        Args: {
+          p_order_id: string
+          p_force: boolean
+          p_stages: string[]
+          p_planned_from: Json
+          p_rows: Json
+          p_preorder_rows: Json
+        }
+        Returns: {
+          generated: boolean
+          outcome: string
+          setup_rows: number
+          preorder_rows: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
