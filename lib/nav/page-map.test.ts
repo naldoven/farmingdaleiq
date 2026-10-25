@@ -97,6 +97,15 @@ describe("resolveHeader", () => {
     }
   });
 
+  it("titles the first-shift guide as a sub-page that backs out to Home", () => {
+    expect(resolveHeader("/guide")).toMatchObject({
+      variant: "subpage",
+      title: "First-shift guide",
+      backHref: "/",
+      showBack: true,
+    });
+  });
+
   it("does not reveal dormant modules when someone guesses their old URLs", () => {
     expect(resolveHeader("/setups").title).toBe("FarmingdaleIQ");
     expect(resolveHeader("/setups/templates").title).toBe("FarmingdaleIQ");

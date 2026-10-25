@@ -101,6 +101,14 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "My positions today, my to-dos, token balance, feed highlights.",
         owner: "P2 wiring",
       },
+      {
+        // Ungated on purpose: any signed-in user can read it, and it needs an
+        // entry here or the header falls back to the generic app name.
+        href: "/guide",
+        label: "First-shift guide",
+        description: "Five steps for a new leader's first shift.",
+        owner: "P2 wiring",
+      },
     ],
   },
   {
