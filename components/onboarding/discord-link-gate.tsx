@@ -21,7 +21,9 @@ import {
  * Two phases on one screen: paste and save the id, then send a test ping. The
  * shell is not refreshed after the save on purpose: a refresh would re-run the
  * layout, which would drop this gate before the person could try the ping.
- * "Done" is what triggers the refresh.
+ * "Done" is what triggers the refresh. That is also why linkMyDiscordId must
+ * never call revalidatePath: in Next 16 a revalidation inside a Server Action
+ * re-renders the layout in the same response and has the same effect.
  */
 const COPY_ID_STEPS = [
   "Open Discord. Go to User Settings (the gear next to your name).",

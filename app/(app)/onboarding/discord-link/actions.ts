@@ -18,16 +18,23 @@
  * loosening that guard, which the rollout pack asks to avoid when possible.
  * So the write goes through the trusted server path, narrowed in code to:
  * the signed-in user's own `profile_id`, a value the zod schema has already
- * proven numeric, and only while no valid id is stored yet. Corrections after
- * that stay admin-only on the People profile page, where the guard still
+ * proven numeric, and only while the stored value is still the one just read
+ * (null, or an old hand-typed value that is not a real id). Corrections after
+ * that stay manager-only on the People profile page, where the guard still
  * applies. This is the same "narrow, deliberate service-role use for something
  * RLS cannot express" precedent as `inviteUser`.
+ *
+ * There is deliberately no `revalidatePath` in the save path. In Next 16 a
+ * revalidation inside a Server Action re-renders the page in the same
+ * response; the layout would then see the saved id, drop the gate, and the
+ * person would never reach the test ping step. The "Done" button refreshes.
  */
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { ZodError } from "zod";
 
 import { toActionError } from "@/lib/errors/action-error";
+import { DISCORD_ID_TAKEN_MESSAGE, isUniqueViolation } from "@/lib/discord/id-conflict";
 import { getDiscordRoute } from "@/lib/discord/routes";
 import { deliverPendingOutbox, enqueueDiscordMessage } from "@/lib/discord/outbox";
 import { isDiscordUserId } from "@/lib/discord/user-id";
@@ -46,6 +53,16 @@ import {
   linkMyDiscordIdSchema,
   type LinkMyDiscordIdInput,
 } from "@/app/(app)/onboarding/discord-link/validation";
+
+/**
+ * Only a validation message is safe to show as written. Anything else thrown
+ * here could be database or configuration text, which the person cannot act on
+ * and should not see, so it becomes a plain retry line.
+ */
+function safeActionError(error: unknown): string {
+  if (error instanceof ZodError) return toActionError(error);
+  return "Something went wrong. Please try again.";
+}
 
 export async function linkMyDiscordId(input: LinkMyDiscordIdInput): Promise<ActionResult> {
   try {
@@ -68,12 +85,18 @@ export async function linkMyDiscordId(input: LinkMyDiscordIdInput): Promise<Acti
       .eq("profile_id", user.id)
       .maybeSingle();
     if (readError) {
-      return { ok: false, error: readError.message };
+      return { ok: false, error: "We couldn't load your profile. Please try again." };
     }
     if (!current) {
       return { ok: false, error: "Your profile is not set up yet. Ask a manager." };
     }
     if (isDiscordUserId(current.discord_user_id)) {
+      // Saving the same id again is a retry (a dropped response, a second tap
+      // after the first one landed), not a change: report success so the
+      // person is not told to ask a manager about an id that is already theirs.
+      if (current.discord_user_id === parsed.discordUserId) {
+        return { ok: true, data: undefined };
+      }
       return {
         ok: false,
         error: "Your Discord is already linked. Ask a manager to change it.",
@@ -84,39 +107,57 @@ export async function linkMyDiscordId(input: LinkMyDiscordIdInput): Promise<Acti
     // coworker's id (or a leader's) and have their own events ping that
     // account, and two rows with the same id would make a lookup by Discord
     // id ambiguous. The check reads past RLS on purpose: the caller must not
-    // be able to see whose row it is, only that the id is taken. A partial
-    // unique index would make this airtight; that needs a migration, so for
-    // now the race window between this read and the write is accepted and
-    // noted in the rollout report.
+    // be able to see whose row it is, only that the id is taken. It fails
+    // closed: if the lookup itself errors we cannot say the id is free, so the
+    // save is refused. The unique index profiles_private_discord_user_id_uq
+    // (migration 20261025020000) is the real guarantee; this read exists to
+    // give the friendly message before the write instead of after it.
     const admin = createServiceRoleClient();
-    const { data: taken } = await admin
+    const { data: taken, error: takenError } = await admin
       .from("profiles_private")
       .select("profile_id")
       .eq("discord_user_id", parsed.discordUserId)
       .neq("profile_id", user.id)
       .limit(1)
       .maybeSingle();
+    if (takenError) {
+      return { ok: false, error: "We couldn't check that Discord ID right now. Please try again." };
+    }
     if (taken) {
-      return {
-        ok: false,
-        error: "That Discord ID is already linked to another account. Ask a manager.",
-      };
+      return { ok: false, error: DISCORD_ID_TAKEN_MESSAGE };
     }
 
-    // Double-submit note: two taps write the same value the same person typed
-    // to the same row, so the second write is harmless rather than a hazard.
-    const { error } = await admin
+    // Conditional write: change the row only while it still holds exactly what
+    // was read above (null, or the old non-id value). Two saves racing each
+    // other cannot both win: the loser matches zero rows. The payload is the
+    // one column, the filter on profile_id is the caller's own id.
+    const base = admin
       .from("profiles_private")
       .update({ discord_user_id: parsed.discordUserId })
       .eq("profile_id", user.id);
+    const guarded =
+      current.discord_user_id === null
+        ? base.is("discord_user_id", null)
+        : base.eq("discord_user_id", current.discord_user_id);
+    const { data: updated, error } = await guarded.select("profile_id");
     if (error) {
-      return { ok: false, error: error.message };
+      return {
+        ok: false,
+        error: isUniqueViolation(error)
+          ? DISCORD_ID_TAKEN_MESSAGE
+          : "We couldn't save your Discord ID. Please try again.",
+      };
+    }
+    if (!updated || updated.length === 0) {
+      return {
+        ok: false,
+        error: "Your Discord ID changed while saving. Refresh the page and check it.",
+      };
     }
 
-    revalidatePath("/", "layout");
     return { ok: true, data: undefined };
   } catch (error) {
-    return { ok: false, error: toActionError(error) };
+    return { ok: false, error: safeActionError(error) };
   }
 }
 
@@ -139,11 +180,14 @@ export async function sendMyDiscordTestPing(): Promise<
       return { ok: false, error: "You must be signed in." };
     }
 
-    const { data: current } = await supabase
+    const { data: current, error: readError } = await supabase
       .from("profiles_private")
       .select("discord_user_id")
       .eq("profile_id", user.id)
       .maybeSingle();
+    if (readError) {
+      return { ok: false, error: "We couldn't load your profile. Please try again." };
+    }
     if (!isDiscordUserId(current?.discord_user_id)) {
       return { ok: false, error: "Save your Discord ID first." };
     }
@@ -159,14 +203,19 @@ export async function sendMyDiscordTestPing(): Promise<
     // Daily cap, counted from the outbox itself so it needs no new table: every
     // ping this person queued carries their prefix in payload.source_event_id.
     // Service role because discord_outbox has no authenticated read policy.
+    // Fails closed: a count we could not read is not a count of zero, so a
+    // failed query refuses the ping instead of letting the cap be skipped.
     const admin = createServiceRoleClient();
     const since = new Date(Date.now() - TEST_PING_WINDOW_MS).toISOString();
-    const { count: sentToday } = await admin
+    const { count: sentToday, error: countError } = await admin
       .from("discord_outbox")
       .select("id", { count: "exact", head: true })
       .like("payload->>source_event_id", `${testPingSourceEventPrefix(user.id)}%`)
       .gte("created_at", since);
-    if ((sentToday ?? 0) >= MAX_TEST_PINGS_PER_DAY) {
+    if (countError || sentToday === null) {
+      return { ok: false, error: "We couldn't check your test ping limit. Please try again." };
+    }
+    if (sentToday >= MAX_TEST_PINGS_PER_DAY) {
       return {
         ok: false,
         error: `You have sent ${MAX_TEST_PINGS_PER_DAY} test pings today. Try again tomorrow, or ask a manager to check your ID.`,
@@ -185,7 +234,7 @@ export async function sendMyDiscordTestPing(): Promise<
     const result = await deliverPendingOutbox(5);
     return { ok: true, data: { queued: true, delivered: result.delivered > 0 } };
   } catch (error) {
-    return { ok: false, error: toActionError(error) };
+    return { ok: false, error: safeActionError(error) };
   }
 }
 
@@ -213,6 +262,6 @@ export async function skipDiscordLinkForNow(): Promise<ActionResult> {
     });
     return { ok: true, data: undefined };
   } catch (error) {
-    return { ok: false, error: toActionError(error) };
+    return { ok: false, error: safeActionError(error) };
   }
 }
