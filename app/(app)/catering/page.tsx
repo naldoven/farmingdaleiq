@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { KanbanBoard } from "@/components/catering/kanban-board";
+import { OrderSearch } from "@/components/catering/order-search";
 import type { OrderCardData } from "@/components/catering/order-card";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -112,6 +113,8 @@ export default async function CateringPipelinePage() {
       >
         Pipeline
       </SectionLabel>
+
+      <OrderSearch />
 
       {(todaysIntake ?? []).length > 0 && (
         <SectionCard title="New orders today">

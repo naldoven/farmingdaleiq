@@ -35,7 +35,7 @@ import { requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/db/types";
-import type { ActionResult } from "@/app/(app)/catering/action-types";
+import type { ActionResult, OrderSearchResult } from "@/app/(app)/catering/action-types";
 import {
   CANCELLED_STAGE,
   CHECKLIST_STAGE_LABELS,
@@ -43,7 +43,9 @@ import {
   canBuildCateringSetup,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
+  classifyOrderSearch,
   defaultFollowUpDueDate,
+  escapeLikePattern,
   formatOrderNewMessage,
   formatStageChangeMessage,
   formatStageOverrideMessage,
@@ -55,6 +57,7 @@ import {
   planPreOrderRows,
   planSetupRows,
   parseRequestedCondiments,
+  phoneLikePattern,
   previousCateringStage,
   SETUP_BUILD_STAGES,
   setupPlanInputs,
@@ -74,6 +77,7 @@ import {
   menuItemSchema,
   moveOrderBackSchema,
   orderIdSchema,
+  orderSearchSchema,
   orderItemIdSchema,
   resolveFollowUpSchema,
   reorderChecklistDefaultsSchema,
@@ -92,6 +96,7 @@ import {
   type CreateOrderInput,
   type MenuItemInput,
   type MoveOrderBackInput,
+  type OrderSearchInput,
   type ResolveFollowUpInput,
   type ReorderChecklistDefaultsInput,
   type RestoreOrderInput,
@@ -1319,6 +1324,53 @@ export async function deleteChecklistDefault(input: { id: string }): Promise<Act
 
     revalidatePath("/catering/menu");
     return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Order search for the /catering home screen. A read lives in the actions
+ * file because the search box is a client component: it needs a server round
+ * trip, and the per-request client keeps RLS applied. Exactly one filter
+ * method is used per query. Never build a PostgREST .or(...) string from
+ * typed text (see findOrCreateContact): commas and parentheses corrupt it.
+ * Phone and email are matched but never returned.
+ */
+export async function searchCateringOrders(
+  input: OrderSearchInput,
+): Promise<ActionResult<OrderSearchResult[]>> {
+  try {
+    await requirePermission("catering.view");
+    const parsed = orderSearchSchema.parse(input);
+    const search = classifyOrderSearch(parsed.query);
+    if (search.kind === "empty") return { ok: true, data: [] };
+
+    const supabase = await createClient();
+    let query = supabase
+      .from("catering_orders")
+      .select("id, guest_name, event_date, event_time, stage, headcount");
+    if (search.kind === "text") {
+      query = query.ilike("guest_name", `%${escapeLikePattern(search.text)}%`);
+    } else if (search.kind === "phone") {
+      query = query.ilike("phone", phoneLikePattern(search.digits));
+    } else {
+      query = query.eq("event_date", search.isoDate);
+    }
+    const { data, error } = await query.order("event_date", { ascending: false }).limit(20);
+    if (error) return { ok: false, error: toActionError(error) };
+
+    return {
+      ok: true,
+      data: (data ?? []).map((row) => ({
+        id: row.id,
+        guestName: row.guest_name,
+        eventDate: row.event_date,
+        eventTime: row.event_time,
+        stage: row.stage as OrderStage,
+        headcount: row.headcount,
+      })),
+    };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }
