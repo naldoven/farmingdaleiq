@@ -624,6 +624,114 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
   });
 });
 
+describe("menu item prices are read-only after creation", () => {
+  const MENU_ITEM_ID = "44444444-4444-4444-8444-444444444444";
+  const PRICE_ERROR = "Prices come from the catering catalog and cannot be changed here.";
+
+  /** What the edit form posts: the stored prices as dollar text, plus any edits. */
+  const editInput = (fields: Record<string, unknown> = {}) => ({
+    id: MENU_ITEM_ID,
+    name: "8-Count Tray",
+    category: "Trays",
+    pickupPriceText: "12.50",
+    deliveryPriceText: "15.00",
+    componentsText: "[]",
+    scalingRulesText: "[]",
+    active: true,
+    ...fields,
+  });
+  const storedPrices = (pickup: number | null, delivery: number | null): Response => ({
+    data: { pickup_price_cents: pickup, delivery_price_cents: delivery },
+    error: null,
+  });
+
+  it("refuses a changed pickup or delivery price before writing anything", async () => {
+    for (const changed of [{ pickupPriceText: "13.00" }, { deliveryPriceText: "15.01" }]) {
+      client = createFakeClient({
+        catering_menu_items: [storedPrices(1250, 1500)],
+      });
+
+      expect(await updateMenuItem(editInput(changed))).toEqual({ ok: false, error: PRICE_ERROR });
+      // Only the read of the stored row; no update was attempted (a second
+      // catering_menu_items call would have thrown for want of a queued response).
+      expect(client.calls).toHaveLength(1);
+      expect(opArgs(client, "catering_menu_items", "update")).toBeUndefined();
+    }
+  });
+
+  it("refuses to add a price to an unpriced item or to clear an existing one", async () => {
+    client = createFakeClient({ catering_menu_items: [storedPrices(null, null)] });
+    expect(await updateMenuItem(editInput({ pickupPriceText: "9.99", deliveryPriceText: "" }))).toEqual({
+      ok: false,
+      error: PRICE_ERROR,
+    });
+
+    client = createFakeClient({ catering_menu_items: [storedPrices(1250, 1500)] });
+    expect(await updateMenuItem(editInput({ pickupPriceText: "", deliveryPriceText: "15.00" }))).toEqual({
+      ok: false,
+      error: PRICE_ERROR,
+    });
+    expect(opArgs(client, "catering_menu_items", "update")).toBeUndefined();
+  });
+
+  it("accepts an unchanged price and saves the other fields without touching the price columns", async () => {
+    client = createFakeClient({
+      catering_menu_items: [storedPrices(1250, 1500), none],
+    });
+
+    const result = await updateMenuItem(editInput({ name: "8-Count Tray (renamed)", active: false }));
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    const update = opArgs(client, "catering_menu_items", "update")?.[0] as Record<string, unknown>;
+    expect(update).toMatchObject({ name: "8-Count Tray (renamed)", category: "Trays", active: false });
+    expect(update).not.toHaveProperty("pickup_price_cents");
+    expect(update).not.toHaveProperty("delivery_price_cents");
+    expect(filtersOn(client, "catering_menu_items", "update")).toContainEqual(["id", MENU_ITEM_ID]);
+  });
+
+  it("treats the same amount written differently, or two blank prices, as unchanged", async () => {
+    // "12.5" and "12.50" are both 1250 cents; blank text is a null price.
+    client = createFakeClient({
+      catering_menu_items: [storedPrices(1250, null), none],
+    });
+
+    expect(await updateMenuItem(editInput({ pickupPriceText: "12.5", deliveryPriceText: "" }))).toEqual({
+      ok: true,
+      data: undefined,
+    });
+  });
+
+  it("refuses an item that no longer exists instead of reporting a silent success", async () => {
+    client = createFakeClient({ catering_menu_items: [none] });
+
+    expect(await updateMenuItem(editInput())).toEqual({ ok: false, error: "Menu item not found." });
+    expect(opArgs(client, "catering_menu_items", "update")).toBeUndefined();
+  });
+
+  it("still lets a brand-new item be created with its prices", async () => {
+    client = createFakeClient({
+      catering_menu_items: [{ data: { id: MENU_ITEM_ID }, error: null }],
+    });
+
+    const result = await createMenuItem({
+      name: "Boxed Meal",
+      category: "Meals",
+      pickupPriceText: "43.50",
+      deliveryPriceText: "56.5",
+      componentsText: "[]",
+      scalingRulesText: "[]",
+      active: true,
+    });
+
+    expect(result).toEqual({ ok: true, data: { id: MENU_ITEM_ID } });
+    expect(opArgs(client, "catering_menu_items", "insert")?.[0]).toMatchObject({
+      name: "Boxed Meal",
+      pickup_price_cents: 4350,
+      delivery_price_cents: 5650,
+    });
+  });
+});
+
 describe("menu item components and scaling rules (server-side validation)", () => {
   const MENU_ITEM_ID = "44444444-4444-4444-8444-444444444444";
   const base = { name: "Boxed Meal", category: "Boxed Meals", pickupPriceText: "10.00", deliveryPriceText: "12.00", active: true };

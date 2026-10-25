@@ -60,7 +60,8 @@ export default async function WastePage({
   await requirePermission("waste.log");
   const canManage = await hasPermission("waste.manage");
   // The same rollup is also reachable from /reports gated on reports.view
-  // (Team Leader tier), one tier below waste.manage (Shift Supervisor tier).
+  // (Team Leader tier), below waste.manage (Operations Lead tier; Shift
+  // Supervisors lost it on 2026-10-25, 20261025040000_waste_manage_managers_only.sql).
   // Gating the tab here on the lower of the two keeps "can see the rollup"
   // consistent between the two entry points instead of a Team Leader seeing
   // it in one place and not the other.
