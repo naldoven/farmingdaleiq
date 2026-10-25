@@ -22,6 +22,10 @@
  *     stage is a no-op success, so a double tap moves one step, not two.
  *   - toggleChecklistItem and resolveFollowUp are plain idempotent field
  *     writes: setting the same done/outcome state twice is a no-op.
+ *   - rescaleOrderSetup replaces the generated packing rows inside one
+ *     database transaction (catering_replace_setup) that locks the order,
+ *     so a double click rebuilds the list twice in turn and never leaves two
+ *     lists side by side.
  */
 
 import { revalidatePath } from "next/cache";
@@ -50,10 +54,13 @@ import {
   packingListGateError,
   parseOrderItemsFromNotes,
   planChecklistMaterialization,
-  planMissingPreOrderChecklist,
+  planPreOrderRows,
+  planSetupRows,
   parseRequestedCondiments,
   phoneLikePattern,
   previousCateringStage,
+  SETUP_BUILD_STAGES,
+  setupPlanInputs,
   stageOverrideTargetError,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
@@ -106,6 +113,7 @@ function revalidateCatering(orderId?: string) {
   revalidatePath("/catering/setup");
   revalidatePath("/catering/dispatch");
   revalidatePath("/catering/history");
+  revalidatePath("/catering/cancelled");
   revalidatePath("/catering/analytics");
   if (orderId) revalidatePath(`/catering/orders/${orderId}`);
 }
@@ -138,6 +146,10 @@ async function invalidateGeneratedSetup(
   return deleteError?.message ?? null;
 }
 
+/** A manual build lost a race with an edit, a stage move or a cancel. */
+const SETUP_BUILD_RACED_ERROR =
+  "This order changed while its packing list was building. Refresh the page and try again.";
+
 /**
  * Builds or rebuilds the physical packing list on request. The scheduled
  * generation itself runs from the catering cron on the calendar day before
@@ -145,22 +157,24 @@ async function invalidateGeneratedSetup(
  * adds any missing Pre-order items, so a list built by hand ends up with the
  * same rows as one the cron built.
  *
- * Every build replaces, never appends. An edit or a Refresh can clear
- * setup_generated_at while another build is still running, and the next
- * build would then insert a second full list beside the stale one. So once a
- * build holds the claim, it deletes the order's generated rows (the ones with
- * a setup_section) right before inserting. Rows without a setup_section are
- * left alone: hand-added FOH Setup items (addChecklistItem never sets one)
- * and the Pre-order items, which live on the Pickup/Delivery checklist.
+ * The rows are planned here and written by the catering_replace_setup
+ * database function in one transaction: it locks the order, deletes the old
+ * generated rows (the ones with a setup_section), inserts the new list and
+ * the missing Pre-order rows, and stamps setup_generated_at last. Rows
+ * without a setup_section are left alone: hand-added FOH Setup items
+ * (addChecklistItem never sets one) and the Pre-order items, which live on
+ * the Pickup/Delivery checklist. A manual build always replaces (p_force),
+ * and two builds at once run one after the other instead of leaving two
+ * lists. If the order was edited or moved after it was read here, the
+ * function writes nothing and the leader is asked to try again.
  */
 async function materializePhysicalOrderSetup(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orderId: string,
-  options: { replace?: boolean } = {},
-): Promise<ActionResult<{ generated: boolean }>> {
+): Promise<ActionResult> {
   const { data: order, error: orderError } = await supabase
     .from("catering_orders")
-    .select("id, stage, event_date, headcount, paper_goods, fulfillment, notes, selected_condiments, setup_generated_at")
+    .select("id, stage, event_date, headcount, paper_goods, fulfillment, notes, selected_condiments")
     .eq("id", orderId)
     .single();
   if (orderError || !order) {
@@ -179,57 +193,18 @@ async function materializePhysicalOrderSetup(
     return { ok: false, error: "The packing list can't be built until the day before the event." };
   }
 
-  if (options.replace) {
-    // Give up the old marker so this build can claim it. The old rows are
-    // removed inside the claimed build below, not here, so a build that
-    // loses the claim to the cron leaves the cron's list alone.
-    const { error: resetError } = await supabase
-      .from("catering_orders")
-      .update({ setup_generated_at: null })
-      .eq("id", orderId);
-    if (resetError) return { ok: false, error: resetError.message };
-  } else if (order.setup_generated_at) {
-    return { ok: true, data: { generated: false } };
-  }
-
-  const generatedAt = new Date().toISOString();
-  const { data: claimed, error: claimError } = await supabase
-    .from("catering_orders")
-    .update({ setup_generated_at: generatedAt })
-    .eq("id", orderId)
-    .is("setup_generated_at", null)
-    .select("id")
-    .maybeSingle();
-  if (claimError) return { ok: false, error: claimError.message };
-  if (!claimed) return { ok: true, data: { generated: false } };
-
-  const releaseClaim = async () => {
-    // Let a later retry rebuild the list if this build fails part way.
-    await supabase
-      .from("catering_orders")
-      .update({ setup_generated_at: null })
-      .eq("id", orderId)
-      .eq("setup_generated_at", generatedAt);
-  };
-
-  const { data: existingPreOrder, error: existingPreOrderError } = await supabase
-    .from("catering_checklist_items")
-    .select("label")
-    .eq("order_id", orderId)
-    .eq("stage", "out");
-  if (existingPreOrderError) {
-    await releaseClaim();
-    return { ok: false, error: existingPreOrderError.message };
-  }
-
-  const { data: orderItems } = await supabase
+  // A failed read must stop the build: the line items are also what the
+  // database compares against, so an empty list here would read as "changed".
+  const { data: orderItems, error: orderItemsError } = await supabase
     .from("catering_order_items")
     .select("menu_item_id, qty")
     .eq("order_id", orderId);
+  if (orderItemsError) return { ok: false, error: orderItemsError.message };
   const menuItemIds = (orderItems ?? []).map((item) => item.menu_item_id);
-  const { data: menuItems } = menuItemIds.length
+  const { data: menuItems, error: menuItemsError } = menuItemIds.length
     ? await supabase.from("catering_menu_items").select("id, name").in("id", menuItemIds)
-    : { data: [] as { id: string; name: string }[] };
+    : { data: [] as { id: string; name: string }[], error: null };
+  if (menuItemsError) return { ok: false, error: menuItemsError.message };
   const menuNameById = new Map((menuItems ?? []).map((item) => [item.id, item.name]));
   const receiptItems = parseOrderItemsFromNotes(order.notes);
   const items = receiptItems.length
@@ -246,51 +221,20 @@ async function materializePhysicalOrderSetup(
     fulfillment: order.fulfillment,
   });
 
-  // An edit or a Refresh may have taken the claim while this build read the
-  // order. The newer build owns the list now, so stop without writing.
-  const { data: stillClaimed, error: recheckError } = await supabase
-    .from("catering_orders")
-    .select("id")
-    .eq("id", orderId)
-    .eq("setup_generated_at", generatedAt)
-    .maybeSingle();
-  if (recheckError) {
-    await releaseClaim();
-    return { ok: false, error: recheckError.message };
-  }
-  if (!stillClaimed) return { ok: true, data: { generated: false } };
+  const { data: built, error: buildError } = await supabase.rpc("catering_replace_setup", {
+    p_order_id: orderId,
+    p_force: true,
+    p_stages: [...SETUP_BUILD_STAGES],
+    p_planned_from: setupPlanInputs(order, orderItems ?? []),
+    p_rows: planSetupRows(setupItems),
+    p_preorder_rows: planPreOrderRows(),
+  });
+  if (buildError) return { ok: false, error: buildError.message };
 
-  const { error: clearError } = await supabase
-    .from("catering_checklist_items")
-    .delete()
-    .eq("order_id", orderId)
-    .not("setup_section", "is", null);
-  if (clearError) {
-    await releaseClaim();
-    return { ok: false, error: clearError.message };
-  }
-
-  const { error: insertError } = await supabase.from("catering_checklist_items").insert([
-    ...setupItems.map((item, index) => ({
-      order_id: orderId,
-      stage: "setup",
-      label: `${item.label} - ${item.qty}`,
-      setup_section: item.section,
-      sort: 1000 + index,
-    })),
-    ...planMissingPreOrderChecklist((existingPreOrder ?? []).map((item) => item.label)).map((item) => ({
-      order_id: orderId,
-      stage: item.stage,
-      label: item.label,
-      sort: item.sort,
-    })),
-  ]);
-  if (insertError) {
-    await releaseClaim();
-    return { ok: false, error: insertError.message };
-  }
-
-  return { ok: true, data: { generated: true } };
+  const result = built?.[0];
+  if (result?.generated) return { ok: true, data: undefined };
+  if (result?.outcome === "not_found") return { ok: false, error: "Order not found." };
+  return { ok: false, error: SETUP_BUILD_RACED_ERROR };
 }
 
 /**
@@ -1102,7 +1046,7 @@ export async function rescaleOrderSetup(
     const { orderId } = orderIdSchema.parse({ orderId: input.orderId });
     const supabase = await createClient();
 
-    const setupResult = await materializePhysicalOrderSetup(supabase, orderId, { replace: true });
+    const setupResult = await materializePhysicalOrderSetup(supabase, orderId);
     if (!setupResult.ok) return setupResult;
 
     revalidateCatering(orderId);
