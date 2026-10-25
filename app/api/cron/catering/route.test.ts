@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-import { PRE_ORDER_CHECKLIST_ITEMS } from "@/app/(app)/catering/logic";
+import { PRE_ORDER_CHECKLIST_ITEMS, planPreOrderRows } from "@/app/(app)/catering/logic";
 
 type QueryResponse = { data: unknown; error: { message: string } | null };
 
@@ -12,20 +12,26 @@ let setupOrderItemsResponse: QueryResponse;
 let setupUpdateResponses: QueryResponse[];
 /** Confirmation Call rows (order_id, done) the cron's call check reads. */
 let callItemsResponse: QueryResponse;
-/** Pre-order labels an order already has, keyed by order id. */
-let existingOutLabels: Record<string, string[]>;
+/** Answers to catering_replace_setup, one per call; a built list when empty. */
+let rpcResponses: QueryResponse[];
 const updates: Array<{ values: Record<string, unknown>; filters: Array<[string, string]> }> = [];
 const events: Array<Record<string, unknown>> = [];
-const inserts: Array<{ table: string; values: unknown }> = [];
 const setupCandidateFilters: Array<[string, unknown]> = [];
-/** Answer to "does this build still hold its claim?" just before it writes. */
-let claimRecheckResponse: QueryResponse;
-/** Ordered writes to catering_checklist_items, to check delete-then-insert. */
-const checklistWrites: Array<{ op: "delete" | "insert"; filters: Array<[string, unknown]> }> = [];
+/** Direct writes to catering_checklist_items. The build must make none. */
+const checklistWrites: Array<{ op: "delete" | "insert" }> = [];
 const callCheckFilters: Array<[string, unknown]> = [];
+const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 function createFakeAdmin() {
   return {
+    rpc(name: string, args: Record<string, unknown>) {
+      rpcCalls.push({ name, args });
+      const response = rpcResponses.shift() ?? {
+        data: [{ generated: true, outcome: "built", setup_rows: 2, preorder_rows: 3 }],
+        error: null,
+      };
+      return Promise.resolve(response);
+    },
     from(table: string) {
       if (table === "catering_orders") {
         const filters: Array<[string, string]> = [];
@@ -47,7 +53,6 @@ function createFakeAdmin() {
         query.is = () =>
           selectsSetupCandidates ? Promise.resolve(setupQueryResponse) : query;
         query.lte = () => Promise.resolve(queryResponse);
-        query.maybeSingle = () => Promise.resolve(claimRecheckResponse);
         query.update = (values: Record<string, unknown>) => {
           updates.push({ values, filters });
           const update: Record<string, unknown> = {};
@@ -76,11 +81,16 @@ function createFakeAdmin() {
         };
       }
 
+      if (table === "catering_menu_items") {
+        return {
+          select: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+        };
+      }
+
       if (table === "catering_checklist_items") {
         return {
-          // Two reads: the batched call check (select "order_id, done") and
-          // the per-order Pre-order label lookup (select "label").
-          select: (columns: string) => {
+          // The batched Confirmation Call check (select "order_id, done").
+          select: () => {
             const filters: Array<[string, unknown]> = [];
             const query: Record<string, unknown> = {};
             query.in = (column: string, values: unknown) => {
@@ -92,41 +102,18 @@ function createFakeAdmin() {
               return query;
             };
             query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
-              let response: QueryResponse;
-              if (columns.startsWith("order_id")) {
-                callCheckFilters.push(...filters);
-                response = callItemsResponse;
-              } else {
-                const orderId = filters.find(([column]) => column === "order_id")?.[1] as string;
-                response = {
-                  data: (existingOutLabels[orderId] ?? []).map((label) => ({ label })),
-                  error: null,
-                };
-              }
-              return Promise.resolve(response).then(resolve, reject);
+              callCheckFilters.push(...filters);
+              return Promise.resolve(callItemsResponse).then(resolve, reject);
             };
             return query;
           },
           delete: () => {
-            const filters: Array<[string, unknown]> = [];
-            checklistWrites.push({ op: "delete", filters });
-            const query: Record<string, unknown> = {};
-            query.eq = (column: string, value: unknown) => {
-              filters.push([column, value]);
-              return query;
-            };
-            query.not = (column: string, operator: string, value: unknown) => {
-              filters.push([`not.${column}.${operator}`, value]);
-              return query;
-            };
-            query.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-              Promise.resolve({ error: null }).then(resolve, reject);
-            return query;
+            checklistWrites.push({ op: "delete" });
+            throw new Error("the cron must not delete checklist rows directly");
           },
-          insert: (values: unknown) => {
-            inserts.push({ table, values });
-            checklistWrites.push({ op: "insert", filters: [] });
-            return Promise.resolve({ error: null });
+          insert: () => {
+            checklistWrites.push({ op: "insert" });
+            throw new Error("the cron must not insert checklist rows directly");
           },
         };
       }
@@ -187,11 +174,15 @@ function setupCandidate(fields: Record<string, unknown>) {
   };
 }
 
-function insertedRows(): Array<Record<string, unknown>> {
-  return inserts
-    .filter((insert) => insert.table === "catering_checklist_items")
-    .flatMap((insert) => insert.values as Array<Record<string, unknown>>);
+/** The generated rows the one build call sent. */
+function builtRows(): Array<Record<string, unknown>> {
+  return (rpcCalls[0]?.args.p_rows ?? []) as Array<Record<string, unknown>>;
 }
+
+const notBuilt = (outcome: string): QueryResponse => ({
+  data: [{ generated: false, outcome, setup_rows: 0, preorder_rows: 0 }],
+  error: null,
+});
 
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
@@ -199,14 +190,13 @@ beforeEach(() => {
   setupQueryResponse = { data: [], error: null };
   updateResponse = { data: [], error: null };
   callItemsResponse = { data: [], error: null };
-  existingOutLabels = {};
+  rpcResponses = [];
   updates.length = 0;
   events.length = 0;
-  inserts.length = 0;
   setupCandidateFilters.length = 0;
   checklistWrites.length = 0;
-  claimRecheckResponse = { data: { id: "setup-order" }, error: null };
   callCheckFilters.length = 0;
+  rpcCalls.length = 0;
   setupOrderItemsResponse = { data: [], error: null };
   setupUpdateResponses = [];
   queueTomorrowDigest.mockReset();
@@ -266,29 +256,69 @@ describe("catering cron route", () => {
       ],
       error: null,
     };
-    setupUpdateResponses = [
-      { data: { id: "setup-order" }, error: null },
-      { data: { id: "setup-order" }, error: null },
-    ];
+    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
     expect(res.status).toBe(200);
-    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(true);
-    expect(insertedRows()).toContainEqual(expect.objectContaining({
-      setup_section: "sauces_dressings",
-      label: "8oz Chick-fil-A Sauce - 1",
-    }));
-    expect(insertedRows().some((item) => item.setup_section === "food")).toBe(false);
+    expect(builtRows()).toContainEqual(
+      expect.objectContaining({ setup_section: "sauces_dressings", label: "8oz Chick-fil-A Sauce - 1" }),
+    );
+    expect(builtRows().some((item) => item.setup_section === "food")).toBe(false);
+    // The stamp is written by the build function, not by the cron itself.
+    expect(updates.some((update) => "setup_generated_at" in update.values)).toBe(false);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].values.stage).toBe("setup");
+    expect(updates[0].filters).toContainEqual(["stage", "confirm"]);
     // The call check reads every Confirmation Call row for the candidates.
     expect(callCheckFilters).toEqual([
       ["order_id", ["setup-order"]],
       ["stage", "confirm"],
     ]);
-    expect(events).toContainEqual(expect.objectContaining({ event_key: "catering_stage_change" }));
+    expect(events).toHaveLength(1);
     const payload = events[0].payload as Record<string, unknown>;
     expect(payload).toMatchObject({ fromStage: "confirm", toStage: "setup" });
     expect(payload.message).toContain("2026-08-21");
+  });
+
+  it("builds through one unforced catering_replace_setup call and never writes rows directly", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+    setupOrderItemsResponse = { data: [{ menu_item_id: "menu-1", qty: 1 }], error: null };
+
+    const res = await POST(makeRequest("Bearer test-secret"));
+    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(checklistWrites).toEqual([]);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0].name).toBe("catering_replace_setup");
+    expect(Object.keys(rpcCalls[0].args)).toEqual([
+      "p_order_id",
+      "p_force",
+      "p_stages",
+      "p_planned_from",
+      "p_rows",
+      "p_preorder_rows",
+    ]);
+    expect(rpcCalls[0].args).toMatchObject({
+      p_order_id: "setup-order",
+      p_force: false,
+      p_stages: ["new", "confirm", "setup"],
+      p_planned_from: {
+        headcount: 20,
+        paper_goods: true,
+        fulfillment: "delivery",
+        notes: "Items:\n- 1x Small Hot Chick-fil-A Nuggets Tray\n- 1x 8oz Chick-fil-A Sauce",
+        selected_condiments: [{ name: "8oz Chick-fil-A Sauce", qty: 1 }],
+        items: [{ menu_item_id: "menu-1", qty: 1 }],
+      },
+    });
+    expect(builtRows().every((row) => Boolean(row.setup_section))).toBe(true);
+  });
+
+  it("sends every Pre-order item and leaves skipping the ones an order has to the database", async () => {
+    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
+
+    await POST(makeRequest("Bearer test-secret"));
+    expect(rpcCalls[0].args.p_preorder_rows).toEqual(planPreOrderRows());
+    expect(planPreOrderRows()).toHaveLength(PRE_ORDER_CHECKLIST_ITEMS.length);
   });
 
   it("builds the packing list for an order whose call is not done but leaves it where it is", async () => {
@@ -300,14 +330,11 @@ describe("catering cron route", () => {
       ],
       error: null,
     };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
     expect(await res.json()).toMatchObject({ ok: true, errors: [] });
-    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
-    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
-    expect(insertedRows().filter((item) => item.stage === "out")).toHaveLength(PRE_ORDER_CHECKLIST_ITEMS.length);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(builtRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(updates).toHaveLength(0);
     expect(events).toHaveLength(0);
   });
 
@@ -319,24 +346,21 @@ describe("catering cron route", () => {
       error: null,
     };
     callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
     expect(await res.json()).toMatchObject({ ok: true, errors: [] });
-    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
-    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(rpcCalls).toHaveLength(1);
+    expect(updates).toHaveLength(0);
     expect(events).toHaveLength(0);
   });
 
   it("does not move an order that has no Confirmation Call items", async () => {
     setupQueryResponse = { data: [setupCandidate({ stage: "new" })], error: null };
     callItemsResponse = { data: [], error: null };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     await POST(makeRequest("Bearer test-secret"));
-    expect(insertedRows().length).toBeGreaterThan(0);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(builtRows().length).toBeGreaterThan(0);
+    expect(updates).toHaveLength(0);
     expect(events).toHaveLength(0);
   });
 
@@ -354,33 +378,39 @@ describe("catering cron route", () => {
 
     const res = await POST(makeRequest("Bearer test-secret"));
     expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+    expect(rpcCalls).toHaveLength(0);
     expect(updates).toHaveLength(0);
-    expect(inserts).toHaveLength(0);
     expect(callCheckFilters).toHaveLength(0);
   });
 
-  it("replaces a stale list: deletes the generated rows inside the claimed build, then inserts", async () => {
-    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
+  it("stays quiet when the database skips the build: no move, no event, no error", async () => {
+    // already_built: an overlapping run or a leader built it after this run
+    // read the order. order_changed: an edit landed mid-build (it nulled the
+    // stamp, so the next run rebuilds). wrong_stage: it was moved or cancelled.
+    for (const outcome of ["already_built", "order_changed", "wrong_stage"]) {
+      setupQueryResponse = { data: [setupCandidate({})], error: null };
+      callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
+      rpcResponses = [notBuilt(outcome)];
+      updates.length = 0;
+      events.length = 0;
 
-    await POST(makeRequest("Bearer test-secret"));
-    expect(checklistWrites.map((write) => write.op)).toEqual(["delete", "insert"]);
-    expect(checklistWrites[0].filters).toEqual([
-      ["order_id", "setup-order"],
-      ["not.setup_section.is", null],
-    ]);
+      const res = await POST(makeRequest("Bearer test-secret"));
+      expect(await res.json()).toMatchObject({ ok: true, errors: [] });
+      expect(updates).toHaveLength(0);
+      expect(events).toHaveLength(0);
+    }
   });
 
-  it("writes nothing when an edit or a manual Refresh took the claim mid-build", async () => {
+  it("reports a failed build, and neither moves the order nor emits an event", async () => {
     setupQueryResponse = { data: [setupCandidate({})], error: null };
     callItemsResponse = { data: [{ order_id: "setup-order", done: true }], error: null };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
-    claimRecheckResponse = { data: null, error: null };
+    rpcResponses = [{ data: null, error: { message: "build failed" } }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
-    expect(await res.json()).toMatchObject({ ok: true, errors: [] });
-    expect(checklistWrites).toEqual([]);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.errors).toEqual(["setup-order: build failed"]);
+    expect(updates).toHaveLength(0);
     expect(events).toHaveLength(0);
   });
 
@@ -389,52 +419,28 @@ describe("catering cron route", () => {
       data: [setupCandidate({ id: "same-day-order", stage: "setup", event_date: "2026-08-20" })],
       error: null,
     };
-    setupUpdateResponses = [{ data: { id: "same-day-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
     expect(await res.json()).toMatchObject({ ok: true, errors: [] });
     // Candidates come from today and tomorrow, in the store's time zone.
     expect(setupCandidateFilters).toContainEqual(["event_date", ["2026-08-20", "2026-08-21"]]);
-    expect(updates.some((update) => update.values.setup_generated_at != null)).toBe(true);
-    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
+    expect(rpcCalls[0].args.p_order_id).toBe("same-day-order");
+    expect(builtRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
     // Already in FOH Setup, so no move and no call check for it.
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(updates).toHaveLength(0);
     expect(callCheckFilters).toHaveLength(0);
-  });
-
-  it("does not add Pre-order items again when rebuilding a list wiped by an edit", async () => {
-    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
-    existingOutLabels = { "setup-order": [...PRE_ORDER_CHECKLIST_ITEMS] };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
-
-    await POST(makeRequest("Bearer test-secret"));
-    expect(insertedRows().some((item) => item.setup_section === "sauces_dressings")).toBe(true);
-    expect(insertedRows().filter((item) => item.stage === "out")).toEqual([]);
-  });
-
-  it("adds only the Pre-order items an order is missing", async () => {
-    setupQueryResponse = { data: [setupCandidate({ stage: "setup" })], error: null };
-    existingOutLabels = { "setup-order": [PRE_ORDER_CHECKLIST_ITEMS[0]] };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
-
-    await POST(makeRequest("Bearer test-secret"));
-    expect(insertedRows().filter((item) => item.stage === "out").map((item) => item.label)).toEqual([
-      PRE_ORDER_CHECKLIST_ITEMS[1],
-      PRE_ORDER_CHECKLIST_ITEMS[2],
-    ]);
   });
 
   it("moves nothing when the call check cannot be read, but still builds the list", async () => {
     setupQueryResponse = { data: [setupCandidate({})], error: null };
     callItemsResponse = { data: null, error: { message: "read failed" } };
-    setupUpdateResponses = [{ data: { id: "setup-order" }, error: null }];
 
     const res = await POST(makeRequest("Bearer test-secret"));
     const body = await res.json();
     expect(body.ok).toBe(false);
     expect(body.errors).toEqual(["confirmation calls: read failed"]);
-    expect(insertedRows().length).toBeGreaterThan(0);
-    expect(updates.some((update) => update.values.stage === "setup")).toBe(false);
+    expect(builtRows().length).toBeGreaterThan(0);
+    expect(updates).toHaveLength(0);
   });
 
   it("reports a digest failure in errors without hiding the other work", async () => {

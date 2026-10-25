@@ -4,7 +4,6 @@ import {
   addStoreCalendarDays,
   formatStoreDate,
   formatStoreDateTime,
-  formatStoreTime,
   storeDateTimeInputToIso,
   storeLocalDate as getStoreLocalDate,
 } from "@/lib/time";
@@ -206,35 +205,17 @@ export const PACKING_LIST_NOT_BUILT_ERROR =
   "No packing list yet. It is built the day before the event, or you can build it on the order page on the event day.";
 
 /**
- * A build stamps setup_generated_at when it claims the order, a moment before
- * its rows are inserted, so a fresh stamp can sit beside an empty list. A row
- * count cannot tell "still building" from "built, nothing to pack": an order
- * with no paper goods, drinks, sauces or trays legitimately builds zero setup
- * rows, and the Pre-order items live on the Pickup/Delivery checklist. So the
- * gate waits until the stamp is older than any build takes. A small list can
- * be packed inside that window (for example a 4-item rebuild after an
- * event-day edit), so the refusal names the exact time the move opens rather
- * than a vague "try again". Every rebuild restarts the wait.
+ * Why an order cannot leave FOH Setup yet because of its packing list, or
+ * null. The stamp alone is enough: both builds go through the
+ * catering_replace_setup database function, which writes the rows and then
+ * stamps setup_generated_at in the same transaction, so a stamp is never
+ * visible beside a list that is still inserting. (Builds used to stamp first
+ * and insert after, which is why this gate once waited two minutes.) A row
+ * count would be wrong here: an order with no paper goods, drinks, sauces or
+ * trays legitimately builds zero setup rows.
  */
-export const SETUP_BUILD_SETTLE_MS = 2 * 60 * 1000;
-
-/** Fallback when the stamp cannot be read, so no time can be named. */
-export const PACKING_LIST_BUILDING_ERROR =
-  "The packing list was just rebuilt. Wait two minutes, then move this order on.";
-
-/** Why an order cannot leave FOH Setup yet because of its packing list, or null. */
-export function packingListGateError(
-  setupGeneratedAt: string | null,
-  now: Date = new Date(),
-): string | null {
-  if (!setupGeneratedAt) return PACKING_LIST_NOT_BUILT_ERROR;
-  const stamped = new Date(setupGeneratedAt).getTime();
-  if (Number.isNaN(stamped)) return PACKING_LIST_BUILDING_ERROR;
-  const readyAt = stamped + SETUP_BUILD_SETTLE_MS;
-  if (now.getTime() < readyAt) {
-    return `The packing list was rebuilt at ${formatStoreTime(new Date(stamped))}. You can move this order on at ${formatStoreTime(new Date(readyAt))}.`;
-  }
-  return null;
+export function packingListGateError(setupGeneratedAt: string | null): string | null {
+  return setupGeneratedAt ? null : PACKING_LIST_NOT_BUILT_ERROR;
 }
 
 export const PRE_ORDER_CHECKLIST_ITEMS = [
@@ -253,14 +234,15 @@ export function planPreOrderChecklist(): PlannedChecklistItem[] {
 }
 
 /**
- * The Pre-order items an order is still missing. Editing an order wipes and
- * rebuilds only the packing list (rows with a setup_section), so the
- * Pre-order rows survive the edit; adding all three again on every rebuild
- * is what duplicated them.
+ * The Pre-order rows a packing-list build hands to catering_replace_setup.
+ * All of them are sent every time: the function inserts only the labels the
+ * order does not already have (trimmed, case insensitive), under the order's
+ * row lock. Editing an order wipes and rebuilds only the packing list (rows
+ * with a setup_section), so the Pre-order rows survive the edit, and adding
+ * all three again on every rebuild is what once duplicated them.
  */
-export function planMissingPreOrderChecklist(existingLabels: readonly string[]): PlannedChecklistItem[] {
-  const existing = new Set(existingLabels.map((label) => label.trim().toLowerCase()));
-  return planPreOrderChecklist().filter((item) => !existing.has(item.label.toLowerCase()));
+export function planPreOrderRows(): { label: string; sort: number }[] {
+  return planPreOrderChecklist().map(({ label, sort }) => ({ label, sort }));
 }
 
 export const FULFILLMENT_METHODS = ["pickup", "delivery"] as const;
@@ -314,10 +296,12 @@ export function canBuildCateringSetup(eventDate: string, now: Date = new Date())
 /**
  * Stages whose packing list may be built or rebuilt, by hand or by the cron
  * (the cron also stops at FOH Setup). Listed, not "everything but X", so a
- * stage added later is refused until someone decides it belongs here.
+ * stage added later is refused until someone decides it belongs here. Each
+ * build passes its list to catering_replace_setup, which re-checks the stage
+ * under the order's row lock, so a move or cancel during a build wins.
  */
 export const SETUP_BUILD_STAGES = ["new", "confirm", "setup", "out"] as const;
-const CRON_SETUP_STAGES = ["new", "confirm", "setup"] as const;
+export const CRON_SETUP_STAGES = ["new", "confirm", "setup"] as const;
 
 export function isSetupBuildStage(stage: string): boolean {
   return (SETUP_BUILD_STAGES as readonly string[]).includes(stage);
@@ -852,6 +836,54 @@ export function parseOrderItemsFromNotes(notes: string | null | undefined): Phys
     if (match) items.push({ name: match[2].trim(), qty: Number(match[1]) });
   }
   return items;
+}
+
+/**
+ * The generated FOH Setup rows a build hands to catering_replace_setup (which
+ * always inserts them on the setup stage). The checklist has no quantity
+ * column, so the quantity is baked into the label. Every row carries its
+ * setup_section: that is how the next build finds and replaces it, and the
+ * function refuses a row without one.
+ */
+export function planSetupRows(
+  items: readonly PhysicalSetupItem[],
+): { label: string; setup_section: PhysicalSetupSection; sort: number }[] {
+  return items.map((item, index) => ({
+    label: `${item.label} - ${item.qty}`,
+    setup_section: item.section,
+    sort: 1000 + index,
+  }));
+}
+
+/**
+ * What a packing list was planned from: the order fields the build read and
+ * its line items. catering_replace_setup rebuilds this same object from the
+ * database under the order's row lock and writes nothing when the two differ,
+ * so an edit that lands between a build's reads and its write cannot leave a
+ * list from the old order stamped as current. The keys must match the
+ * function's jsonb_build_object exactly (supabase/migrations/
+ * 20261025000000_catering_atomic_setup_and_guards.sql), and null stays null
+ * rather than being dropped, or every build would look stale. Generic over the
+ * condiments type so the database's Json type flows through untouched.
+ */
+export function setupPlanInputs<Condiments>(
+  order: {
+    headcount: number | null;
+    paper_goods: boolean;
+    fulfillment: string | null;
+    notes: string | null;
+    selected_condiments: Condiments;
+  },
+  orderItems: readonly { menu_item_id: string; qty: number }[],
+) {
+  return {
+    headcount: order.headcount ?? null,
+    paper_goods: order.paper_goods,
+    fulfillment: order.fulfillment ?? null,
+    notes: order.notes ?? null,
+    selected_condiments: order.selected_condiments,
+    items: orderItems.map((item) => ({ menu_item_id: item.menu_item_id, qty: item.qty })),
+  };
 }
 
 export interface ChecklistDefaultLike {
