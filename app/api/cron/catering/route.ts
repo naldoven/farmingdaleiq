@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  CRON_SETUP_STAGES,
   FULFILLMENT_METHODS,
   buildPhysicalOrderSetup,
   canCronMoveToSetup,
@@ -11,8 +12,11 @@ import {
   isNewOrderSettling,
   parseOrderItemsFromNotes,
   parseRequestedCondiments,
-  planMissingPreOrderChecklist,
+  planPreOrderRows,
+  planSetupRows,
+  setupPlanInputs,
 } from "@/app/(app)/catering/logic";
+import type { Json } from "@/lib/db/types";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
 
@@ -23,12 +27,14 @@ import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
  * -> Follow-up once the event time arrives. Vercel invokes this every minute,
  * so neither workflow needs someone to have the app open.
  *
- * Each setup is claimed by `setup_generated_at`, then the stage transition is
- * guarded by its prior value. A cancellation or manual move can therefore win
- * without being overwritten by this background job. Like the manual build
- * (actions.ts materializePhysicalOrderSetup), a build checks it still holds
- * the claim and then replaces the order's generated rows instead of adding to
- * them, so an edit or Refresh in the middle of a build cannot leave two lists.
+ * Like the manual build (actions.ts materializePhysicalOrderSetup), the rows
+ * are written by the catering_replace_setup database function in one
+ * transaction that locks the order, replaces its generated rows, and stamps
+ * setup_generated_at last. The cron calls it unforced, so an order whose list
+ * was built in the meantime (by an overlapping run or a leader) is left alone,
+ * and only the run that actually built the list moves the order and emits the
+ * event. The stage transition is then guarded by the stage this run read, so
+ * a cancellation or manual move wins over this background job.
  *
  * The job only moves an order to FOH Setup when its Confirmation Call
  * checklist exists and is fully ticked, and nobody has moved the order's
@@ -62,49 +68,21 @@ async function materializeDueSetup(
     paper_goods: boolean;
     fulfillment: string | null;
     notes: string | null;
-    selected_condiments: unknown;
+    selected_condiments: Json;
   },
   moveToSetup: boolean,
 ): Promise<{ generated: boolean; movedToSetup: boolean; error?: string }> {
-  // Stamped at the claim itself, not the start of the run: the FOH Setup
-  // gate (logic.ts packingListGateError) times its wait from this stamp.
-  const generatedAt = new Date().toISOString();
-  const { data: claimed, error: claimError } = await supabase
-    .from("catering_orders")
-    .update({ setup_generated_at: generatedAt })
-    .eq("id", order.id)
-    .in("stage", ["new", "confirm", "setup"])
-    .is("setup_generated_at", null)
-    .select("id")
-    .maybeSingle();
-  if (claimError) return { generated: false, movedToSetup: false, error: claimError.message };
-  if (!claimed) return { generated: false, movedToSetup: false };
-
-  const releaseClaim = async () => {
-    await supabase
-      .from("catering_orders")
-      .update({ setup_generated_at: null })
-      .eq("id", order.id)
-      .eq("setup_generated_at", generatedAt);
-  };
-
   const { data: orderItems, error: orderItemsError } = await supabase
     .from("catering_order_items")
     .select("menu_item_id, qty")
     .eq("order_id", order.id);
-  if (orderItemsError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: orderItemsError.message };
-  }
+  if (orderItemsError) return { generated: false, movedToSetup: false, error: orderItemsError.message };
 
   const menuItemIds = (orderItems ?? []).map((item) => item.menu_item_id);
   const { data: menuItems, error: menuItemsError } = menuItemIds.length
     ? await supabase.from("catering_menu_items").select("id, name").in("id", menuItemIds)
     : { data: [] as { id: string; name: string }[], error: null };
-  if (menuItemsError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: menuItemsError.message };
-  }
+  if (menuItemsError) return { generated: false, movedToSetup: false, error: menuItemsError.message };
 
   const menuNameById = new Map((menuItems ?? []).map((item) => [item.id, item.name]));
   const receiptItems = parseOrderItemsFromNotes(order.notes);
@@ -121,70 +99,26 @@ async function materializeDueSetup(
     fulfillment: order.fulfillment,
   });
 
-  // An edit or a manual Refresh may have taken the claim while this build
-  // read the order. The newer build owns the list, so stop without writing.
-  const { data: stillClaimed, error: recheckError } = await supabase
-    .from("catering_orders")
-    .select("id")
-    .eq("id", order.id)
-    .eq("setup_generated_at", generatedAt)
-    .maybeSingle();
-  if (recheckError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: recheckError.message };
-  }
-  if (!stillClaimed) return { generated: false, movedToSetup: false };
-
-  // Replace, never append: drop any generated rows a stale build left behind.
-  // Hand-added FOH Setup rows and Pre-order rows carry no setup_section.
-  const { error: clearError } = await supabase
-    .from("catering_checklist_items")
-    .delete()
-    .eq("order_id", order.id)
-    .not("setup_section", "is", null);
-  if (clearError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: clearError.message };
-  }
-
-  // An edit wipes only the packing list rows, so the Pre-order rows from the
-  // first build are still there when the list is rebuilt. Add only the ones
-  // that are missing.
-  const { data: existingPreOrder, error: existingPreOrderError } = await supabase
-    .from("catering_checklist_items")
-    .select("label")
-    .eq("order_id", order.id)
-    .eq("stage", "out");
-  if (existingPreOrderError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: existingPreOrderError.message };
-  }
-
-  const { error: insertError } = await supabase.from("catering_checklist_items").insert([
-    ...setupItems.map((item, index) => ({
-      order_id: order.id,
-      stage: "setup",
-      label: `${item.label} - ${item.qty}`,
-      setup_section: item.section,
-      sort: 1000 + index,
-    })),
-    ...planMissingPreOrderChecklist((existingPreOrder ?? []).map((item) => item.label)).map((item) => ({
-      order_id: order.id,
-      stage: item.stage,
-      label: item.label,
-      sort: item.sort,
-    })),
-  ]);
-  if (insertError) {
-    await releaseClaim();
-    return { generated: false, movedToSetup: false, error: insertError.message };
-  }
+  // Not forced: when a list was built after this run read the order, or the
+  // order left the cron's stages or was edited since, the function writes
+  // nothing and this order is skipped quietly (no error, no event). An edit
+  // nulls setup_generated_at, so the next run rebuilds from the edited order.
+  const { data: built, error: buildError } = await supabase.rpc("catering_replace_setup", {
+    p_order_id: order.id,
+    p_force: false,
+    p_stages: [...CRON_SETUP_STAGES],
+    p_planned_from: setupPlanInputs(order, orderItems ?? []),
+    p_rows: planSetupRows(setupItems),
+    p_preorder_rows: planPreOrderRows(),
+  });
+  if (buildError) return { generated: false, movedToSetup: false, error: buildError.message };
+  if (!built?.[0]?.generated) return { generated: false, movedToSetup: false };
 
   if (!moveToSetup) return { generated: true, movedToSetup: false };
 
   const { data: moved, error: moveError } = await supabase
     .from("catering_orders")
-    .update({ stage: "setup", stage_changed_at: generatedAt })
+    .update({ stage: "setup", stage_changed_at: new Date().toISOString() })
     .eq("id", order.id)
     .eq("stage", order.stage)
     .select("id")
