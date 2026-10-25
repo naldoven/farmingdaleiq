@@ -103,30 +103,40 @@ export function MenuItemForm({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`mi-pickup-price-${scope}`}>Pickup price</Label>
-            <Input
-              id={`mi-pickup-price-${scope}`}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={pickupPriceText}
-              onChange={(e) => setPickupPriceText(e.target.value)}
-            />
+            {/* Prices are set once, on a new item. On edit they are read-only text
+                (updateMenuItem refuses a changed price). */}
+            <Label htmlFor={initial?.id ? undefined : `mi-pickup-price-${scope}`}>Pickup price</Label>
+            {initial?.id ? (
+              <p className="text-sm">{pickupPriceText ? `$${pickupPriceText}` : "Not listed"}</p>
+            ) : (
+              <Input
+                id={`mi-pickup-price-${scope}`}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={pickupPriceText}
+                onChange={(e) => setPickupPriceText(e.target.value)}
+              />
+            )}
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`mi-delivery-price-${scope}`}>Delivery price</Label>
-            <Input
-              id={`mi-delivery-price-${scope}`}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={deliveryPriceText}
-              onChange={(e) => setDeliveryPriceText(e.target.value)}
-            />
+            <Label htmlFor={initial?.id ? undefined : `mi-delivery-price-${scope}`}>Delivery price</Label>
+            {initial?.id ? (
+              <p className="text-sm">{deliveryPriceText ? `$${deliveryPriceText}` : "Not listed"}</p>
+            ) : (
+              <Input
+                id={`mi-delivery-price-${scope}`}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={deliveryPriceText}
+                onChange={(e) => setDeliveryPriceText(e.target.value)}
+              />
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1">

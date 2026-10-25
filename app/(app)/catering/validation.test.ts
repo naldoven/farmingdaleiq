@@ -234,6 +234,17 @@ describe("menuItemSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("still validates a new item with pickup and delivery prices", () => {
+    // Prices are read-only on edit, but a brand-new item is created with them.
+    const result = menuItemSchema.safeParse({
+      name: "Boxed Meal",
+      pickupPriceText: " 43.50 ",
+      deliveryPriceText: "56",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ pickupPriceText: "43.50", deliveryPriceText: "56" });
+  });
+
   it("rejects malformed JSON", () => {
     const result = menuItemSchema.safeParse({
       name: "Boxed Meal",

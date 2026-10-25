@@ -1133,6 +1133,16 @@ export async function createMenuItem(
   }
 }
 
+const MENU_PRICE_READ_ONLY_ERROR = "Prices come from the catering catalog and cannot be changed here.";
+
+/**
+ * Edits a menu item's name, category, components, scaling rules and active
+ * flag. Prices are NOT editable here (owner decision, 2026-10-25): they come
+ * from the catering catalog (20260821031530_catering_menu_catalog_prices.sql),
+ * and createMenuItem is the only place the app writes one, for a brand-new
+ * item. The form still posts the prices it displays, so equal values pass and
+ * a changed one is refused; the price columns are never part of the update.
+ */
 export async function updateMenuItem(
   input: UpdateMenuItemInput,
 ): Promise<ActionResult> {
@@ -1141,13 +1151,27 @@ export async function updateMenuItem(
     const parsed = updateMenuItemSchema.parse(input);
     const supabase = await createClient();
 
+    const { data: stored, error: storedError } = await supabase
+      .from("catering_menu_items")
+      .select("pickup_price_cents, delivery_price_cents")
+      .eq("id", parsed.id)
+      .maybeSingle();
+
+    if (storedError) return { ok: false, error: storedError.message };
+    if (!stored) return { ok: false, error: "Menu item not found." };
+
+    if (
+      stored.pickup_price_cents !== priceTextToCents(parsed.pickupPriceText) ||
+      stored.delivery_price_cents !== priceTextToCents(parsed.deliveryPriceText)
+    ) {
+      return { ok: false, error: MENU_PRICE_READ_ONLY_ERROR };
+    }
+
     const { error } = await supabase
       .from("catering_menu_items")
       .update({
         name: parsed.name,
         category: parsed.category ? parsed.category : null,
-        pickup_price_cents: priceTextToCents(parsed.pickupPriceText),
-        delivery_price_cents: priceTextToCents(parsed.deliveryPriceText),
         components: parseJsonArray(parsed.componentsText),
         scaling_rules: parseJsonArray(parsed.scalingRulesText),
         active: parsed.active,

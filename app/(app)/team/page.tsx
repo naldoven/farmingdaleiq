@@ -135,7 +135,7 @@ export default async function TeamPage({
       : Promise.resolve(false),
   ]);
   // Same tiering as /waste's own rollup tab (app/(app)/waste/page.tsx):
-  // waste.manage or the one-tier-lower reports.view.
+  // waste.manage or the lower reports.view.
   const canViewWasteRollup = canManageWaste || canViewWasteReports;
 
   const { data: dayParts } = await supabase

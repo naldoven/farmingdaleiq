@@ -93,7 +93,9 @@ below describes observed behavior we intend to reproduce.
   shift end to pick a **Top Performer** (who gets tokens + a public feed shoutout).
 
 ### Waste
-- Admins maintain **waste items** organized into **categories**.
+- Admins maintain **waste items** organized into **categories**. Item setup, item costs, and deleting
+  entries need `waste.manage`, which starts at Operations Lead (Shift Supervisors log waste but do
+  not manage it; owner decision 2026-10-25). Logging (`waste.log`) stays with every role.
 - Anyone can log a waste entry: item + quantity (count or weight). Entries roll up
   into reports by item/category over time so leaders can see where food cost is going.
 
@@ -522,7 +524,7 @@ Discord:
 | `/catering/history` | Contacts, follow-ups due, order history with period filters |
 | `/catering/cancelled` | Cancelled orders, newest first, each linking to its order page |
 | `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
-| `/catering/menu` | Menu item catalog admin (components, scaling rules) |
+| `/catering/menu` | Menu item catalog admin (components, scaling rules); prices are read-only in the app |
 | `/reports` | Store dashboard + per-module reports, CSV export |
 | `/notifications` | Notification center |
 | `/settings` | Day-parts, earning rules, store settings |
