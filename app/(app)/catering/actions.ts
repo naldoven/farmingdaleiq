@@ -22,6 +22,10 @@
  *     stage is a no-op success, so a double tap moves one step, not two.
  *   - toggleChecklistItem and resolveFollowUp are plain idempotent field
  *     writes: setting the same done/outcome state twice is a no-op.
+ *   - bulkCloseStaleOrders runs in the database (catering_bulk_close), which
+ *     reports an order that is already closed as already_closed instead of
+ *     closing it again, so a double tap or a retried batch logs each order
+ *     once and queues nothing.
  */
 
 import { revalidatePath } from "next/cache";
@@ -52,11 +56,14 @@ import {
   parseRequestedCondiments,
   previousCateringStage,
   stageOverrideTargetError,
+  summarizeBulkClose,
+  type BulkCloseSummary,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
 import {
   addChecklistItemSchema,
   addOrderItemSchema,
+  bulkCloseStaleOrdersSchema,
   cancelOrderSchema,
   changeStageSchema,
   checklistDefaultIdSchema,
@@ -78,6 +85,7 @@ import {
   updateOrderItemQtySchema,
   type AddChecklistItemInput,
   type AddOrderItemInput,
+  type BulkCloseStaleOrdersInput,
   type CancelOrderInput,
   type ChangeStageInput,
   type ChecklistDefaultInput,
@@ -887,6 +895,47 @@ export async function restoreOrder(input: RestoreOrderInput): Promise<ActionResu
 
     revalidateCatering(parsed.orderId);
     return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * Manager cleanup for past-event orders nobody worked: closes a batch in one
+ * database call with one shared reason. The work happens in
+ * catering_bulk_close (supabase/migrations/20261026000000_catering_bulk_close.sql):
+ * it re-checks catering.override and catering.manage itself, the update goes
+ * through the catering_orders RLS policy and the stage guard, every closed
+ * order gets a catering_stage_change audit row with the reason and the
+ * manager's id, and nothing posts to Discord and no re-book follow-up is
+ * queued (the event is over; a flood of stale posts helps nobody). Orders
+ * that are not past, already closed, or cancelled are reported, not changed.
+ */
+export async function bulkCloseStaleOrders(
+  input: BulkCloseStaleOrdersInput,
+): Promise<ActionResult<BulkCloseSummary>> {
+  try {
+    // Override first, then manage, same order as moveOrderBack: the RLS
+    // update policy needs catering.manage, so an override holder without it
+    // would otherwise pass here and fail inside the function.
+    await requirePermission("catering.override");
+    await requirePermission("catering.manage");
+    const parsed = bulkCloseStaleOrdersSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data: rows, error } = await supabase.rpc("catering_bulk_close", {
+      p_order_ids: parsed.orderIds,
+      p_reason: parsed.reason,
+    });
+    if (error) return { ok: false, error: error.message };
+
+    const summary = summarizeBulkClose(rows ?? []);
+    revalidateCatering();
+    revalidatePath("/catering/stale");
+    for (const row of rows ?? []) {
+      if (row.outcome === "closed") revalidatePath(`/catering/orders/${row.order_id}`);
+    }
+    return { ok: true, data: summary };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

@@ -381,6 +381,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Menu item catalog admin (components, scaling rules).",
         owner: "S9",
       },
+      {
+        href: "/catering/stale",
+        permission: "catering.override",
+        label: "Stale orders",
+        description: "Manager cleanup: close past-event orders in bulk with one logged reason.",
+        owner: "S9",
+      },
     ],
   },
   {

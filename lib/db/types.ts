@@ -3885,6 +3885,10 @@ export type Database = {
         Args: { p_group_id: string }
         Returns: undefined
       }
+      catering_bulk_close: {
+        Args: { p_order_ids: string[]; p_reason: string }
+        Returns: { order_id: string; outcome: string }[]
+      }
     }
     Enums: {
       [_ in never]: never

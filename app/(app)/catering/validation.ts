@@ -117,6 +117,18 @@ export const restoreOrderSchema = z.object({
 });
 export type RestoreOrderInput = z.infer<typeof restoreOrderSchema>;
 
+// Bulk close of stale orders (manager override). The reason is shared by the
+// whole batch and lands on every order's audit event. 200 caps one database
+// call at a month or two of neglect; the screen can be used twice.
+export const bulkCloseStaleOrdersSchema = z.object({
+  orderIds: z
+    .array(z.string().uuid())
+    .min(1, "Pick at least one order.")
+    .max(200, "Close at most 200 orders at a time."),
+  reason: overrideReasonSchema,
+});
+export type BulkCloseStaleOrdersInput = z.infer<typeof bulkCloseStaleOrdersSchema>;
+
 export const addOrderItemSchema = z.object({
   orderId: z.string().uuid(),
   menuItemId: z.string().uuid(),
