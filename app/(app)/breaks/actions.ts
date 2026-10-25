@@ -17,6 +17,7 @@ import { toActionError } from "@/lib/errors/action-error";
 import {
   buildBreakPlan,
   canTransition,
+  computeShiftMinutes,
   type BreakStatus,
 } from "@/lib/breaks/entitlement";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
@@ -42,9 +43,12 @@ function combineDateAndTime(date: string, time: string): Date {
 /**
  * Builds and inserts the break plan for a posted setup. Called
  * automatically from app/(app)/setups/actions.ts's postSetup(), and safe to
- * call again by hand (e.g. after an assignment change): only inserts a
- * break row for a (user, kind) pair that doesn't already have one for this
- * setup, so re-running never duplicates entitlements.
+ * call again by hand (e.g. after an assignment change). Idempotent two ways:
+ * only inserts a break row for a (user, kind) pair that doesn't already have
+ * one on ANY setup for the same date (one scheduled shift earns one break,
+ * however many day-part setups it spans), and the insert itself is an upsert
+ * against breaks_setup_user_kind_uq so two leaders refreshing at the same
+ * moment cannot both insert the same entitlement.
  */
 export async function generateBreaksForSetup(
   setupId: string,
@@ -80,7 +84,7 @@ export async function generateBreaksForSetup(
 
     const { data: assignments } = await supabase
       .from("setup_assignments")
-      .select("user_id, arrival_time")
+      .select("user_id, arrival_time, scheduled_end")
       .eq("setup_id", parsed.setupId)
       .not("user_id", "is", null);
 
@@ -106,31 +110,40 @@ export async function generateBreaksForSetup(
     const { data: rules } = await supabase.from("break_rules").select("*");
 
     const now = new Date();
-    const shiftEnd = dayPart ? combineDateAndTime(setup.date, dayPart.end_time) : null;
-    const shiftStart = dayPart ? combineDateAndTime(setup.date, dayPart.start_time) : null;
+    const dayPartEnd = dayPart ? combineDateAndTime(setup.date, dayPart.end_time) : null;
+    const dayPartStart = dayPart ? combineDateAndTime(setup.date, dayPart.start_time) : null;
 
     const shiftAssignments = (assignments ?? [])
-      .filter((a): a is { user_id: string; arrival_time: string | null } => Boolean(a.user_id))
-      .map((a) => {
-        const arrival = a.arrival_time ? new Date(a.arrival_time) : shiftStart;
-        const effectiveStart = arrival ?? shiftStart ?? now;
-        const shiftMinutes = shiftEnd
-          ? Math.max(0, (shiftEnd.getTime() - effectiveStart.getTime()) / 60_000)
-          : 0;
-        return {
-          userId: a.user_id,
-          arrivalTime: a.arrival_time ? new Date(a.arrival_time) : null,
-          birthdate: birthdateByUser.get(a.user_id) ?? null,
-          shiftMinutes,
-        };
-      });
+      .filter(
+        (a): a is { user_id: string; arrival_time: string | null; scheduled_end: string | null } =>
+          Boolean(a.user_id),
+      )
+      .map((a) => ({
+        userId: a.user_id,
+        arrivalTime: a.arrival_time ? new Date(a.arrival_time) : null,
+        birthdate: birthdateByUser.get(a.user_id) ?? null,
+        // Scheduled shift length (lib/breaks/entitlement.ts computeShiftMinutes):
+        // arrival -> scheduled_end, falling back to the day-part window.
+        shiftMinutes: computeShiftMinutes({
+          arrival: a.arrival_time ? new Date(a.arrival_time) : null,
+          scheduledEnd: a.scheduled_end ? new Date(a.scheduled_end) : null,
+          dayPartStart,
+          dayPartEnd,
+        }),
+      }));
 
     const plan = buildBreakPlan(shiftAssignments, rules ?? [], now);
 
+    // One shift, one entitlement: a person assigned on the Lunch AND Dinner
+    // setups of the same date works one scheduled shift, so a break already
+    // planned on any setup for that date counts. Same-date setups include this
+    // one, so this also covers the plain re-run case.
+    const { data: sameDaySetups } = await supabase.from("setups").select("id").eq("date", setup.date);
+    const sameDaySetupIds = [...new Set([parsed.setupId, ...(sameDaySetups ?? []).map((s) => s.id)])];
     const { data: existingBreaks } = await supabase
       .from("breaks")
       .select("user_id, kind")
-      .eq("setup_id", parsed.setupId);
+      .in("setup_id", sameDaySetupIds);
     const existingKeys = new Set((existingBreaks ?? []).map((b) => `${b.user_id}:${b.kind}`));
 
     const toInsert = plan
@@ -145,7 +158,12 @@ export async function generateBreaksForSetup(
       }));
 
     if (toInsert.length > 0) {
-      const { error: insertError } = await supabase.from("breaks").insert(toInsert);
+      // ignoreDuplicates: a concurrent run that already inserted the same
+      // (setup, user, kind) wins and this insert silently skips it, instead
+      // of surfacing a 23505 to the leader who clicked second.
+      const { error: insertError } = await supabase
+        .from("breaks")
+        .upsert(toInsert, { onConflict: "setup_id,user_id,kind", ignoreDuplicates: true });
       if (insertError) return { ok: false, error: insertError.message };
     }
 
@@ -190,8 +208,30 @@ async function transitionBreak(
   } = { status: to };
   if (timestampField) update[timestampField] = new Date().toISOString();
 
-  const { error } = await supabase.from("breaks").update(update).eq("id", id);
+  // Compare-and-swap on the status we just validated against. Without it two
+  // leaders acting at once (one taps Start, the other Complete a moment
+  // later) could both pass canTransition() on a stale read and the later
+  // write would overwrite the earlier one, skipping a state and stamping the
+  // wrong timestamp. Same guard the cron sweep (lib/breaks/overdue.ts) and
+  // postSetup() use.
+  const { data: claimed, error } = await supabase
+    .from("breaks")
+    .update(update)
+    .eq("id", id)
+    .eq("status", current.status)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+
+  if (!claimed || claimed.length === 0) {
+    // Lost the race. If the other writer landed the same target state this is
+    // still a successful no-op; otherwise tell the leader to look again.
+    const { data: latest } = await supabase.from("breaks").select("status").eq("id", id).maybeSingle();
+    if (latest?.status === to) return { ok: true, data: undefined };
+    return {
+      ok: false,
+      error: `This break just changed to ${latest?.status ?? "another state"}. Refresh and try again.`,
+    };
+  }
 
   revalidateBreaks();
   return { ok: true, data: undefined };

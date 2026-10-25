@@ -1,14 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
+import { DISCORD_CONTENT_MAX_CHARS, DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
 
 // 18 digits, the usual length of a Discord user id (snowflake).
 const VALID_ID = "123456789012345678";
 
 describe("buildDiscordMessage", () => {
-  it("does not advertise dormant feature routes", () => {
-    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("broadcast");
-    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("break_overdue");
+  it("routes the woken modules' events (broadcast, break_overdue)", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("broadcast");
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("break_overdue");
+  });
+
+  it("clamps a 2000-character broadcast so Discord does not reject the post", () => {
+    const body = "x".repeat(2000);
+    const msg = buildDiscordMessage("broadcast", { body });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_MAX_CHARS);
+    expect(msg.content.startsWith("📣 **Announcement**")).toBe(true);
+    expect(msg.content.endsWith("…")).toBe(true);
+    expect(msg.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("keeps the recipient mention when clamping", () => {
+    const body = "y".repeat(2000);
+    const msg = buildDiscordMessage("recognition", { body }, { recipientDiscordId: VALID_ID });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_MAX_CHARS);
+    expect(msg.content.endsWith(`<@${VALID_ID}>`)).toBe(true);
+  });
+
+  it("routes the nightly catering digest and posts its payload title and message", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("catering_tomorrow_digest");
+    const msg = buildDiscordMessage("catering_tomorrow_digest", {
+      title: "Tomorrow's catering",
+      message: "Mon, Oct 26: 1 order, all confirmation calls done",
+    });
+    expect(msg.content).toContain("Tomorrow's catering");
+    expect(msg.content).toContain("Mon, Oct 26: 1 order, all confirmation calls done");
+    expect(msg.content).toContain("🍽️");
   });
 
   it("never routes accountability events to Discord", () => {
@@ -24,6 +51,28 @@ describe("buildDiscordMessage", () => {
     expect(msg.content).toContain("Walk-in freezer won't cool");
     expect(msg.content).toContain("Reported by Jamie");
     expect(msg.content).toContain("🔧");
+  });
+
+  it("joins title, detail and mention with plain colons, never an em dash", () => {
+    const plain = buildDiscordMessage("maint_request", {
+      title: "Walk-in freezer won't cool",
+      message: "Reported by Jamie",
+    });
+    expect(plain.content).toBe("🔧 **Walk-in freezer won't cool**: Reported by Jamie");
+
+    const mentioned = buildDiscordMessage(
+      "recognition",
+      { title: "Great shift", message: "Thanks for covering" },
+      { recipientDiscordId: VALID_ID },
+    );
+    expect(mentioned.content).toBe(`🎉 **Great shift**: Thanks for covering: <@${VALID_ID}>`);
+
+    const titleOnly = buildDiscordMessage("equipment_down", { title: "Fryer #2 down" });
+    expect(titleOnly.content).toBe("🔴 **Fryer #2 down**");
+
+    for (const msg of [plain, mentioned, titleOnly]) {
+      expect(msg.content).not.toMatch(/[\u2013\u2014]/);
+    }
   });
 
   it("embeds an @mention when a discord id is provided", () => {

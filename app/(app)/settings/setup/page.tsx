@@ -14,7 +14,8 @@ import { getConfirmedAreas } from "@/lib/store-setup/status";
  * settings.manage gates the page and the two actions. The editors it links
  * to each re-check their own permission on arrival, so a Director who can
  * confirm an area but lacks, say, catering.manage still cannot change the
- * menu from here.
+ * menu from here. The reverse is not true: a Team Leader holds catering.manage
+ * in the seeded roles and can change menu prices without being able to confirm.
  */
 export const metadata = { title: "Store setup" };
 
@@ -52,8 +53,9 @@ export default async function StoreSetupPage() {
       <p className="text-[13px] text-muted-ink">
         The app shipped with Avondale guesses where Farmingdale&apos;s values were
         unknown. Open each editor, fix the values, then mark the area confirmed.
-        Money areas (costs, prices, token amounts) need the module&apos;s manage
-        permission to change.
+        Money areas (costs, prices, token amounts) are changed with that
+        module&apos;s own manage permission, and some leader roles below Director
+        hold it. Check who can change them on the Roles page.
       </p>
 
       {confirmed.error && (

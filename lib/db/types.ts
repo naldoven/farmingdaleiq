@@ -2696,6 +2696,7 @@ export type Database = {
           arrival_time: string | null
           id: string
           position_id: string | null
+          scheduled_end: string | null
           setup_id: string
           user_id: string | null
         }
@@ -2703,6 +2704,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id: string
           user_id?: string | null
         }
@@ -2710,6 +2712,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id?: string
           user_id?: string | null
         }
@@ -3926,6 +3929,10 @@ export type Database = {
           setup_rows: number
           preorder_rows: number
         }[]
+      }
+      catering_bulk_close: {
+        Args: { p_order_ids: string[]; p_reason: string }
+        Returns: { order_id: string; outcome: string }[]
       }
     }
     Enums: {

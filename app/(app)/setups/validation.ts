@@ -18,6 +18,8 @@ export const assignPositionSchema = z.object({
   positionId: z.string().uuid(),
   userId: z.string().uuid().nullable(),
   arrivalTime: z.string().trim().optional().or(z.literal("")),
+  /** ISO instant the person is scheduled to leave; feeds break entitlement. */
+  scheduledEnd: z.string().datetime({ offset: true }).optional().or(z.literal("")),
 });
 export type AssignPositionInput = z.infer<typeof assignPositionSchema>;
 

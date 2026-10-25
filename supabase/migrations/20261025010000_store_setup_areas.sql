@@ -29,8 +29,10 @@ create policy store_setup_areas_select_authenticated on public.store_setup_areas
 -- Only settings.manage (Director and Location Manager in the seed) can mark an
 -- area confirmed or back to default. Server actions in
 -- app/(app)/settings/setup/actions.ts call requirePermission('settings.manage')
--- first; this policy is the backstop.
+-- first; this policy is the backstop. The with check also ties confirmed_by to
+-- the signed-in user, so a row cannot name someone else as the confirmer (and
+-- a null confirmed_by is refused). The action sets it from the session.
 create policy store_setup_areas_write_manager on public.store_setup_areas
   for all
   using (public.has_permission('settings.manage'))
-  with check (public.has_permission('settings.manage'));
+  with check (public.has_permission('settings.manage') and confirmed_by = auth.uid());

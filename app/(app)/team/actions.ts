@@ -215,9 +215,25 @@ export async function createRecognition(
 }
 
 /**
+ * Double-submit window for a broadcast: the same leader posting the same text
+ * again inside it is treated as a retry, not a second announcement.
+ */
+const BROADCAST_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+/**
  * Posts a leader Broadcast (announcement) to the feed
  * (ARCHITECTURE.md "Team Feed": "leader Broadcasts (announcements: rollouts,
  * events, policy updates)"). feed.post_broadcast only.
+ *
+ * Double-submit safe: a broadcast is the loudest thing in the app (one
+ * `broadcast` event becomes an in-app notification for EVERY active employee,
+ * plus a Discord post once a route exists), so a double tap or a retried
+ * request must not post it twice. feed_posts has no natural idempotency key
+ * for broadcasts, so the guard is the same shape as createRecognition's:
+ * identical author + body inside a short window returns the existing post.
+ * Read-then-insert, not a database constraint, so true concurrency could still
+ * slip one through; the window closes the double-tap and retry cases, which
+ * are the ones that happen.
  */
 export async function createBroadcast(
   input: CreateBroadcastInput
@@ -230,6 +246,23 @@ export async function createBroadcast(
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    if (user) {
+      const since = new Date(Date.now() - BROADCAST_DEDUP_WINDOW_MS).toISOString();
+      const { data: recent } = await supabase
+        .from("feed_posts")
+        .select("id")
+        .eq("kind", "broadcast")
+        .eq("author_id", user.id)
+        .eq("body", parsed.body)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recent) {
+        return { ok: true, data: { postId: recent.id } };
+      }
+    }
 
     const { data: post, error } = await supabase
       .from("feed_posts")
