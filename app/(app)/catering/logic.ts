@@ -1,6 +1,8 @@
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
   addStoreCalendarDays,
+  formatStoreDate,
+  formatStoreDateTime,
   storeDateTimeInputToIso,
   storeLocalDate as getStoreLocalDate,
 } from "@/lib/time";
@@ -144,6 +146,35 @@ export function countsAsRevenue(stage: string): boolean {
 /** Filters a list of orders down to those that count as revenue. */
 export function filterRevenueOrders<T extends { stage: string }>(orders: T[]): T[] {
   return orders.filter((order) => countsAsRevenue(order.stage));
+}
+
+/**
+ * The detail line for a row on /catering/cancelled: event date, how it was
+ * going to be fulfilled, and the headcount. Parts that are not on the order
+ * are left out instead of printing "null".
+ */
+export function cancelledOrderDetails(order: {
+  event_date: string;
+  fulfillment: string | null;
+  headcount: number | null;
+}): string {
+  const parts = [`Event ${formatStoreDate(order.event_date)}`];
+  if (order.fulfillment) {
+    parts.push(order.fulfillment.charAt(0).toUpperCase() + order.fulfillment.slice(1));
+  }
+  if (order.headcount != null) {
+    parts.push(`${order.headcount} ${order.headcount === 1 ? "guest" : "guests"}`);
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * When an order was cancelled, in store time. stage_changed_at is nullable in
+ * the schema, so a missing stamp reads as unknown rather than a blank.
+ */
+export function cancelledOnLabel(stageChangedAt: string | null): string {
+  const when = formatStoreDateTime(stageChangedAt, "");
+  return when ? `Cancelled ${when}` : "Cancel time not recorded";
 }
 
 export const CHECKLIST_STAGES = ["confirm", "setup", "kitchen_prep", "out"] as const;

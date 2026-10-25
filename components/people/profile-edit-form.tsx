@@ -105,7 +105,13 @@ export function ProfileEditForm({
             value={discordUserId}
             onChange={(e) => setDiscordUserId(e.target.value)}
             placeholder="For @mentions"
+            inputMode="numeric"
+            aria-describedby="discordUserIdHint"
           />
+          <p id="discordUserIdHint" className="text-[13px] text-muted-ink">
+            In Discord: User Settings, Advanced, turn on Developer Mode, then right-click the
+            person and choose Copy User ID.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="birthdate">Birthdate</Label>

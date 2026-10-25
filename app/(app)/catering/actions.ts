@@ -108,6 +108,7 @@ function revalidateCatering(orderId?: string) {
   revalidatePath("/catering/setup");
   revalidatePath("/catering/dispatch");
   revalidatePath("/catering/history");
+  revalidatePath("/catering/cancelled");
   revalidatePath("/catering/analytics");
   if (orderId) revalidatePath(`/catering/orders/${orderId}`);
 }
