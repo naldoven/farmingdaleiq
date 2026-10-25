@@ -213,3 +213,9 @@ export const toggleChecklistDefaultActiveSchema = checklistDefaultIdSchema.exten
   active: z.boolean(),
 });
 export type ToggleChecklistDefaultActiveInput = z.infer<typeof toggleChecklistDefaultActiveSchema>;
+
+export const reorderChecklistDefaultsSchema = z.object({
+  stage: z.enum(CHECKLIST_STAGES),
+  orderedIds: z.array(z.string().uuid()).min(1).max(200),
+});
+export type ReorderChecklistDefaultsInput = z.infer<typeof reorderChecklistDefaultsSchema>;

@@ -1151,3 +1151,21 @@ export function formatStageOverrideMessage(input: {
   // free text typed by a manager, so it gets the same treatment here.
   return `${formatStageChangeMessage(input)}. ${action} by a manager: ${neutralizeDiscordMentions(input.reason)}`;
 }
+
+/**
+ * Swaps `id` one place up or down in an ordered id list. Returns a new array
+ * and never mutates the input. At either edge, or when `id` is not in the
+ * list, it returns the same order so callers can skip the write.
+ */
+export function moveIdWithin(
+  ids: readonly string[],
+  id: string,
+  direction: "up" | "down",
+): string[] {
+  const next = [...ids];
+  const from = next.indexOf(id);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from === -1 || to < 0 || to >= next.length) return next;
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}
