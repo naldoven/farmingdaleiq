@@ -470,6 +470,13 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "S10",
       },
       {
+        href: "/settings/rubrics",
+        permission: "training.manage",
+        label: "Rating rubrics",
+        description: "Which stations get a 4-category rubric instead of a quick rating, and the category names.",
+        owner: "S10",
+      },
+      {
         href: "/settings/discord",
         permission: "discord.manage",
         label: "Discord",

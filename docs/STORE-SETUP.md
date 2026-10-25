@@ -26,7 +26,7 @@ refuses a row whose `confirmed_by` is not the signed-in user.
 | Rewards and prices | First 7 rewards and prices are real; the tail of the KitchenIQ list was never captured. | `/rewards` (Manage rewards) | `rewards.manage` | Yes |
 | Infraction types and ladder | Corrected from screenshots on 2026-09-26. Needs a last check that nothing sits below the final screenshot. | `/accountability` (Infraction types, Disciplinary ladder, period) | `accountability.manage` | No |
 | Role permissions | Cascading default per role (Team Member up to Location Manager). | `/people/roles` | `roles.manage` | No |
-| Rating rubrics | No position has a 4-category rubric, so every station is quick-rate only. The server action exists (`upsertRubric`) but no screen calls it. | None | `training.manage` (later PR) | No |
+| Rating rubrics | No position has a 4-category rubric, so every station is quick-rate only. | `/settings/rubrics` | `training.manage` | No |
 | Onboarding roadmap stations | FOH roadmap is the Avondale 21-station list in 5 phases. Kitchen roadmap is inactive and empty. | `/training/grid` shows it; no screen adds or removes stations. | `training.manage` | No |
 | Passports and pipelines | Position passports auto-create per position. Masters and Leads pipelines carry Avondale stage names and promote into Avondale target roles and tiers. | `/training` and `/training/pipelines` edit items; no screen creates a pipeline or changes its target role. | `training.manage` | No |
 | Org chart tiers | 5 placeholder tiers with goal counts. | `/people/org-chart` | `training.org_chart_manage` | No |
@@ -116,5 +116,5 @@ for every money area.
 2. Positions and groups editor at `/settings/positions` (the dormant Setups
    editor stays off).
 3. Catering scaling rules as a row editor instead of raw JSON.
-4. Rating rubrics editor.
+4. Rating rubrics editor at `/settings/rubrics`. Done.
 5. Roadmap stations and pipeline creation, if Naldo wants them before launch.
