@@ -115,7 +115,7 @@ export const STORE_SETUP_AREAS: readonly StoreSetupArea[] = [
     title: "Rating rubrics",
     description:
       "No position has a 4-category rubric yet, so every station is quick-rate only. Decide which stations need the full rubric and name the categories.",
-    href: null,
+    href: "/settings/rubrics",
     editPermission: "training.manage",
     money: false,
     source: "ARCHITECTURE.md open question 5",

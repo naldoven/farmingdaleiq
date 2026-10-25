@@ -9,6 +9,7 @@ import {
   MessageSquare,
   ShieldAlert,
   ShieldCheck,
+  Star,
   Users2,
 } from "lucide-react";
 
@@ -104,6 +105,13 @@ export default async function SettingsPage() {
             title="Rewards"
             description="Store catalog, claims, and reward management."
             href="/rewards"
+          />
+          <ListRow
+            icon={Star}
+            iconTone="info"
+            title="Rating Rubrics"
+            description="Which stations score four categories and what they are called."
+            href="/settings/rubrics"
           />
           <ListRow
             icon={ShieldCheck}
