@@ -20,6 +20,7 @@ import {
   Trash2,
   Truck,
   Users,
+  SprayCan,
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   menu: MenuIcon,
   checklists: ClipboardCheck,
   tasks: ListTodo,
+  cleaning: SprayCan,
   setups: LayoutGrid,
   ratings: Star,
   waste: Trash2,

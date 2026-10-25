@@ -208,6 +208,11 @@ tokens, desktop board if wanted.
 
 ## Before Phase 1 starts (Naldo)
 
+0. Decide how the app knows the AM and PM owner. The plan reads the Morning and
+   Closing Setup leaders, but the Setups module is switched off today
+   (`lib/features.ts`, `setups: false`). Either switch Setups on and have leaders post
+   them, or pick another source (for example the coordinator names the AM and PM
+   leader per day on the board).
 1. Create the #cleaning Discord channel and its webhook.
 2. Send the walkthrough's variables (photos and notes are fine) when ready.
 3. Have Mariana check the BOH appendix below.
