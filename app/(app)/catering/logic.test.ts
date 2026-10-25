@@ -5,6 +5,8 @@ import {
   buildPhysicalOrderSetup,
   canBuildCateringSetup,
   canCronMoveToSetup,
+  cancelledOnLabel,
+  cancelledOrderDetails,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
   computeContactRollups,
@@ -812,5 +814,36 @@ describe("revenue stage exclusion (CAT1/CAT4)", () => {
 
     const rollups = computeContactRollups(countable);
     expect(rollups.get("c1")).toMatchObject({ orderCount: 1, lifetimeSpend: 100 });
+  });
+});
+
+describe("cancelled orders list", () => {
+  it("cancelledOrderDetails joins the event date, fulfillment and headcount", () => {
+    expect(
+      cancelledOrderDetails({ event_date: "2026-11-03", fulfillment: "delivery", headcount: 40 }),
+    ).toBe("Event Nov 3, 2026 · Delivery · 40 guests");
+    expect(
+      cancelledOrderDetails({ event_date: "2026-11-03", fulfillment: "pickup", headcount: 1 }),
+    ).toBe("Event Nov 3, 2026 · Pickup · 1 guest");
+  });
+
+  it("cancelledOrderDetails leaves out parts the order does not have", () => {
+    expect(cancelledOrderDetails({ event_date: "2026-11-03", fulfillment: null, headcount: null })).toBe(
+      "Event Nov 3, 2026",
+    );
+    // A zero headcount is a real value, not a missing one.
+    expect(cancelledOrderDetails({ event_date: "2026-11-03", fulfillment: null, headcount: 0 })).toBe(
+      "Event Nov 3, 2026 · 0 guests",
+    );
+  });
+
+  it("cancelledOnLabel shows the cancel time in store time", () => {
+    // 19:15 UTC on Oct 25 is 3:15 PM Eastern (daylight time until Nov 1).
+    expect(cancelledOnLabel("2026-10-25T19:15:00.000Z")).toBe("Cancelled Oct 25, 2026, 3:15 PM");
+  });
+
+  it("cancelledOnLabel says so when the cancel time was never stamped", () => {
+    expect(cancelledOnLabel(null)).toBe("Cancel time not recorded");
+    expect(cancelledOnLabel("not a date")).toBe("Cancel time not recorded");
   });
 });
