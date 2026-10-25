@@ -45,14 +45,25 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 const GOOD_ID = "123456789012345678";
 
 let storedDiscordId: string | null = null;
+let idTakenByOther = false;
+let pingsToday = 0;
 let signedIn = true;
 const userUpdates: { payload: unknown; filters: unknown[] }[] = [];
 const adminUpdates: { payload: unknown; filters: unknown[] }[] = [];
 
 function makeClient(updates: { payload: unknown; filters: unknown[] }[]) {
   let pendingUpdate: { payload: unknown; filters: unknown[] } | null = null;
-  const builder: PromiseLike<{ data: unknown; error: null }> & Record<string, unknown> = {
-    select: () => builder,
+  let lastSelect = "";
+  const builder: PromiseLike<{ data: unknown; error: null; count: number }> &
+    Record<string, unknown> = {
+    select: (columns: string) => {
+      lastSelect = columns;
+      return builder;
+    },
+    neq: () => builder,
+    like: () => builder,
+    gte: () => builder,
+    limit: () => builder,
     update: (payload: unknown) => {
       pendingUpdate = { payload, filters: [] };
       updates.push(pendingUpdate);
@@ -62,13 +73,20 @@ function makeClient(updates: { payload: unknown; filters: unknown[] }[]) {
       pendingUpdate?.filters.push([column, value]);
       return builder;
     },
-    maybeSingle: async () => ({
-      data: { discord_user_id: storedDiscordId },
-      error: null,
-    }),
+    // Two reads share this builder: the caller's own row (discord_user_id) and
+    // the "is this id taken by someone else" probe (profile_id).
+    maybeSingle: async () =>
+      lastSelect === "profile_id"
+        ? { data: idTakenByOther ? { profile_id: "other-user" } : null, error: null }
+        : { data: { discord_user_id: storedDiscordId }, error: null },
+    // Awaiting the builder directly is the head-count query (daily ping cap)
+    // or an update; both resolve with no rows.
     then(onFulfilled, onRejected) {
       pendingUpdate = null;
-      return Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected);
+      return Promise.resolve({ data: null, error: null, count: pingsToday }).then(
+        onFulfilled,
+        onRejected,
+      );
     },
   };
   return {
@@ -91,6 +109,8 @@ import { linkMyDiscordId, sendMyDiscordTestPing, skipDiscordLinkForNow } from ".
 
 beforeEach(() => {
   storedDiscordId = null;
+  idTakenByOther = false;
+  pingsToday = 0;
   signedIn = true;
   userUpdates.length = 0;
   adminUpdates.length = 0;
@@ -125,6 +145,16 @@ describe("linkMyDiscordId", () => {
     const result = await linkMyDiscordId({ discordUserId: GOOD_ID });
 
     expect(result.ok).toBe(false);
+    expect(adminUpdates).toHaveLength(0);
+  });
+
+  it("refuses an id that another profile already holds", async () => {
+    idTakenByOther = true;
+    const result = await linkMyDiscordId({ discordUserId: GOOD_ID });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("another account");
     expect(adminUpdates).toHaveLength(0);
   });
 
@@ -179,6 +209,18 @@ describe("sendMyDiscordTestPing", () => {
     expect(input.message.allowed_mentions).toEqual({ parse: [], users: [GOOD_ID] });
     expect(input.sourceEventId.startsWith(`discord-link-test-${USER_ID}-`)).toBe(true);
     expect(deliver).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at the daily cap without queueing", async () => {
+    storedDiscordId = GOOD_ID;
+    pingsToday = 3;
+
+    const result = await sendMyDiscordTestPing();
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("today");
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("reports a repeat instead of posting twice when the outbox already has this ping", async () => {

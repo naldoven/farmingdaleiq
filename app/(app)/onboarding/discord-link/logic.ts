@@ -39,10 +39,22 @@ export function needsDiscordLink(input: {
  * deliberately send another, which they need if the first one went to the
  * wrong account.
  */
+export function testPingSourceEventPrefix(userId: string): string {
+  return `discord-link-test-${userId}-`;
+}
+
 export function testPingSourceEventId(userId: string, now: Date = new Date()): string {
   const minuteBucket = Math.floor(now.getTime() / 60_000);
-  return `discord-link-test-${userId}-${minuteBucket}`;
+  return `${testPingSourceEventPrefix(userId)}${minuteBucket}`;
 }
+
+/**
+ * Daily cap on test pings per person. The minute bucket stops accidental
+ * doubles; this stops someone sitting on the button and filling the shared
+ * recognition channel. Three is enough to fix a wrong id and confirm it.
+ */
+export const MAX_TEST_PINGS_PER_DAY = 3;
+export const TEST_PING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The test message. Only the person's own id is re-allowed as a mention; the

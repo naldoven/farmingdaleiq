@@ -36,8 +36,11 @@ import type { ActionResult } from "@/app/(app)/onboarding/discord-link/action-ty
 import {
   DISCORD_LINK_SKIP_COOKIE,
   DISCORD_LINK_SKIP_MAX_AGE_SECONDS,
+  MAX_TEST_PINGS_PER_DAY,
+  TEST_PING_WINDOW_MS,
   buildDiscordTestPing,
   testPingSourceEventId,
+  testPingSourceEventPrefix,
 } from "@/app/(app)/onboarding/discord-link/logic";
 import {
   linkMyDiscordIdSchema,
@@ -77,9 +80,31 @@ export async function linkMyDiscordId(input: LinkMyDiscordIdInput): Promise<Acti
       };
     }
 
+    // One Discord account per person. Without this, someone could paste a
+    // coworker's id (or a leader's) and have their own events ping that
+    // account, and two rows with the same id would make a lookup by Discord
+    // id ambiguous. The check reads past RLS on purpose: the caller must not
+    // be able to see whose row it is, only that the id is taken. A partial
+    // unique index would make this airtight; that needs a migration, so for
+    // now the race window between this read and the write is accepted and
+    // noted in the rollout report.
+    const admin = createServiceRoleClient();
+    const { data: taken } = await admin
+      .from("profiles_private")
+      .select("profile_id")
+      .eq("discord_user_id", parsed.discordUserId)
+      .neq("profile_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    if (taken) {
+      return {
+        ok: false,
+        error: "That Discord ID is already linked to another account. Ask a manager.",
+      };
+    }
+
     // Double-submit note: two taps write the same value the same person typed
     // to the same row, so the second write is harmless rather than a hazard.
-    const admin = createServiceRoleClient();
     const { error } = await admin
       .from("profiles_private")
       .update({ discord_user_id: parsed.discordUserId })
@@ -128,6 +153,23 @@ export async function sendMyDiscordTestPing(): Promise<
       return {
         ok: false,
         error: "No Discord channel is set up for recognition yet. Ask a manager to add one.",
+      };
+    }
+
+    // Daily cap, counted from the outbox itself so it needs no new table: every
+    // ping this person queued carries their prefix in payload.source_event_id.
+    // Service role because discord_outbox has no authenticated read policy.
+    const admin = createServiceRoleClient();
+    const since = new Date(Date.now() - TEST_PING_WINDOW_MS).toISOString();
+    const { count: sentToday } = await admin
+      .from("discord_outbox")
+      .select("id", { count: "exact", head: true })
+      .like("payload->>source_event_id", `${testPingSourceEventPrefix(user.id)}%`)
+      .gte("created_at", since);
+    if ((sentToday ?? 0) >= MAX_TEST_PINGS_PER_DAY) {
+      return {
+        ok: false,
+        error: `You have sent ${MAX_TEST_PINGS_PER_DAY} test pings today. Try again tomorrow, or ask a manager to check your ID.`,
       };
     }
 
