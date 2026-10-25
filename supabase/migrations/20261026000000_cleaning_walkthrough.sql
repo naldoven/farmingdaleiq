@@ -83,7 +83,13 @@ create table public.cleaning_item_photos (
   capture_source text not null check (capture_source in ('live', 'file')),
   captured_at timestamptz,
   created_at timestamptz not null default now(),
-  taken_by uuid not null references public.profiles(id) default auth.uid()
+  taken_by uuid not null references public.profiles(id) default auth.uid(),
+  -- The path is always derived from the photo id (the route's
+  -- photoStoragePath), so a direct API insert cannot point a photo row at
+  -- someone else's object.
+  constraint cleaning_item_photos_path_matches_id check (
+    storage_path ~ ('^items/' || id::text || '\.(jpg|png|webp)$')
+  )
 );
 
 create index cleaning_item_photos_item_idx on public.cleaning_item_photos (item_id, created_at desc);
@@ -168,6 +174,10 @@ create policy cleaning_item_photos_insert on public.cleaning_item_photos
   with check (
     (public.has_permission('cleaning.complete') or public.can_plan_cleaning())
     and taken_by = auth.uid()
+    and exists (
+      select 1 from public.cleaning_items i
+      where i.id = item_id and i.status <> 'retired'
+    )
   );
 
 create policy cleaning_item_photos_update on public.cleaning_item_photos
@@ -206,10 +216,13 @@ values (
 )
 on conflict (id) do nothing;
 
+-- Only the route's own path shape is writable, so a direct API caller cannot
+-- scatter objects around the bucket.
 create policy cleaning_photos_insert on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'cleaning-photos'
+    and name ~ '^items/[0-9a-f-]{36}\.(jpg|png|webp)$'
     and (public.has_permission('cleaning.complete') or public.can_plan_cleaning())
   );
 

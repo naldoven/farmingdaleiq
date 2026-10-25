@@ -76,8 +76,12 @@ export async function POST(request: NextRequest) {
       return data ? { itemId: data.item_id } : null;
     },
     async findItem(itemId) {
-      const { data } = await supabase.from("cleaning_items").select("status").eq("id", itemId).maybeSingle();
-      return data ?? null;
+      const { data } = await supabase
+        .from("cleaning_items")
+        .select("status, created_by")
+        .eq("id", itemId)
+        .maybeSingle();
+      return data ? { status: data.status, createdBy: data.created_by } : null;
     },
     async upload(path, body, contentType) {
       const { error } = await supabase.storage
@@ -98,7 +102,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const result = await saveWalkthroughPhoto(deps, parsed.data, { bytes, contentType: file.type });
+    const result = await saveWalkthroughPhoto(deps, parsed.data, { bytes, contentType: file.type }, user.id);
     return NextResponse.json(result.body, { status: result.status });
   } catch {
     return NextResponse.json({ ok: false, error: "Could not save. It will try again." }, { status: 500 });

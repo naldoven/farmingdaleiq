@@ -31,7 +31,7 @@ export interface SaveResult {
 
 export interface SaveDeps {
   findPhoto(photoId: string): Promise<{ itemId: string } | null>;
-  findItem(itemId: string): Promise<{ status: string } | null>;
+  findItem(itemId: string): Promise<{ status: string; createdBy: string | null } | null>;
   upload(path: string, bytes: Uint8Array, contentType: string): Promise<{ error: { message?: string; statusCode?: string | number } | null }>;
   insertItem(row: ItemInsert): Promise<{ error: { code?: string; message: string } | null }>;
   insertPhoto(row: PhotoInsert): Promise<{ error: { code?: string; message: string } | null }>;
@@ -41,6 +41,7 @@ export async function saveWalkthroughPhoto(
   deps: SaveDeps,
   save: WalkthroughSave,
   photo: { bytes: Uint8Array; contentType: string },
+  userId: string,
 ): Promise<SaveResult> {
   const fail = (status: number, error: string): SaveResult => ({ status, body: { ok: false, error } });
 
@@ -70,7 +71,15 @@ export async function saveWalkthroughPhoto(
 
   if (save.target.mode === "new") {
     const inserted = await deps.insertItem({ id: itemId, ...save.target.details, status: "draft" });
-    if (inserted.error && !isUniqueViolation(inserted.error)) {
+    if (inserted.error && isUniqueViolation(inserted.error)) {
+      // Only an earlier try of THIS save may own the id: a draft this same
+      // person created. Anything else means the id was reused on purpose to
+      // hang a photo on another item (security review 2026-10-25), so refuse.
+      const existing = await deps.findItem(itemId);
+      if (!existing || existing.status !== "draft" || existing.createdBy !== userId) {
+        return fail(409, "That photo id is already in use.");
+      }
+    } else if (inserted.error) {
       // A check-constraint or RLS refusal will not fix itself on retry.
       const permanent = inserted.error.code === "23514" || inserted.error.code === "42501";
       return fail(permanent ? 400 : 500, permanent ? "That item could not be saved. Check its details." : "Could not save the item. It will try again.");

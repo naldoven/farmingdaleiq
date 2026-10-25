@@ -6,6 +6,8 @@ import { saveWalkthroughPhoto, type SaveDeps } from "./save";
 const PHOTO = "22222222-2222-4222-8222-222222222222";
 const ZONE = "11111111-1111-4111-8111-111111111111";
 const ITEM = "33333333-3333-4333-8333-333333333333";
+const USER = "44444444-4444-4444-8444-444444444444";
+const OTHER = "55555555-5555-4555-8555-555555555555";
 const JPEG = { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), contentType: "image/jpeg" };
 
 const newItemSave = walkthroughSaveSchema.parse({
@@ -28,7 +30,7 @@ const existingSave = walkthroughSaveSchema.parse({
 /** A fake store that remembers what landed, like the real tables would. */
 function fakeStore(overrides: Partial<SaveDeps> = {}) {
   const photos = new Map<string, { item_id: string }>();
-  const items = new Map<string, { status: string }>();
+  const items = new Map<string, { status: string; createdBy: string | null }>();
   const objects = new Set<string>();
   const calls = { upload: 0, insertItem: 0, insertPhoto: 0 };
   const deps: SaveDeps = {
@@ -48,7 +50,7 @@ function fakeStore(overrides: Partial<SaveDeps> = {}) {
     async insertItem(row) {
       calls.insertItem += 1;
       if (items.has(row.id!)) return { error: { code: "23505", message: "duplicate key" } };
-      items.set(row.id!, { status: row.status ?? "draft" });
+      items.set(row.id!, { status: row.status ?? "draft", createdBy: USER });
       return { error: null };
     },
     async insertPhoto(row) {
@@ -65,16 +67,16 @@ function fakeStore(overrides: Partial<SaveDeps> = {}) {
 describe("saveWalkthroughPhoto", () => {
   it("creates a draft item keyed by the photo id, then the photo", async () => {
     const store = fakeStore();
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result).toEqual({ status: 201, body: { ok: true, itemId: PHOTO, duplicate: false } });
-    expect(store.items.get(PHOTO)).toEqual({ status: "draft" });
+    expect(store.items.get(PHOTO)).toEqual({ status: "draft", createdBy: USER });
     expect(store.objects.has(`items/${PHOTO}.jpg`)).toBe(true);
   });
 
   it("sending the same shot twice saves it once", async () => {
     const store = fakeStore();
-    await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
-    const again = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
+    const again = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(again).toEqual({ status: 200, body: { ok: true, itemId: PHOTO, duplicate: true } });
     expect(store.items.size).toBe(1);
     expect(store.photos.size).toBe(1);
@@ -84,7 +86,7 @@ describe("saveWalkthroughPhoto", () => {
   it("finishes a try that died after the upload", async () => {
     const store = fakeStore();
     store.objects.add(`items/${PHOTO}.jpg`);
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result.status).toBe(201);
     expect(store.photos.size).toBe(1);
   });
@@ -92,10 +94,24 @@ describe("saveWalkthroughPhoto", () => {
   it("finishes a try that died after the item insert", async () => {
     const store = fakeStore();
     store.objects.add(`items/${PHOTO}.jpg`);
-    store.items.set(PHOTO, { status: "draft" });
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    store.items.set(PHOTO, { status: "draft", createdBy: USER });
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result).toEqual({ status: 201, body: { ok: true, itemId: PHOTO, duplicate: false } });
     expect(store.items.size).toBe(1);
+  });
+
+  it("refuses a photo id that matches someone else's item (no hanging photos on other items)", async () => {
+    const store = fakeStore();
+    store.items.set(PHOTO, { status: "active", createdBy: OTHER });
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
+    expect(result.status).toBe(409);
+    expect(store.calls.insertPhoto).toBe(0);
+  });
+
+  it("refuses a photo id that matches another person's draft", async () => {
+    const store = fakeStore();
+    store.items.set(PHOTO, { status: "draft", createdBy: OTHER });
+    expect((await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER)).status).toBe(409);
   });
 
   it("treats losing a race on the photo row as already saved", async () => {
@@ -104,14 +120,14 @@ describe("saveWalkthroughPhoto", () => {
         return { error: { code: "23505", message: "duplicate key" } };
       },
     });
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result.body).toEqual({ ok: true, itemId: PHOTO, duplicate: true });
   });
 
   it("attaches a photo to an existing item without creating one", async () => {
     const store = fakeStore();
-    store.items.set(ITEM, { status: "active" });
-    const result = await saveWalkthroughPhoto(store.deps, existingSave, JPEG);
+    store.items.set(ITEM, { status: "active", createdBy: null });
+    const result = await saveWalkthroughPhoto(store.deps, existingSave, JPEG, USER);
     expect(result).toEqual({ status: 201, body: { ok: true, itemId: ITEM, duplicate: false } });
     expect(store.calls.insertItem).toBe(0);
     expect(store.photos.get(PHOTO)).toEqual({ item_id: ITEM });
@@ -119,11 +135,11 @@ describe("saveWalkthroughPhoto", () => {
 
   it("refuses to attach to a retired or missing item, and stores nothing", async () => {
     const store = fakeStore();
-    store.items.set(ITEM, { status: "retired" });
-    const retired = await saveWalkthroughPhoto(store.deps, existingSave, JPEG);
+    store.items.set(ITEM, { status: "retired", createdBy: null });
+    const retired = await saveWalkthroughPhoto(store.deps, existingSave, JPEG, USER);
     expect(retired.status).toBe(404);
     store.items.clear();
-    const missing = await saveWalkthroughPhoto(store.deps, existingSave, JPEG);
+    const missing = await saveWalkthroughPhoto(store.deps, existingSave, JPEG, USER);
     expect(missing.status).toBe(404);
     expect(store.calls.upload).toBe(0);
   });
@@ -134,7 +150,7 @@ describe("saveWalkthroughPhoto", () => {
         return { error: { statusCode: "500", message: "Internal" } };
       },
     });
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result.status).toBe(500);
     expect(store.calls.insertItem).toBe(0);
   });
@@ -145,7 +161,7 @@ describe("saveWalkthroughPhoto", () => {
         return { error: { code: "42501", message: "new row violates row-level security policy" } };
       },
     });
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG);
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER);
     expect(result.status).toBe(400);
     expect(store.calls.insertPhoto).toBe(0);
   });
@@ -156,12 +172,12 @@ describe("saveWalkthroughPhoto", () => {
         return { error: { code: "08006", message: "connection failure" } };
       },
     });
-    expect((await saveWalkthroughPhoto(store.deps, newItemSave, JPEG)).status).toBe(500);
+    expect((await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER)).status).toBe(500);
   });
 
   it("refuses an image type the bucket does not take", async () => {
     const store = fakeStore();
-    const result = await saveWalkthroughPhoto(store.deps, newItemSave, { bytes: JPEG.bytes, contentType: "image/heic" });
+    const result = await saveWalkthroughPhoto(store.deps, newItemSave, { bytes: JPEG.bytes, contentType: "image/heic" }, USER);
     expect(result.status).toBe(400);
     expect(store.calls.upload).toBe(0);
   });
