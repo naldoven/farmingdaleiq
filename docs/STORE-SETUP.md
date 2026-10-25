@@ -11,7 +11,10 @@ How confirmation works: a manager opens the editor, fixes the values, and taps
 Mark confirmed on Store setup. That writes one row to `store_setup_areas`
 (migration `20261025010000_store_setup_areas.sql`). While the row is missing,
 the editor shows a small "Default, not confirmed" tag. Marking an area default
-again deletes the row. Both actions need `settings.manage`.
+again deletes the row. Both actions need `settings.manage` (Director and
+Location Manager in the seeded roles). The row records who confirmed it: the
+action takes that from the signed-in session, and the table's write policy
+refuses a row whose `confirmed_by` is not the signed-in user.
 
 ## Areas that need a manager's answer
 
@@ -28,7 +31,8 @@ again deletes the row. Both actions need `settings.manage`.
 | Passports and pipelines | Position passports auto-create per position. Masters and Leads pipelines carry Avondale stage names and promote into Avondale target roles and tiers. | `/training` and `/training/pipelines` edit items; no screen creates a pipeline or changes its target role. | `training.manage` | No |
 | Org chart tiers | 5 placeholder tiers with goal counts. | `/people/org-chart` | `training.org_chart_manage` | No |
 | Equipment service schedules | Equipment list imported from manuals. No preventive maintenance schedule exists. | `/maintenance/equipment/[id]` (per unit) | `maintenance.manage` | No |
-| Catering menu and scaling rules | 5 starter items with invented sauce, napkin, and cup scaling. | `/catering/menu`, but scaling rules are a raw JSON textarea. | `catering.manage` | Yes |
+| Checklist templates | Only 18 of the 67 KitchenIQ checklist names were captured (`20260707070000_seed_checklist_templates.sql`). They are inactive empty drafts with no sections or questions. The other ~49 were never captured. | `/checklists/templates` | `checklists.manage_templates` | No |
+| Catering menu and scaling rules | The prices are real: over 100 Farmingdale items with pickup and delivery prices (`20260821031530_catering_menu_catalog_prices.sql`). The 5 Avondale starter items are inactive. The gap: every active item has empty components and empty scaling rules, so the FOH setup list scales nothing. | `/catering/menu`. Components and scaling rules are filled per item as raw JSON until the row editor ships (build order, step 3). | `catering.manage` | Yes |
 | Catering stage checklists | Confirm, setup, kitchen prep, and handoff steps copied from the Avondale Catering Hub. | `/catering/menu` (Per-stage checklist defaults) | `catering.manage` | No |
 | Discord channels | No channels until webhook URLs are pasted and events routed. | `/settings/discord` | `discord.manage` | No |
 
@@ -47,15 +51,43 @@ No editor. Store setup lists them read-only. Changing one is a code change.
 | New hire badge window | 30 days | `lib/setups/badges.ts` `NEW_HIRE_WINDOW_DAYS` | Off |
 | Birthday badge window | 7 days | `lib/setups/badges.ts` `BIRTHDAY_WINDOW_DAYS` | Off |
 | Shift leader rank cutoff | rank 6 (Team Leader) and above | `lib/setups/badges.ts` `LEADER_RANK_THRESHOLD` | Off |
-| Store layout | No default layout; the editor is at `/setups/templates` | `components/setups/layout-editor.tsx` | Off |
+
+Store layout is not listed: there is no layout default in code, and the Setups
+module is switched off (open question 7 below).
 
 ## Values captured from the live KitchenIQ portal (not defaults)
 
 These are real and need no confirmation: 6 dayparts, 10 ranked roles, the
 rolling 60-day accountability period, the disciplinary ladder, the one live
-break rule (6 hours earns 30 minutes), food holding ranges, the checklist
-template inventory, and the course inventory. Dayparts and break rules have no
+break rule (6 hours earns 30 minutes), food holding ranges, the course
+inventory, and the catering menu prices. Dayparts and break rules have no
 editor; the Settings hub marks them "Coming soon".
+
+The checklist template inventory is NOT in this list. Only 18 of the 67 names
+were ever captured, and each is an empty inactive draft (see Checklist
+templates above).
+
+## Who can change money values today
+
+Confirming an area needs `settings.manage`. Changing a money value needs the
+module's own manage key, and in the seeded roles (`20260707001900_seed_store_config.sql`,
+editable on `/people/roles`) leaders below Director hold some of them:
+
+| Money value | Key | Held by (seeded roles, each includes every role above it) |
+|---|---|---|
+| Catering prices and scaling rules | `catering.manage` | Team Leader and up |
+| Waste item costs | `waste.manage` | Shift Supervisor and up |
+| Token earning rules | `tokens.manage` | Operations Lead and up |
+| Reward prices | `rewards.manage` | Operations Lead and up |
+
+So a Team Leader can change catering prices and a Shift Supervisor can change
+waste costs today, but neither can confirm an area. In the seeded roles only
+Director and Location Manager hold `settings.manage`. A test (`lib/store-setup/areas.test.ts`) pins the exact key
+for every money area.
+
+## Decisions for Naldo
+
+- Decide whether Team Leaders keep catering.manage and Shift Supervisors keep waste.manage, or whether price and cost edits move to a manager role.
 
 ## Open questions from ARCHITECTURE.md, mapped
 
