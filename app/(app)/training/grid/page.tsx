@@ -9,9 +9,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EnrollTraineeForm } from "@/components/training/enroll-trainee-form";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { StationCell } from "@/components/training/station-cell";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { completedCount, phaseAverage } from "@/app/(app)/training/grid/logic";
 import { computeAverage } from "@/app/(app)/ratings/logic";
 
@@ -31,6 +33,8 @@ export default async function StationGridPage({
   const { roadmap: roadmapParam } = await searchParams;
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   const { data: roadmaps } = await supabase
     .from("onboarding_roadmaps")
@@ -88,6 +92,8 @@ export default async function StationGridPage({
           ))}
         </div>
       </div>
+
+      <SetupDefaultTag area="onboarding_roadmap" confirmed={setupAreas.keys} />
 
       {canManage && <EnrollTraineeForm roadmapId={activeRoadmap.id} people={people ?? []} />}
 

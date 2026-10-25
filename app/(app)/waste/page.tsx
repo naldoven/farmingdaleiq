@@ -3,6 +3,7 @@ import { Heart, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ListRow, SectionCard } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { CategoryManager } from "@/components/waste/category-manager";
 import { DeleteEntryButton } from "@/components/waste/delete-entry-button";
 import { ItemManager } from "@/components/waste/item-manager";
@@ -13,6 +14,7 @@ import { WasteSetupStatus } from "@/components/waste/waste-setup-status";
 import { WasteViewTabs, type WasteTabKey } from "@/components/waste/waste-view-tabs";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { formatStoreDateTime } from "@/lib/time";
 import {
   getLoggableItems,
@@ -78,6 +80,8 @@ export default async function WastePage({
       : requestedTab;
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   // The date filter must bound a STORE-local day, not a UTC one. Building the
   // range from `${date}T00:00:00.000Z` meant that for a store on
@@ -357,7 +361,10 @@ export default async function WastePage({
             <CategoryManager categories={categoryRows} />
           </SectionCard>
 
-          <SectionCard title="Items">
+          <SectionCard
+            title="Items"
+            action={<SetupDefaultTag area="waste_items" confirmed={setupAreas.keys} />}
+          >
             <ItemManager
               items={itemsForRollup}
               categories={categoryRows.map((category) => ({

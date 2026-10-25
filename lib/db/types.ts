@@ -2978,6 +2978,32 @@ export type Database = {
           },
         ]
       }
+      store_setup_areas: {
+        Row: {
+          area_key: string
+          confirmed_at: string
+          confirmed_by: string | null
+        }
+        Insert: {
+          area_key: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+        }
+        Update: {
+          area_key?: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_setup_areas_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stores: {
         Row: {
           created_at: string

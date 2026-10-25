@@ -428,6 +428,14 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "S10",
       },
       {
+        href: "/settings/setup",
+        permission: "settings.manage",
+        label: "Store setup",
+        description:
+          "Every store value that shipped as a default, with its editor and a Mark confirmed toggle (docs/STORE-SETUP.md).",
+        owner: "S10",
+      },
+      {
         href: "/settings/discord",
         permission: "discord.manage",
         label: "Discord",
