@@ -14,6 +14,7 @@ import {
   componentsTextToRows,
   emptyComponentRow,
   emptyScalingRuleRow,
+  findComponentProblem,
   findScalingRuleProblem,
   rowsToComponentsText,
   rowsToScalingRulesText,
@@ -36,10 +37,11 @@ export interface MenuItemFormData {
 /**
  * Create/edit form for a catering menu catalog item. `components` and
  * `scaling_rules` are edited as rows (one line per component, one line per
- * scaling rule) and serialized to the JSON text the server action already
- * accepts (app/(app)/catering/menu/rows.ts), so the action and its
- * validation are unchanged. The old form took raw JSON in a textarea, which
- * a manager could not fill in from a phone (docs/STORE-SETUP.md, area
+ * scaling rule) and serialized to the JSON text the server action accepts
+ * (app/(app)/catering/menu/rows.ts). The saved shape is unchanged. The rows
+ * are checked here for a fast message and again on the server, which refuses
+ * bad input instead of repairing it. The old form took raw JSON in a textarea,
+ * which a manager could not fill in from a phone (docs/STORE-SETUP.md, area
  * "catering_menu").
  */
 export function MenuItemForm({
@@ -82,7 +84,7 @@ export function MenuItemForm({
 
   function submit() {
     setError(null);
-    const problem = findScalingRuleProblem(scalingRules);
+    const problem = findComponentProblem(components) ?? findScalingRuleProblem(scalingRules);
     if (problem) {
       setError(problem);
       return;

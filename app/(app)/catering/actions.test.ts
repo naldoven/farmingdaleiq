@@ -130,7 +130,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // vi.mock(...) calls above are hoisted above this import by Vitest's transform.
-import { changeStage, moveOrderBack, rescaleOrderSetup, restoreOrder } from "./actions";
+import { changeStage, createMenuItem, moveOrderBack, rescaleOrderSetup, restoreOrder, updateMenuItem } from "./actions";
 
 function order(fields: Record<string, unknown>): Response {
   return {
@@ -620,5 +620,57 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
       error: "The packing list can't be built until the day before the event.",
     });
     expect(client.calls).toHaveLength(1);
+  });
+});
+
+describe("menu item components and scaling rules (server-side validation)", () => {
+  const MENU_ITEM_ID = "44444444-4444-4444-8444-444444444444";
+  const base = { name: "Boxed Meal", category: "Boxed Meals", pickupPriceText: "10.00", deliveryPriceText: "12.00", active: true };
+
+  it("refuses a component quantity of 0 with a plain message and writes nothing", async () => {
+    // Nothing is queued for catering_menu_items, so any query would throw.
+    client = createFakeClient({});
+
+    const result = await createMenuItem({
+      ...base,
+      componentsText: '[{"name":"Chips","qty":0}]',
+      scalingRulesText: "[]",
+    });
+
+    expect(result).toEqual({ ok: false, error: "Component 1: quantity must be at least 1." });
+    expect(client.calls).toEqual([]);
+  });
+
+  it("refuses a negative scaling amount on update and writes nothing", async () => {
+    client = createFakeClient({});
+
+    const result = await updateMenuItem({
+      ...base,
+      id: MENU_ITEM_ID,
+      componentsText: "[]",
+      scalingRulesText: '[{"label":"Cups","perHeadcount":-2,"perQty":1}]',
+    });
+
+    expect(result).toEqual({ ok: false, error: "Scaling rule 1: per guest amount can't be negative." });
+    expect(client.calls).toEqual([]);
+  });
+
+  it("stores valid rows in the unchanged saved shape", async () => {
+    client = createFakeClient({ catering_menu_items: [{ data: { id: MENU_ITEM_ID }, error: null }] });
+
+    const result = await createMenuItem({
+      ...base,
+      componentsText: '[{"name":" Chicken Sandwich ","qty":1},{"name":"Chips","qty":2}]',
+      scalingRulesText: '[{"label":"Napkins","perQty":1}]',
+    });
+
+    expect(result).toEqual({ ok: true, data: { id: MENU_ITEM_ID } });
+    const [payload] = opArgs(client, "catering_menu_items", "insert") as [Record<string, unknown>];
+    expect(payload.components).toEqual([
+      { name: "Chicken Sandwich", qty: 1 },
+      { name: "Chips", qty: 2 },
+    ]);
+    expect(payload.scaling_rules).toEqual([{ label: "Napkins", perHeadcount: 0, perQty: 1 }]);
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.manage");
   });
 });
