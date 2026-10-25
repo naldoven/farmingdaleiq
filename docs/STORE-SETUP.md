@@ -9,7 +9,7 @@ version is `/settings/setup` (Store setup), which reads the same list from
 
 How confirmation works: a manager opens the editor, fixes the values, and taps
 Mark confirmed on Store setup. That writes one row to `store_setup_areas`
-(migration `20261025000000_store_setup_areas.sql`). While the row is missing,
+(migration `20261025010000_store_setup_areas.sql`). While the row is missing,
 the editor shows a small "Default, not confirmed" tag. Marking an area default
 again deletes the row. Both actions need `settings.manage`.
 

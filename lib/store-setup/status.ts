@@ -11,7 +11,7 @@ export interface ConfirmedAreas {
 
 /**
  * Reads which setup areas a manager has marked confirmed. Any signed-in
- * member can read the table (RLS in 20261025000000_store_setup_areas.sql),
+ * member can read the table (RLS in 20261025010000_store_setup_areas.sql),
  * so editor pages call this to decide whether to show the "Default, not
  * confirmed" tag.
  *
