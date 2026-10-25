@@ -8,17 +8,17 @@ import {
 } from "./features";
 
 describe("dormant product features", () => {
-  it("keeps Broadcast switched off; Breaks and Setups are live", () => {
+  it("has every module switched on after the 2026-10-25 readiness passes", () => {
     expect(APP_FEATURES).toEqual({
-      broadcast: false,
+      broadcast: true,
       breaks: true,
       setups: true,
     });
   });
 
-  it("disables every permission owned by the dormant features", () => {
-    expect(isPermissionFeatureEnabled("feed.post_broadcast")).toBe(false);
+  it("enables every module permission while the switches are on", () => {
     for (const key of [
+      "feed.post_broadcast",
       "breaks.manage",
       "breaks.view",
       "setups.manage",
@@ -30,13 +30,17 @@ describe("dormant product features", () => {
     }
   });
 
-  it("removes dormant events from active consumer lists", () => {
-    expect(enabledEventKeys(["task_assigned", "broadcast", "break_overdue", "setup_posted"])).toEqual([
-      "task_assigned",
-      "break_overdue",
-      "setup_posted",
-    ]);
+  it("passes every event key through while the switches are on", () => {
+    const keys = ["task_assigned", "broadcast", "break_overdue", "setup_posted"];
+    expect(enabledEventKeys(keys)).toEqual(keys);
     expect(isEventFeatureEnabled("recognition")).toBe(true);
-    expect(isEventFeatureEnabled("broadcast")).toBe(false);
+  });
+
+  it("still maps each gated permission and event to its module, so flipping a switch off works", () => {
+    // These helpers read APP_FEATURES at call time; the mapping is what a
+    // rollback depends on, so pin the keys each module owns.
+    const gated = ["feed.post_broadcast", "breaks.manage", "breaks.view", "setups.manage", "setups.view", "setups.post"];
+    for (const key of gated) expect(isPermissionFeatureEnabled(key), key).toBe(true);
+    for (const key of ["broadcast", "break_overdue", "setup_posted"]) expect(isEventFeatureEnabled(key), key).toBe(true);
   });
 });

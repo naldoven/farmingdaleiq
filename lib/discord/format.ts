@@ -81,6 +81,27 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_stage_change: "Catering order stage change",
 };
 
+/**
+ * Discord rejects a webhook `content` over 2000 characters with a 400, and a
+ * rejected post burns through the outbox retries and is lost. A broadcast body
+ * alone may be 2000 characters (app/(app)/team/validation.ts), so the
+ * assembled message must be clamped, keeping the mention at the end intact.
+ */
+export const DISCORD_CONTENT_MAX_CHARS = 2000;
+
+function assembleContent(title: string, detail: string | undefined, mentionText: string): string {
+  const separator = " — ";
+  const tail = mentionText ? `${separator}${mentionText}` : "";
+  let content = detail ? `${title}${separator}${detail}` : title;
+  const budget = DISCORD_CONTENT_MAX_CHARS - tail.length;
+  if (content.length > budget) {
+    // Trim the user-typed detail, never the mention: a cut-off body is still
+    // readable, a cut-off <@id> is a broken ping.
+    content = `${content.slice(0, Math.max(0, budget - 1))}…`;
+  }
+  return `${content}${tail}`;
+}
+
 function mention(discordUserId: string): string {
   return `<@${discordUserId}>`;
 }
@@ -129,9 +150,7 @@ export function buildDiscordMessage(
     : undefined;
   const mentionText = recipientId ? mention(recipientId) : "";
 
-  const parts = [`${emoji} **${title}**`];
-  if (detail) parts.push(detail);
-  if (mentionText) parts.push(mentionText);
+  const content = assembleContent(`${emoji} **${title}**`, detail, mentionText);
 
   // `content` carries user-typed text (title, message, body), so Discord must
   // never be left to parse mentions out of it: a typed "@everyone" would ping
@@ -141,5 +160,5 @@ export function buildDiscordMessage(
     ? { parse: [], users: [recipientId] }
     : { parse: [] };
 
-  return { content: parts.join(" — "), allowed_mentions };
+  return { content, allowed_mentions };
 }

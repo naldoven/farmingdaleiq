@@ -103,7 +103,9 @@ export const SEND_ACTIONS: MenuActionItem[] = [
         {
           key: "broadcast",
           label: "Broadcast",
-          href: "/team",
+          // The broadcast form lives on the full feed page; /team only lists
+          // the three most recent broadcasts.
+          href: "/team/feed",
           icon: Megaphone,
           tone: "broadcast",
           permission: "feed.post_broadcast",

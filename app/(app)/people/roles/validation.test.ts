@@ -33,15 +33,15 @@ describe("setRolePermissionSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects permissions belonging to dormant features", () => {
-    expect(
-      setRolePermissionSchema.safeParse({ roleId, permissionKey: "feed.post_broadcast", granted: true })
-        .success,
-    ).toBe(false);
-  });
-
-  it("accepts the live Breaks and Setups permissions in the role editor", () => {
-    for (const permissionKey of ["breaks.view", "breaks.manage", "setups.view", "setups.manage", "setups.post"]) {
+  it("accepts the woken module permissions in the role editor", () => {
+    for (const permissionKey of [
+      "feed.post_broadcast",
+      "breaks.view",
+      "breaks.manage",
+      "setups.view",
+      "setups.manage",
+      "setups.post",
+    ]) {
       expect(
         setRolePermissionSchema.safeParse({ roleId, permissionKey, granted: true }).success,
         permissionKey,

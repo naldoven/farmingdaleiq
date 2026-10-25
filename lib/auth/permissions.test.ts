@@ -27,22 +27,15 @@ describe("PERMISSION_KEYS", () => {
     }
   });
 
-  it("keeps dormant feature permissions out of the role editor", () => {
-    expect(ALL_PERMISSION_KEYS).toContain("feed.post_broadcast");
-    expect(ALL_PERMISSION_KEYS).toContain("breaks.view");
-    expect(ALL_PERMISSION_KEYS).toContain("setups.view");
-    expect(PERMISSION_KEYS).not.toContain("feed.post_broadcast");
-    expect(PERMISSION_KEYS).toContain("breaks.view");
-    expect(PERMISSION_KEYS).toContain("setups.view");
+  it("offers every module permission in the role editor while all switches are on", () => {
+    for (const key of ["feed.post_broadcast", "breaks.view", "setups.view"]) {
+      expect(ALL_PERMISSION_KEYS).toContain(key);
+      expect(PERMISSION_KEYS).toContain(key);
+    }
   });
 });
 
 describe("hasPermission", () => {
-  it("fails dormant feature permissions without querying Supabase", async () => {
-    await expect(hasPermission("feed.post_broadcast")).resolves.toBe(false);
-    expect(createClientMock).not.toHaveBeenCalled();
-  });
-
   it("returns the RPC grant when the permission check succeeds", async () => {
     createClientMock.mockResolvedValue({
       rpc: vi.fn().mockResolvedValue({ data: true, error: null }),

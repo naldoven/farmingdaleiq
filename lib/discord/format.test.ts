@@ -1,17 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
+import { DISCORD_CONTENT_MAX_CHARS, DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
 
 // 18 digits, the usual length of a Discord user id (snowflake).
 const VALID_ID = "123456789012345678";
 
 describe("buildDiscordMessage", () => {
-  it("does not advertise dormant feature routes", () => {
-    expect(DISCORD_ROUTABLE_EVENT_KEYS).not.toContain("broadcast");
+  it("routes the woken modules' events (broadcast, break_overdue)", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("broadcast");
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("break_overdue");
   });
 
-  it("routes break_overdue now that Breaks is live", () => {
-    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("break_overdue");
+  it("clamps a 2000-character broadcast so Discord does not reject the post", () => {
+    const body = "x".repeat(2000);
+    const msg = buildDiscordMessage("broadcast", { body });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_MAX_CHARS);
+    expect(msg.content.startsWith("📣 **Announcement**")).toBe(true);
+    expect(msg.content.endsWith("…")).toBe(true);
+    expect(msg.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("keeps the recipient mention when clamping", () => {
+    const body = "y".repeat(2000);
+    const msg = buildDiscordMessage("recognition", { body }, { recipientDiscordId: VALID_ID });
+    expect(msg.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_MAX_CHARS);
+    expect(msg.content.endsWith(`<@${VALID_ID}>`)).toBe(true);
   });
 
   it("never routes accountability events to Discord", () => {
