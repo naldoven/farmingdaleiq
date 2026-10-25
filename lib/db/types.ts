@@ -2696,6 +2696,7 @@ export type Database = {
           arrival_time: string | null
           id: string
           position_id: string | null
+          scheduled_end: string | null
           setup_id: string
           user_id: string | null
         }
@@ -2703,6 +2704,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id: string
           user_id?: string | null
         }
@@ -2710,6 +2712,7 @@ export type Database = {
           arrival_time?: string | null
           id?: string
           position_id?: string | null
+          scheduled_end?: string | null
           setup_id?: string
           user_id?: string | null
         }
@@ -2974,6 +2977,32 @@ export type Database = {
             columns: ["day_part_id"]
             isOneToOne: false
             referencedRelation: "day_parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_setup_areas: {
+        Row: {
+          area_key: string
+          confirmed_at: string
+          confirmed_by: string | null
+        }
+        Insert: {
+          area_key: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+        }
+        Update: {
+          area_key?: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_setup_areas_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -3900,6 +3929,10 @@ export type Database = {
           setup_rows: number
           preorder_rows: number
         }[]
+      }
+      catering_bulk_close: {
+        Args: { p_order_ids: string[]; p_reason: string }
+        Returns: { order_id: string; outcome: string }[]
       }
     }
     Enums: {

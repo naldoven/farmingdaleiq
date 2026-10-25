@@ -93,7 +93,7 @@ test.describe("setups: create, assign, and post", () => {
 
     await comboboxes.first().click();
     await page.getByRole("option", { name: /E2E Setup Template/ }).click();
-    await page.getByRole("button", { name: "Create setup from template" }).click();
+    await page.getByRole("button", { name: "Build setup" }).click();
 
     await expect(page.getByText("Draft")).toBeVisible();
 

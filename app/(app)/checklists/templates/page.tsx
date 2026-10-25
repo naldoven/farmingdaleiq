@@ -3,8 +3,10 @@ import { ClipboardList } from "lucide-react";
 import { ListRow, SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { TemplateCreateForm } from "@/components/checklists/template-create-form";
 import { FoodItemsManager } from "@/components/checklists/food-items-manager";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 
 /**
  * /checklists/templates -- ARCHITECTURE.md page map: "Build/edit templates,
@@ -17,6 +19,8 @@ export default async function ChecklistTemplatesPage() {
   await requirePermission("checklists.manage_templates");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   const [{ data: templates }, { data: sections }, { data: schedules }, { data: foodItems }] =
     await Promise.all([
@@ -48,7 +52,9 @@ export default async function ChecklistTemplatesPage() {
         <TemplateCreateForm />
       </SectionCard>
 
-      <SectionLabel>Templates ({(templates ?? []).length})</SectionLabel>
+      <SectionLabel action={<SetupDefaultTag area="checklist_templates" confirmed={setupAreas.keys} />}>
+        Templates ({(templates ?? []).length})
+      </SectionLabel>
       {(templates ?? []).length === 0 ? (
         <SectionCard>
           <p className="text-[13px] text-muted-ink">No templates yet.</p>

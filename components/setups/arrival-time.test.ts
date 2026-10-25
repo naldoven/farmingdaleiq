@@ -5,7 +5,7 @@ process.env.TZ = "America/New_York";
 
 import { describe, expect, it } from "vitest";
 
-import { isoToLocalInput, localInputToIso } from "./arrival-time";
+import { isoToLocalInput, localInputToIso, scheduledEndToSave, timesForReassign } from "./arrival-time";
 
 describe("arrival-time isoToLocalInput / localInputToIso (SETB1)", () => {
   it("returns '' for empty / null / invalid input", () => {
@@ -41,5 +41,48 @@ describe("arrival-time isoToLocalInput / localInputToIso (SETB1)", () => {
     for (const local of ["2026-07-18T09:30", "2026-01-18T08:30", "2026-12-24T23:45"]) {
       expect(isoToLocalInput(localInputToIso(local))).toBe(local);
     }
+  });
+});
+
+describe("timesForReassign", () => {
+  const SAVED = { arrival_time: "2026-07-18T10:00:00.000Z", scheduled_end: "2026-07-18T18:00:00.000Z" };
+
+  it("clears the previous person's arrival and scheduled end when a different person takes the slot", () => {
+    expect(timesForReassign("user-a", "user-b", SAVED)).toEqual({ arrivalTime: "", scheduledEnd: "" });
+  });
+
+  it("clears both when the slot is unassigned or filled from empty", () => {
+    expect(timesForReassign("user-a", null, SAVED)).toEqual({ arrivalTime: "", scheduledEnd: "" });
+    expect(timesForReassign(null, "user-b", SAVED)).toEqual({ arrivalTime: "", scheduledEnd: "" });
+  });
+
+  it("keeps the saved times when the same person is picked again", () => {
+    expect(timesForReassign("user-a", "user-a", SAVED)).toEqual({
+      arrivalTime: SAVED.arrival_time,
+      scheduledEnd: SAVED.scheduled_end,
+    });
+    expect(timesForReassign("user-a", "user-a", { arrival_time: null, scheduled_end: null })).toEqual({
+      arrivalTime: "",
+      scheduledEnd: "",
+    });
+  });
+});
+
+describe("scheduledEndToSave", () => {
+  const SAVED_ISO = "2026-07-18T18:00:00.000Z"; // 14:00 New York
+
+  it("sends an empty string to clear a saved scheduled end", () => {
+    expect(scheduledEndToSave("", SAVED_ISO)).toBe("");
+  });
+
+  it("converts a typed value to a UTC instant", () => {
+    expect(scheduledEndToSave("2026-07-18T15:30", SAVED_ISO)).toBe("2026-07-18T19:30:00.000Z");
+    expect(scheduledEndToSave("2026-07-18T15:30", null)).toBe("2026-07-18T19:30:00.000Z");
+  });
+
+  it("saves nothing when the field matches what is already saved (including empty vs null)", () => {
+    expect(scheduledEndToSave("2026-07-18T14:00", SAVED_ISO)).toBeNull();
+    expect(scheduledEndToSave("", null)).toBeNull();
+    expect(scheduledEndToSave("", undefined)).toBeNull();
   });
 });

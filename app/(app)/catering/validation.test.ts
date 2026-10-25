@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   addChecklistItemSchema,
+  bulkCloseStaleOrdersSchema,
   changeStageSchema,
   checklistDefaultSchema,
   createOrderSchema,
   menuItemSchema,
   moveOrderBackSchema,
+  orderSearchSchema,
+  reorderChecklistDefaultsSchema,
   resolveFollowUpSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
@@ -410,5 +413,67 @@ describe("menuItemSchema rows (server-side validation)", () => {
     const base = { id: "11111111-1111-4111-8111-111111111111", name: "Boxed Meal" };
     expect(updateMenuItemSchema.safeParse({ ...base, componentsText: '[{"name":"Chips","qty":0}]' }).success).toBe(false);
     expect(updateMenuItemSchema.safeParse({ ...base, componentsText: '[{"name":"Chips","qty":2}]' }).success).toBe(true);
+  });
+});
+
+describe("bulkCloseStaleOrdersSchema", () => {
+  const id = "33333333-3333-4333-8333-333333333333";
+
+  it("accepts a batch with a reason", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: "Event passed" }).success).toBe(true);
+  });
+
+  it("rejects an empty batch", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: [], reason: "Event passed" });
+    expect(result.success).toBe(false);
+  });
+
+  it("caps a batch at 200 orders", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: Array(201).fill(id), reason: "Event passed" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a full screen of exactly 200, which is all the stale page loads", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: Array(200).fill(id), reason: "Event passed" });
+    expect(result.success).toBe(true);
+  });
+
+  it("needs the same short reason as the other manager overrides", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: " x " }).success).toBe(false);
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: "a".repeat(301) }).success).toBe(false);
+  });
+
+  it("rejects ids that are not uuids", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: ["not-an-id"], reason: "Event passed" }).success).toBe(false);
+  });
+});
+
+describe("orderSearchSchema", () => {
+  it("trims the query", () => {
+    expect(orderSearchSchema.parse({ query: "  Jane  " })).toEqual({ query: "Jane" });
+  });
+
+  it("allows an empty query (the action returns no results)", () => {
+    expect(orderSearchSchema.safeParse({ query: "   " }).success).toBe(true);
+  });
+
+  it("rejects a query over 80 characters", () => {
+    expect(orderSearchSchema.safeParse({ query: "a".repeat(81) }).success).toBe(false);
+  });
+});
+
+describe("reorderChecklistDefaultsSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a stage with a list of ids", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [id] }).success).toBe(true);
+  });
+
+  it("rejects a bad stage", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "nope", orderedIds: [id] }).success).toBe(false);
+  });
+
+  it("rejects an empty list", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [] }).success).toBe(false);
   });
 });

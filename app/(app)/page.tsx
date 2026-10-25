@@ -9,6 +9,7 @@ import {
   StatTile,
   StatusBadge,
 } from "@/components/mobile";
+import { FirstRunGuideCard } from "@/components/home/first-run-guide-card";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
@@ -203,6 +204,7 @@ export default async function HomePage() {
           the content column had no top-level heading. This gives assistive tech
           a page-level h1 without changing the visual layout. */}
       <h1 className="sr-only">Home</h1>
+      <FirstRunGuideCard />
       <HScroll>
         <MetricCard
           className="w-36"

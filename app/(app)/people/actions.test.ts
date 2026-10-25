@@ -237,6 +237,63 @@ describe("PPL2b: PII writes are routed to profiles_private", () => {
     expect(privateResult.eq).toHaveBeenCalledWith("profile_id", PROFILE_ID);
   });
 
+  it("updateProfile turns a duplicate Discord ID (SQLSTATE 23505) into the plain taken message", async () => {
+    mockRequirePermission.mockResolvedValue(undefined);
+    const profilesResult = makeQueryResult({ error: null });
+    const privateResult = makeQueryResult({
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "profiles_private_discord_user_id_uq"',
+      },
+    });
+    const fromMock = vi.fn((table: string) =>
+      table === "profiles" ? profilesResult : privateResult,
+    );
+    mockCreateClient.mockResolvedValue({ from: fromMock } as never);
+
+    const result = await updateProfile({
+      id: PROFILE_ID,
+      name: "Jamie Rivera",
+      phone: "",
+      discordUserId: "123456789012345678",
+      birthdate: "",
+      hiredOn: "",
+      avatarUrl: "",
+      active: true,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "That Discord ID is already linked to another person.",
+    });
+  });
+
+  it("updateProfile still surfaces other profiles_private errors unchanged", async () => {
+    mockRequirePermission.mockResolvedValue(undefined);
+    const profilesResult = makeQueryResult({ error: null });
+    const privateResult = makeQueryResult({
+      error: { code: "42501", message: "insufficient privilege" },
+    });
+    const fromMock = vi.fn((table: string) =>
+      table === "profiles" ? profilesResult : privateResult,
+    );
+    mockCreateClient.mockResolvedValue({ from: fromMock } as never);
+
+    const result = await updateProfile({
+      id: PROFILE_ID,
+      name: "Jamie Rivera",
+      phone: "",
+      discordUserId: "",
+      birthdate: "",
+      hiredOn: "",
+      avatarUrl: "",
+      active: true,
+    });
+
+    expect(result).toEqual({ ok: false, error: "insufficient privilege" });
+  });
+
   it("inviteUser writes name/role to profiles and phone to profiles_private", async () => {
     mockRequirePermission.mockResolvedValue(undefined);
     const adminClient = {

@@ -1,5 +1,6 @@
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
+  STORE_TIME_ZONE,
   addStoreCalendarDays,
   formatStoreDate,
   formatStoreDateTime,
@@ -127,6 +128,88 @@ export function stageOverrideTargetError(
     return "The event time has passed, so this order would go straight back to Follow-up.";
   }
   return null;
+}
+
+/**
+ * Stages a stale order can still sit in. Closed is done and cancelled has its
+ * own manager path (Restore), so neither is offered on the bulk close screen.
+ * Derived from ORDER_STAGES so a stage added to the flow is covered.
+ */
+export const STALE_CLOSABLE_STAGES = ORDER_STAGES.filter(
+  (stage): stage is Exclude<FlowStage, "closed"> => stage !== "closed",
+);
+
+/**
+ * Whether an order is a past-event order still open on the pipeline: the
+ * event date is before today's store date and the stage is one a manager may
+ * bulk close. Same rule the catering_bulk_close function and the stage guard
+ * apply in the database (supabase/migrations/20261026020000_catering_bulk_close.sql).
+ */
+export function isStaleOpenOrder(
+  order: { stage: string; event_date: string },
+  today: string = getStoreLocalDate(new Date()),
+): boolean {
+  return (
+    (STALE_CLOSABLE_STAGES as readonly string[]).includes(order.stage) && order.event_date < today
+  );
+}
+
+/**
+ * Most orders one bulk close takes (bulkCloseStaleOrdersSchema rejects more),
+ * and so the most the stale-orders screen loads. Loading more than this would
+ * let "Select all" pick a batch the action refuses.
+ */
+export const BULK_CLOSE_MAX_ORDERS = 200;
+
+/**
+ * The note shown above the stale-orders list when the screen holds only the
+ * oldest slice of a longer backlog. Null when everything fits.
+ */
+export function staleListNotice(shown: number, total: number): string | null {
+  if (total <= shown) return null;
+  return `Showing the oldest ${shown} of ${total} past-event orders. The next batch appears after you close these.`;
+}
+
+/** Per-order results catering_bulk_close returns, mirrored here for the summary text. */
+export const BULK_CLOSE_OUTCOMES = ["closed", "already_closed", "cancelled", "not_past", "not_found"] as const;
+export type BulkCloseOutcome = (typeof BULK_CLOSE_OUTCOMES)[number];
+
+export interface BulkCloseSummary {
+  closed: number;
+  alreadyClosed: number;
+  cancelled: number;
+  notPast: number;
+  notFound: number;
+}
+
+/** Counts the outcomes of one bulk close. Unknown outcomes count as not found. */
+export function summarizeBulkClose(rows: readonly { outcome: string }[]): BulkCloseSummary {
+  const summary: BulkCloseSummary = { closed: 0, alreadyClosed: 0, cancelled: 0, notPast: 0, notFound: 0 };
+  for (const row of rows) {
+    if (row.outcome === "closed") summary.closed += 1;
+    else if (row.outcome === "already_closed") summary.alreadyClosed += 1;
+    else if (row.outcome === "cancelled") summary.cancelled += 1;
+    else if (row.outcome === "not_past") summary.notPast += 1;
+    else summary.notFound += 1;
+  }
+  return summary;
+}
+
+function countOrders(count: number): string {
+  return `${count} ${count === 1 ? "order" : "orders"}`;
+}
+
+/**
+ * One plain sentence per outcome the manager needs to know about. A rerun of
+ * the same batch reports "already closed" instead of looking like it failed.
+ */
+export function describeBulkCloseSummary(summary: BulkCloseSummary): string {
+  const parts: string[] = [`Closed ${countOrders(summary.closed)}.`];
+  if (summary.alreadyClosed > 0) parts.push(`${countOrders(summary.alreadyClosed)} ${summary.alreadyClosed === 1 ? "was" : "were"} already closed.`);
+  if (summary.cancelled > 0) parts.push(`${countOrders(summary.cancelled)} ${summary.cancelled === 1 ? "is" : "are"} cancelled and stayed that way.`);
+  if (summary.notPast > 0) parts.push(`${countOrders(summary.notPast)} ${summary.notPast === 1 ? "is" : "are"} not past yet and stayed open.`);
+  if (summary.notFound > 0) parts.push(`${countOrders(summary.notFound)} could not be found.`);
+  return parts.join(" ");
 }
 
 /**
@@ -1195,6 +1278,103 @@ export function formatStageChangeMessage(input: {
   return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
 }
 
+const DIGEST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: STORE_TIME_ZONE,
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
+
+/** Max order lines in the nightly digest, so one busy night stays readable in Discord. */
+export const DIGEST_MAX_ORDER_LINES = 20;
+
+/**
+ * Max length of the digest text. Discord's hard limit is 2000 characters for a
+ * whole message, and buildDiscordMessage adds an emoji and the title around
+ * this text, so 1900 leaves room for that wrapper.
+ */
+export const DIGEST_MAX_CHARS = 1900;
+
+/** "14:30:00" -> "2:30 PM". Null for a missing or malformed stored time. */
+function formatDigestClock(eventTime: string | null): string | null {
+  const match = /^(\d{2}):(\d{2})/.exec((eventTime ?? "").slice(0, 5));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  if (hour > 23 || Number(match[2]) > 59) return null;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${match[2]} ${suffix}`;
+}
+
+/**
+ * Discord body for the nightly "tomorrow's catering" digest. Lists each order
+ * with its time, guest, headcount and fulfillment, and flags the ones whose
+ * Confirmation Call is not done so a leader can chase them that evening.
+ * Deliberately carries no phone number or email: the channel is not the place
+ * for guest contact details. `tomorrow` is a store-local YYYY-MM-DD. The text
+ * never exceeds DIGEST_MAX_CHARS: lines are cut from the end and one
+ * "+N more" line says how many were left off.
+ */
+export function formatTomorrowDigest(input: {
+  tomorrow: string;
+  orders: Array<{
+    guestName: string;
+    eventTime: string | null;
+    headcount: number | null;
+    fulfillment: string | null;
+    stage: string;
+    callDone: boolean;
+  }>;
+}): string {
+  // Date-only values are anchored at noon UTC so the store zone never shifts the day.
+  const anchor = new Date(`${input.tomorrow}T12:00:00.000Z`);
+  const date = Number.isNaN(anchor.getTime()) ? input.tomorrow : DIGEST_DATE_FORMATTER.format(anchor);
+  if (input.orders.length === 0) return `${date}: no catering orders.`;
+
+  const sorted = [...input.orders].sort((a, b) => {
+    const aTime = formatDigestClock(a.eventTime) ? (a.eventTime as string).slice(0, 5) : null;
+    const bTime = formatDigestClock(b.eventTime) ? (b.eventTime as string).slice(0, 5) : null;
+    if (aTime !== bTime) {
+      if (aTime === null) return 1;
+      if (bTime === null) return -1;
+      return aTime < bTime ? -1 : 1;
+    }
+    return a.guestName.localeCompare(b.guestName);
+  });
+
+  const outstanding = sorted.filter((order) => !order.callDone).length;
+  const count = sorted.length;
+  const calls =
+    outstanding === 0
+      ? "all confirmation calls done"
+      : `${outstanding} still ${outstanding === 1 ? "needs" : "need"} a confirmation call`;
+  const header = `${date}: ${count} ${count === 1 ? "order" : "orders"}, ${calls}`;
+
+  const orderLines = sorted.slice(0, DIGEST_MAX_ORDER_LINES).map((order) => {
+    const parts = [
+      formatDigestClock(order.eventTime) ?? "Time TBD",
+      neutralizeDiscordMentions(order.guestName),
+    ];
+    if (order.headcount != null) parts.push(`${order.headcount} ${order.headcount === 1 ? "guest" : "guests"}`);
+    if (order.fulfillment) parts.push(order.fulfillment);
+    if (!order.callDone) parts.push("CALL NOT DONE");
+    return `• ${parts.join(" · ")}`;
+  });
+
+  // Discord rejects a message over 2000 characters with a 400, and the post is
+  // lost once the outbox runs out of retries. Guest names are free text, so
+  // even 20 lines can run long. Keep the first `kept` lines and say how many
+  // were left off. The counts in the header always cover every order.
+  const build = (kept: number): string => {
+    const dropped = sorted.length - kept;
+    const lines = [header, ...orderLines.slice(0, kept)];
+    if (dropped > 0) lines.push(`+${dropped} more on the board`);
+    return lines.join("\n");
+  };
+  let kept = orderLines.length;
+  while (kept > 0 && build(kept).length > DIGEST_MAX_CHARS) kept -= 1;
+  return build(kept);
+}
+
 export type StageOverrideKind = "move_back" | "restore";
 
 /**
@@ -1213,4 +1393,92 @@ export function formatStageOverrideMessage(input: {
   // formatStageChangeMessage already neutralizes the guest name; the reason is
   // free text typed by a manager, so it gets the same treatment here.
   return `${formatStageChangeMessage(input)}. ${action} by a manager: ${neutralizeDiscordMentions(input.reason)}`;
+}
+
+export type OrderSearchKind =
+  | { kind: "empty" }
+  | { kind: "date"; isoDate: string }
+  | { kind: "phone"; digits: string }
+  | { kind: "text"; text: string };
+
+/** True when year/month/day is a real calendar date (rejects 2/30, 13/1). */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
+function toIsoDate(year: number, month: number, day: number): string | null {
+  if (!isRealCalendarDate(year, month, day)) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Decides what a leader typed into the order search box: an event date, a
+ * phone number, or part of a guest name. Dates win over phones so "5/30" is
+ * never read as digits. A date that is not on the calendar (2/30) falls
+ * through to text instead of erroring. M/D with no year uses the store's
+ * current year, not the server's UTC clock.
+ */
+export function classifyOrderSearch(query: string, now: Date = new Date()): OrderSearchKind {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return { kind: "empty" };
+
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  if (iso) {
+    const isoDate = toIsoDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+    if (isoDate) return { kind: "date", isoDate };
+  }
+
+  const slash = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(trimmed);
+  if (slash) {
+    const month = Number(slash[1]);
+    const day = Number(slash[2]);
+    let year: number;
+    if (slash[3] === undefined) year = Number(getStoreLocalDate(now).slice(0, 4));
+    else if (slash[3].length === 2) year = 2000 + Number(slash[3]);
+    else year = Number(slash[3]);
+    const isoDate = toIsoDate(year, month, day);
+    if (isoDate) return { kind: "date", isoDate };
+  }
+
+  const digits = normalizePhone(trimmed);
+  if (digits.length >= 4 && !/\p{L}/u.test(trimmed)) return { kind: "phone", digits };
+
+  return { kind: "text", text: trimmed };
+}
+
+/**
+ * ILIKE pattern with a percent sign between every digit. catering_orders.phone
+ * is free text and can be stored as "(555) 123-4567" or "5551234567", so one
+ * pattern of "%5%5%5%1%2%3%" matches both without a database change or a
+ * stored normalized column.
+ */
+export function phoneLikePattern(digits: string): string {
+  return `%${digits.split("").join("%")}%`;
+}
+
+/**
+ * Escapes backslash, percent and underscore so a typed "%" or "_" is matched
+ * literally in an ILIKE instead of acting as a wildcard.
+ */
+export function escapeLikePattern(text: string): string {
+  return text.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * Swaps `id` one place up or down in an ordered id list. Returns a new array
+ * and never mutates the input. At either edge, or when `id` is not in the
+ * list, it returns the same order so callers can skip the write.
+ */
+export function moveIdWithin(
+  ids: readonly string[],
+  id: string,
+  direction: "up" | "down",
+): string[] {
+  const next = [...ids];
+  const from = next.indexOf(id);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from === -1 || to < 0 || to >= next.length) return next;
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
 }
