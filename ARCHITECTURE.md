@@ -610,7 +610,10 @@ inventory, course inventory. Still open:
    names) vs. quick-rate only?
 6. **Org chart**: Farmingdale's tiers and goal counts per department.
 7. **Store layout**: a photo/sketch of your setup whiteboard or floor plan so the
-   layout editor's default arrangement matches your store.
+   layout editor's default arrangement matches your store. Until then the app
+   ships a SEED-DEFAULT "Main Floor (Default)" layout (front counter, drive
+   thru, dining room, kitchen line, back of house) that leaders can rearrange
+   tile by tile from Setup templates > Store layout.
 8. **Permissions**: per-role permission differences from the defaults (role list
    itself is captured).
 9. **Reports**: which reports you actually pull weekly/monthly.

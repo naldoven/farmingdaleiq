@@ -505,7 +505,8 @@ export function SetupBoard({
                 }}
               >
                 <span className="truncate text-[13px] font-semibold leading-tight text-ink">
-                  {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")}
+                  {/* Position name first; the area label only names an area-only tile (see layout-editor.tsx). */}
+                  {(tile.position_id ? positionName.get(tile.position_id) : undefined) || tile.area_label || "Tile"}
                 </span>
                 <span className="truncate text-[11px] text-muted-ink">
                   {assignedProfile ? assignedProfile.name : "Unassigned"}

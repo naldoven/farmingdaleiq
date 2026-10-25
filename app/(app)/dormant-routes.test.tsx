@@ -19,7 +19,8 @@ describe("dormant feature routes", () => {
     expect(notFoundMock).not.toHaveBeenCalled();
   });
 
-  it("returns not found for the complete Setups route tree", () => {
-    expect(() => SetupsLayout({ children: null })).toThrow("NEXT_NOT_FOUND");
+  it("renders the Setups route tree now that the module is live", () => {
+    expect(SetupsLayout({ children: "setups" })).toBe("setups");
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 });

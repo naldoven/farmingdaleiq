@@ -21,8 +21,10 @@ import { clampTileToBounds, moveTile } from "@/lib/setups/layout-grid";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/setups/action-types";
 import {
+  SEED_DEFAULT_LAYOUT_NAME,
   SEED_DEFAULT_POSITION_GROUPS,
   addTemplatePositionSchema,
+  buildDefaultLayoutTiles,
   hasSeedPositionGroups,
   createLayoutSchema,
   createPositionGroupSchema,
@@ -405,6 +407,73 @@ export async function reorderTemplatePosition(
 }
 
 // Store layouts & tiles ---------------------------------------------------------
+
+/**
+ * Seeds the SEED-DEFAULT store layout (constants.ts SEED_DEFAULT_LAYOUT_TILES)
+ * when the store has no layout at all, so the setup board has a canvas on day
+ * one instead of waiting on the floor plan (ARCHITECTURE.md open question 7).
+ * Idempotent: any existing layout, whatever its name, means the store already
+ * made its choice and this inserts nothing. Unlike createLayout(), the seed
+ * is created ACTIVE on purpose: it only ever runs when no layout exists, so
+ * there is no live board for it to displace, and an inactive seed would leave
+ * the board on the list view until someone found the Activate button.
+ */
+export async function seedDefaultLayout(): Promise<ActionResult<{ tiles: number }>> {
+  try {
+    await requirePermission("setups.manage");
+    const supabase = await createClient();
+
+    const { count, error: countError } = await supabase
+      .from("store_layouts")
+      .select("id", { count: "exact", head: true });
+    if (countError) return { ok: false, error: countError.message };
+    if ((count ?? 0) > 0) return { ok: true, data: { tiles: 0 } };
+
+    // Positions in the seeded setup groups go first so a same-named station
+    // from another module (the live store has a training-roadmap "Register 1"
+    // in an "FOH" group that sorts ahead of "Front Counter") never wins the
+    // name lookup.
+    const { data: positions, error: positionsError } = await supabase
+      .from("positions")
+      .select("id, name, sort, position_groups(name)")
+      .order("sort");
+    if (positionsError) return { ok: false, error: positionsError.message };
+    const seedGroupNames = new Set(SEED_DEFAULT_POSITION_GROUPS.map((g) => g.name));
+    const inSeedGroup = (row: { position_groups: { name: string } | null }) =>
+      Boolean(row.position_groups && seedGroupNames.has(row.position_groups.name));
+    const ordered = [
+      ...(positions ?? []).filter((p) => inSeedGroup(p)),
+      ...(positions ?? []).filter((p) => !inSeedGroup(p)),
+    ];
+    const tiles = buildDefaultLayoutTiles(ordered);
+
+    const { data: layout, error: layoutError } = await supabase
+      .from("store_layouts")
+      .insert({ name: SEED_DEFAULT_LAYOUT_NAME, day_part_id: null, active: true })
+      .select("id")
+      .single();
+    if (layoutError || !layout) {
+      // A concurrent seed won the insert; the layout exists either way.
+      if (layoutError?.code === "23505") return { ok: true, data: { tiles: 0 } };
+      return { ok: false, error: layoutError?.message ?? "Could not create the default layout." };
+    }
+
+    if (tiles.length > 0) {
+      const { error: tilesError } = await supabase
+        .from("layout_tiles")
+        .upsert(
+          tiles.map((tile) => ({ ...tile, layout_id: layout.id, area_label: null })),
+          { onConflict: "layout_id,position_id", ignoreDuplicates: true },
+        );
+      if (tilesError) return { ok: false, error: tilesError.message };
+    }
+
+    revalidateTemplates();
+    return { ok: true, data: { tiles: tiles.length } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
 
 export async function createLayout(
   input: z.infer<typeof createLayoutSchema>,
