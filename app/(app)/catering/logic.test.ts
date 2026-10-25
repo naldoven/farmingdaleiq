@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { buildDiscordMessage } from "@/lib/discord/format";
+
 import {
   computeAnalytics,
   buildPhysicalOrderSetup,
@@ -21,6 +23,7 @@ import {
   formatStageChangeMessage,
   formatStageOverrideMessage,
   formatTomorrowDigest,
+  DIGEST_MAX_CHARS,
   isCateringFollowUpDue,
   isCateringSetupDay,
   isCateringSetupDue,
@@ -988,6 +991,55 @@ describe("formatTomorrowDigest", () => {
     expect(lines[0]).toContain("23 orders");
     expect(lines).toHaveLength(1 + 20 + 1);
     expect(lines[lines.length - 1]).toBe("+3 more on the board");
+  });
+
+  it("cuts order lines to stay under the Discord limit when guest names run long", () => {
+    // 20 lines of ~170 characters is far past 1900, so some must go.
+    const longName = (i: number) => `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim();
+    const orders = Array.from({ length: 20 }, (_, i) =>
+      order({ guestName: longName(i), eventTime: "10:00:00", callDone: i % 2 === 0 }),
+    );
+    const text = formatTomorrowDigest({ tomorrow: "2026-10-26", orders });
+    const lines = text.split("\n");
+
+    expect(text.length).toBeLessThanOrEqual(DIGEST_MAX_CHARS);
+    expect(DIGEST_MAX_CHARS).toBe(1900);
+    // The header still counts every order, even the ones left off.
+    expect(lines[0]).toContain("20 orders");
+    expect(lines[0]).toContain("10 still need a confirmation call");
+    // Kept lines come first in sort order, and the last line says how many went.
+    const orderLines = lines.slice(1, -1);
+    expect(orderLines.length).toBeGreaterThan(0);
+    expect(orderLines.length).toBeLessThan(20);
+    expect(orderLines[0]).toContain("Guest 00");
+    expect(lines[lines.length - 1]).toBe(`+${20 - orderLines.length} more on the board`);
+  });
+
+  it("counts both the 20-line cap and the length cut in one overflow line", () => {
+    const orders = Array.from({ length: 30 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim(), eventTime: "10:00:00" }),
+    );
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    const orderLines = lines.slice(1, -1);
+    expect(lines[0]).toContain("30 orders");
+    expect(lines[lines.length - 1]).toBe(`+${30 - orderLines.length} more on the board`);
+    expect(lines.filter((line) => line.startsWith("+"))).toHaveLength(1);
+  });
+
+  it("still fits inside a Discord message once the title and emoji are added", () => {
+    const orders = Array.from({ length: 20 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim(), eventTime: "10:00:00" }),
+    );
+    const message = formatTomorrowDigest({ tomorrow: "2026-10-26", orders });
+    const posted = buildDiscordMessage("catering_tomorrow_digest", { title: "Tomorrow's catering", message });
+    expect(posted.content.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("leaves a digest that already fits untouched", () => {
+    const orders = Array.from({ length: 5 }, (_, i) => order({ guestName: `Guest ${i}`, eventTime: "10:00:00" }));
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    expect(lines).toHaveLength(1 + 5);
+    expect(lines.some((line) => line.startsWith("+"))).toBe(false);
   });
 
   it("neutralizes mentions in guest names and never uses an em dash", () => {

@@ -1206,6 +1206,13 @@ const DIGEST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
 /** Max order lines in the nightly digest, so one busy night stays readable in Discord. */
 export const DIGEST_MAX_ORDER_LINES = 20;
 
+/**
+ * Max length of the digest text. Discord's hard limit is 2000 characters for a
+ * whole message, and buildDiscordMessage adds an emoji and the title around
+ * this text, so 1900 leaves room for that wrapper.
+ */
+export const DIGEST_MAX_CHARS = 1900;
+
 /** "14:30:00" -> "2:30 PM". Null for a missing or malformed stored time. */
 function formatDigestClock(eventTime: string | null): string | null {
   const match = /^(\d{2}):(\d{2})/.exec((eventTime ?? "").slice(0, 5));
@@ -1221,7 +1228,9 @@ function formatDigestClock(eventTime: string | null): string | null {
  * with its time, guest, headcount and fulfillment, and flags the ones whose
  * Confirmation Call is not done so a leader can chase them that evening.
  * Deliberately carries no phone number or email: the channel is not the place
- * for guest contact details. `tomorrow` is a store-local YYYY-MM-DD.
+ * for guest contact details. `tomorrow` is a store-local YYYY-MM-DD. The text
+ * never exceeds DIGEST_MAX_CHARS: lines are cut from the end and one
+ * "+N more" line says how many were left off.
  */
 export function formatTomorrowDigest(input: {
   tomorrow: string;
@@ -1256,9 +1265,9 @@ export function formatTomorrowDigest(input: {
     outstanding === 0
       ? "all confirmation calls done"
       : `${outstanding} still ${outstanding === 1 ? "needs" : "need"} a confirmation call`;
-  const lines = [`${date}: ${count} ${count === 1 ? "order" : "orders"}, ${calls}`];
+  const header = `${date}: ${count} ${count === 1 ? "order" : "orders"}, ${calls}`;
 
-  for (const order of sorted.slice(0, DIGEST_MAX_ORDER_LINES)) {
+  const orderLines = sorted.slice(0, DIGEST_MAX_ORDER_LINES).map((order) => {
     const parts = [
       formatDigestClock(order.eventTime) ?? "Time TBD",
       neutralizeDiscordMentions(order.guestName),
@@ -1266,12 +1275,22 @@ export function formatTomorrowDigest(input: {
     if (order.headcount != null) parts.push(`${order.headcount} ${order.headcount === 1 ? "guest" : "guests"}`);
     if (order.fulfillment) parts.push(order.fulfillment);
     if (!order.callDone) parts.push("CALL NOT DONE");
-    lines.push(`• ${parts.join(" · ")}`);
-  }
-  if (sorted.length > DIGEST_MAX_ORDER_LINES) {
-    lines.push(`+${sorted.length - DIGEST_MAX_ORDER_LINES} more on the board`);
-  }
-  return lines.join("\n");
+    return `• ${parts.join(" · ")}`;
+  });
+
+  // Discord rejects a message over 2000 characters with a 400, and the post is
+  // lost once the outbox runs out of retries. Guest names are free text, so
+  // even 20 lines can run long. Keep the first `kept` lines and say how many
+  // were left off. The counts in the header always cover every order.
+  const build = (kept: number): string => {
+    const dropped = sorted.length - kept;
+    const lines = [header, ...orderLines.slice(0, kept)];
+    if (dropped > 0) lines.push(`+${dropped} more on the board`);
+    return lines.join("\n");
+  };
+  let kept = orderLines.length;
+  while (kept > 0 && build(kept).length > DIGEST_MAX_CHARS) kept -= 1;
+  return build(kept);
 }
 
 export type StageOverrideKind = "move_back" | "restore";
