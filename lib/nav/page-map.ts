@@ -22,6 +22,15 @@ export interface NavItem {
    * click (S4 dead-end fix). Items with no `permission` are visible to all.
    */
   permission?: PermissionKey;
+  /**
+   * A real route that has a page-map entry (so resolveHeader, findNavItem and
+   * the back chevron know its title) but no row in the sidebar or mobile menu.
+   * visibleNavGroups() drops these, and activeNavHref() never picks one. Why
+   * not just list it: a second item turns a single-destination group into a
+   * fold-out, and in the icon rail that makes the group's icon open the
+   * sidebar instead of navigating (Home hit exactly that with /guide).
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -100,6 +109,17 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Home",
         description: "My positions today, my to-dos, token balance, feed highlights.",
         owner: "P2 wiring",
+      },
+      {
+        // Ungated on purpose: any signed-in user can read it, and it needs an
+        // entry here or the header falls back to the generic app name. Hidden
+        // because it is reached from the Home card, not the sidebar, and a
+        // second visible item would turn the Home group into a fold-out.
+        href: "/guide",
+        label: "First-shift guide",
+        description: "Five steps for a new leader's first shift.",
+        owner: "P2 wiring",
+        hidden: true,
       },
     ],
   },
@@ -473,14 +493,15 @@ export function navPermissionKeys(): PermissionKey[] {
  * any group left with no visible items. `allowed` is the set of permission
  * keys the current user holds; pass `null` to show everything (the default
  * when no permission context is threaded, e.g. tests). Ungated items
- * (no `permission`) are always kept — err toward showing.
+ * (no `permission`) are always kept — err toward showing. Items marked
+ * `hidden` are dropped in every case: they are routes, not menu rows.
  */
 export function visibleNavGroups(allowed: ReadonlySet<string> | null): NavGroup[] {
-  if (!allowed) return NAV_GROUPS;
   const groups: NavGroup[] = [];
   for (const group of NAV_GROUPS) {
     const items = group.items.filter(
-      (item) => !item.permission || allowed.has(item.permission),
+      (item) =>
+        !item.hidden && (!allowed || !item.permission || allowed.has(item.permission)),
     );
     if (items.length > 0) groups.push({ ...group, items });
   }
@@ -510,6 +531,8 @@ function bestNavMatch(
   let best: { group: NavGroup; item: NavItem } | null = null;
   for (const group of groups) {
     for (const item of group.items) {
+      // A hidden item has no row to highlight, so it can never be "current".
+      if (item.hidden) continue;
       if (!isNavItemActive(item.href, pathname)) continue;
       if (!best || item.href.length > best.item.href.length) {
         best = { group, item };
