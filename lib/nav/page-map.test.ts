@@ -104,6 +104,34 @@ describe("resolveHeader", () => {
   });
 });
 
+describe("catering cancelled list", () => {
+  it("is in the Catering group behind the same view key as its siblings", () => {
+    const group = NAV_GROUPS.find((g) => g.label === "Catering");
+    const item = group?.items.find((i) => i.href === "/catering/cancelled");
+    expect(item).toBeDefined();
+    expect(item?.permission).toBe("catering.view");
+    expect(item?.permission).toBe(group?.items.find((i) => i.href === "/catering/history")?.permission);
+  });
+
+  it("resolves a titled, backable header", () => {
+    expect(resolveHeader("/catering/cancelled")).toMatchObject({
+      variant: "subpage",
+      title: "Cancelled",
+      showBack: true,
+    });
+  });
+
+  it("is the one current item on its own page, not the Pipeline landing page", () => {
+    expect(activeNavHref("/catering/cancelled")).toBe("/catering/cancelled");
+    expect(activeNavGroupLabel("/catering/cancelled")).toBe("Catering");
+  });
+
+  it("shows to a viewer with catering.view and hides without it", () => {
+    expect(allItems(visibleNavGroups(new Set(["catering.view"])))).toContain("/catering/cancelled");
+    expect(allItems(visibleNavGroups(new Set<string>()))).not.toContain("/catering/cancelled");
+  });
+});
+
 describe("initialsFromName", () => {
   it("takes up to two initials, uppercased", () => {
     expect(initialsFromName("dana cruz reyes")).toBe("DC");
