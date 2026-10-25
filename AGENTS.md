@@ -160,6 +160,51 @@ genuinely interactive (`components/shell/nav-links.test.tsx`,
 `components/mobile/sidebar.test.tsx`). Add tests in the same shape — a new zod
 schema or logic helper without a test will look out of place.
 
+## Borrow from the Quote Tool
+
+Naldo's other app, the Yule Love Lights Quote Tool (`C:\dev\yll-quote-tool`, Next.js +
+Supabase, far more mature), has already solved many problems this app will hit. Before
+building anything in the list below, read the Quote Tool's version first and port it
+rather than reinventing. Its `AGENTS.md` and `docs/context/` (feedback files, journal)
+hold the lessons behind each piece. Read only; never edit that repo from here.
+
+Already ported (2026-10-25, cleaning walkthrough):
+- Photo shrink before upload: `lib/images/client-image.ts` (from `src/lib/clientImage.ts`).
+- Phone-side photo queue that survives a closed tab: `lib/cleaning/shot-queue-storage.ts`
+  (from `simplecrew/photoQueueStorage.ts`).
+- Retry rules (retry 5xx and network, hold other 4xx, never drop): `lib/cleaning/send-policy.ts`
+  (from `simplecrew/cameraGps.ts` `decideSend`).
+- Live camera screen: `components/cleaning/walkthrough-camera.tsx` (from
+  `src/components/advertising/simplecrew/CameraScreen.tsx`, without GPS).
+
+Worth porting when the need comes up:
+- Claim-before-send for Discord and texts, with a quarantine for unknown outcomes:
+  `src/lib/calls/customerFeed/postPending.ts`, `discordRefusal.ts`. Ours is `lib/discord/outbox.ts`.
+- Cron guard (503 when the secret is unset, 401 when wrong) and time-boxed sweeps:
+  `src/lib/auth/cronAuth.ts`, `src/app/api/cron/crew-pictures/route.ts`.
+- Checklist defined in code with ticks in the database: `src/lib/jobs/checklist.ts`,
+  `checklistStore.ts`.
+- Photo review screen with batched signed URLs and bulk accept:
+  `src/app/api/admin/advertising/campaigns/[id]/placements/route.ts`, `bulkAccept.ts`.
+- Mobile CSS rules (44px targets, 16px inputs, iOS date inputs, `overflow-x: clip` on the
+  shell root): `src/app/globals.css`.
+- Post-response work that survives serverless: `src/lib/deferBestEffort.ts`.
+- Per-device memory with a freshness window ("remember the last choice, confirm if it is
+  old"): `simplecrew/campaignMemory.ts`.
+
+Lessons that apply here too:
+- Sign many photos in ONE `createSignedUrls` call; one-by-one signing returned nulls under load.
+- Show thumbnails in lists; a full-size photo feed reached about 220 MB.
+- `fetch` follows a login redirect and gets a 200 page. Any route a client posts to in the
+  background must answer 401 JSON (exempt it in `lib/supabase/middleware.ts`) and the
+  client must treat a redirected or non-JSON reply as a failure.
+- Fixed overlays (cameras, sheets) must sit above the bottom tab bar or its buttons die.
+- Never take a storage path, owner or kind from the client.
+- Vercel crons run in UTC; business days use America/New_York (`storeLocalNow` here).
+- Supabase silently caps a fetch at 1000 rows.
+- A static `import { after } from "next/server"` in a client-reachable module breaks
+  `next build` while typecheck, lint and tests pass.
+
 ## Git
 
 - Branch from `main`, one PR per change, CI gates green before review.

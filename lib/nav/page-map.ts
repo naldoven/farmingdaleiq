@@ -44,6 +44,7 @@ export type NavIconName =
   | "menu"
   | "checklists"
   | "tasks"
+  | "cleaning"
   | "setups"
   | "ratings"
   | "waste"
@@ -166,6 +167,26 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Tasks",
         description: "My tasks + shift pool; create ad-hoc tasks.",
         owner: "S2",
+      },
+    ],
+  },
+  {
+    label: "Cleaning",
+    icon: "cleaning",
+    items: [
+      {
+        href: "/cleaning/items",
+        permission: "cleaning.complete",
+        label: "Master list",
+        description: "Every cleanable item by zone; review walkthrough drafts.",
+        owner: "Cleaning",
+      },
+      {
+        href: "/cleaning/walkthrough",
+        permission: "cleaning.complete",
+        label: "Walkthrough",
+        description: "Camera: photograph items and tag zone and cadence.",
+        owner: "Cleaning",
       },
     ],
   },

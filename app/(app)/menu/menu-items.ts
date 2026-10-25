@@ -54,6 +54,7 @@ export type MenuViewIconName =
   | "people"
   | "vendors"
   | "maintenance"
+  | "cleaning"
   | "catering"
   | "reporting"
   | "notifications";
@@ -152,6 +153,8 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "ratings", label: "Ratings", href: "/ratings", icon: "ratings", iconTone: "neutral", section: "People & Training" },
   { key: "training", label: "Training", href: "/training", icon: "training", iconTone: "neutral", section: "People & Training" },
   { key: "waste", label: "Waste", href: "/waste", icon: "waste", iconTone: "neutral", section: "Daily Ops" },
+  { key: "cleaning", label: "Cleaning list", href: "/cleaning/items", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
+  { key: "cleaning-walkthrough", label: "Cleaning walkthrough", href: "/cleaning/walkthrough", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
   { key: "accountability", label: "Accountability", href: "/accountability", icon: "accountability", iconTone: "danger", section: "People & Training" },
   { key: "rewards", label: "Rewards", href: "/rewards", icon: "rewards", iconTone: "neutral", section: "Recognition" },
   { key: "tokens", label: "Tokens", href: "/tokens", icon: "tokens", iconTone: "warning", section: "Recognition" },

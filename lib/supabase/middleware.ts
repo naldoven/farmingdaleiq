@@ -35,6 +35,11 @@ const PUBLIC_PATHS = [
   // and has server-side validation on both public endpoints.
   "/maintenance-log",
   "/api/public/maintenance",
+  // The cleaning walkthrough camera posts photos with fetch(). A session
+  // redirect would come back as the login page with a 200 that looks like a
+  // save, and the phone would drop the shot from its queue. The route checks
+  // the session and permission itself and answers 401/403 JSON instead.
+  "/api/cleaning/walkthrough",
 ];
 
 export function isPublicPath(pathname: string) {

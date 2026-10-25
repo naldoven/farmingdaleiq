@@ -18,6 +18,7 @@ import {
   Truck,
   Users,
   UtensilsCrossed,
+  SprayCan,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const VIEW_ICONS: Record<MenuViewIconName, LucideIcon> = {
   people: Users,
   vendors: Truck,
   maintenance: Wrench,
+  cleaning: SprayCan,
   catering: UtensilsCrossed,
   reporting: BarChart3,
   notifications: Bell,

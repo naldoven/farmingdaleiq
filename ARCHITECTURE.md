@@ -92,6 +92,23 @@ below describes observed behavior we intend to reproduce.
   **Shift Notes** to the team, roster view (full-day or hourly), and a prompt at
   shift end to pick a **Top Performer** (who gets tokens + a public feed shoutout).
 
+### Cleaning (added 2026-10-25, full spec in docs/CLEANING-PLAN.md)
+- One **master list** of every deep clean in the building, each item tagged with one
+  of six color **zones** (BOH Green, Yellow, Blue; FOH Red, Purple, Orange) and a
+  reference photo with an optional drawing that marks the exact spot.
+- **Constants** run on fixed weekdays (Mon to Sat, the store is closed Sunday) in the
+  AM or PM half. **Variables** repeat every 1, 2, 3, 4, 6, 8 or 13 weeks, in AM, PM or
+  either half. "If needed" items can be marked checked but not needed.
+- **Walkthrough** (built first): leaders photograph items with a live in-app camera,
+  pick the zone in the camera's top bar, fill in name and cadence on the spot, and
+  each save lands as a draft that a planner approves. Photos queue on the phone and
+  upload in the background with retries; the server dedupes by the phone's photo id.
+- **Planning rights**: the `cleaning.plan` key or a per-person coordinator tag, so the
+  store's cleaning coordinator keeps her leader role.
+- Later phases (plan doc): a weekly board auto-placed Thursday and live Monday, photo
+  completion by the shift leader, carry-over of misses, a print sheet matching the
+  paper schedule, an ATD found-and-fixed log, metrics, and a #cleaning Discord channel.
+
 ### Waste
 - Admins maintain **waste items** organized into **categories**. Item setup, item costs, and deleting
   entries need `waste.manage`, which starts at Operations Lead (Shift Supervisors log waste but do
@@ -434,6 +451,12 @@ Tasks:
 - `task_templates` (id, title, description, frequency, days_of_week int[], day_part_id, start_time, due_time, assign_position_id, assign_user_id, token_value, active)
 - `tasks` (id, template_id?, kind: adhoc|recurring|reward_fulfillment|follow_up|lead_duty, title, description, date, day_part_id, start_time, due_at, assigned_user_id, assigned_position_id, setup_id, status, completed_by, completed_at, token_value, created_by, ref jsonb)
 
+Cleaning:
+- `cleaning_zones` (id, name, color, side: foh|boh, areas, sort, active): active = on the weekly board
+- `cleaning_items` (id, zone_id, name, kind: constant|variable, days_of_week int[], half: am|pm|either, interval_weeks, start_on, if_needed, note, status: draft|active|retired, created_by, approved_by, approved_at, sort)
+- `cleaning_item_photos` (id = the phone's photo id, item_id, storage_path, markup jsonb, kind, capture_source: live|file, captured_at, created_at, taken_by)
+- `cleaning_coordinators` (user_id, added_by, added_at): the planning tag
+
 Waste:
 - `waste_categories` (id, name, sort)
 - `waste_items` (id, category_id, name, unit: each|lb|oz, unit_cost numeric?)
@@ -501,6 +524,8 @@ Discord:
 | `/checklists` | Today's runs to complete; run player UI |
 | `/checklists/templates` | Build/edit templates, sections, questions, schedules (permission-gated) |
 | `/tasks` | My tasks + shift pool; create ad-hoc tasks |
+| `/cleaning/items` | Cleaning master list by zone; planners review walkthrough drafts |
+| `/cleaning/walkthrough` | Walkthrough camera: photograph items, tag zone and cadence |
 | `/setups` | Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes |
 | `/setups/templates` | Manage setup templates, groups, positions, and the store layout editor |
 | `/breaks` | Break manager: today's entitlements, sequence, authorize/start/complete, overdue alerts |
