@@ -23,7 +23,7 @@ const STEPS: GuideStep[] = [
   },
   {
     title: "Link your Discord",
-    body: "Shout-outs, to-dos, and alerts reach you in Discord. The app asks for your Discord ID when you sign in. If you skipped it, it asks again next time.",
+    body: "Shout-outs, to-dos, and alerts reach you in Discord. The app asks for your Discord ID when you sign in, and asks again after 12 hours if you skip it.",
   },
   {
     title: "Start on Home",
@@ -37,7 +37,7 @@ const STEPS: GuideStep[] = [
   },
   {
     title: "Give a shout-out",
-    body: "From the Menu tab, send a recognition. It posts to the team Discord channel and awards tokens.",
+    body: "Menu, then Recognition, awards tokens. It needs the tokens.award permission. It posts to Discord once a manager routes it in Settings > Discord.",
     link: { href: "/menu", label: "Open Menu" },
   },
 ];
