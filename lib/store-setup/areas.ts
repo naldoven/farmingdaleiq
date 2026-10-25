@@ -27,6 +27,7 @@ export const STORE_SETUP_AREA_KEYS = [
   "passports",
   "org_chart",
   "equipment_pm",
+  "checklist_templates",
   "catering_menu",
   "catering_checklists",
   "discord",
@@ -43,7 +44,12 @@ export interface StoreSetupArea {
   href: string | null;
   /** Permission the editor's writes require. */
   editPermission: PermissionKey;
-  /** Costs, prices, token amounts: a shift leader must not be able to change these. */
+  /**
+   * Costs, prices, token amounts. Whoever holds `editPermission` can change
+   * them, and the seeded roles give some of those keys to leaders below
+   * Director (docs/STORE-SETUP.md, "Who can change money values today").
+   * areas.test.ts pins the exact key for every money area.
+   */
   money: boolean;
   /** Where the default came from, for the audit trail. */
   source: string;
@@ -115,7 +121,7 @@ export const STORE_SETUP_AREAS: readonly StoreSetupArea[] = [
     title: "Rating rubrics",
     description:
       "No position has a 4-category rubric yet, so every station is quick-rate only. Decide which stations need the full rubric and name the categories.",
-    href: null,
+    href: "/settings/rubrics",
     editPermission: "training.manage",
     money: false,
     source: "ARCHITECTURE.md open question 5",
@@ -161,14 +167,25 @@ export const STORE_SETUP_AREAS: readonly StoreSetupArea[] = [
     source: "ARCHITECTURE.md open question 12",
   },
   {
+    key: "checklist_templates",
+    title: "Checklist templates",
+    description:
+      "Only 18 of the 67 KitchenIQ checklist names were captured. They are in the app as inactive drafts with no sections or questions, and the other 49 were never captured. Build out the ones Farmingdale runs and add the rest.",
+    href: "/checklists/templates",
+    editPermission: "checklists.manage_templates",
+    money: false,
+    source: "supabase/migrations/20260707070000_seed_checklist_templates.sql",
+  },
+  {
     key: "catering_menu",
     title: "Catering menu and scaling rules",
     description:
-      "Five starter items with made-up sauce, napkin, and cup scaling. Replace with Farmingdale's catering menu, prices, and how utensils scale per head.",
+      "The prices are real: over 100 Farmingdale items with pickup and delivery prices, and the five Avondale starter items are switched off. What is missing is the build behind each item. Every active item has empty components and empty scaling rules, so the FOH setup list scales nothing yet. Fill them in per item on the menu page.",
     href: "/catering/menu",
     editPermission: "catering.manage",
     money: true,
-    source: "supabase/migrations/20260707040100_catering_seed.sql",
+    source:
+      "supabase/migrations/20260821031530_catering_menu_catalog_prices.sql (prices), 20260707040100_catering_seed.sql (starter scaling)",
   },
   {
     key: "catering_checklists",

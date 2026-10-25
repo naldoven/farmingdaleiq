@@ -24,7 +24,12 @@ import {
   selectTopPerformer,
   suggestAssignees,
 } from "@/app/(app)/setups/actions";
-import { isoToLocalInput, localInputToIso } from "@/components/setups/arrival-time";
+import {
+  isoToLocalInput,
+  localInputToIso,
+  scheduledEndToSave,
+  timesForReassign,
+} from "@/components/setups/arrival-time";
 import { computeBadges, type BadgeKind } from "@/lib/setups/badges";
 import { GRID_COLUMNS, GRID_ROWS } from "@/lib/setups/layout-grid";
 import type { SuggestedCandidate } from "@/app/(app)/setups/action-types";
@@ -59,6 +64,8 @@ export interface AssignmentRow {
   position_id: string | null;
   user_id: string | null;
   arrival_time: string | null;
+  /** When the person is scheduled to leave; drives break entitlement. */
+  scheduled_end: string | null;
 }
 
 export interface BreakStatusRow {
@@ -343,16 +350,19 @@ export function SetupBoard({
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
                     <Select
                       value={assignment.user_id ?? UNASSIGNED}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        const nextUserId = value === UNASSIGNED ? null : value;
                         run(() =>
                           assignPosition({
                             setupId: setup.id,
                             positionId: assignment.position_id ?? "",
-                            userId: value === UNASSIGNED ? null : value,
-                            arrivalTime: assignment.arrival_time ?? "",
+                            userId: nextUserId,
+                            // A new person must not inherit the previous
+                            // person's arrival or scheduled end.
+                            ...timesForReassign(assignment.user_id, nextUserId, assignment),
                           }),
-                        )
-                      }
+                        );
+                      }}
                     >
                       <SelectTrigger className="w-48 rounded-full">
                         <SelectValue placeholder="Unassigned" />
@@ -368,6 +378,11 @@ export function SetupBoard({
                     </Select>
                     {assignment.user_id && (
                       <Input
+                        // defaultValue only applies on mount, so key by person
+                        // and saved value: a reassign (which clears the times)
+                        // must remount the field or it keeps showing the old
+                        // person's time.
+                        key={`arrival-${assignment.user_id}-${assignment.arrival_time ?? ""}`}
                         aria-label="Arrival time"
                         type="datetime-local"
                         // SETB1: show the stored UTC time back in the leader's
@@ -385,6 +400,36 @@ export function SetupBoard({
                               positionId: assignment.position_id ?? "",
                               userId: assignment.user_id,
                               arrivalTime: localInputToIso(value),
+                              scheduledEnd: assignment.scheduled_end ?? "",
+                            }),
+                          );
+                        }}
+                      />
+                    )}
+                    {assignment.user_id && (
+                      <Input
+                        key={`scheduled-end-${assignment.user_id}-${assignment.scheduled_end ?? ""}`}
+                        aria-label="Scheduled end"
+                        type="datetime-local"
+                        // The break rule is "scheduled 6 hours earns one
+                        // 30-minute break", so the leader records when the
+                        // person is scheduled to leave. Same New York
+                        // wall-clock round trip as the arrival field above.
+                        defaultValue={isoToLocalInput(assignment.scheduled_end)}
+                        className="w-48 rounded-full"
+                        onBlur={(e) => {
+                          // An empty field clears the scheduled end (the
+                          // engine then falls back to the day-part end); an
+                          // unchanged field saves nothing.
+                          const scheduledEnd = scheduledEndToSave(e.target.value, assignment.scheduled_end);
+                          if (scheduledEnd === null) return;
+                          run(() =>
+                            assignPosition({
+                              setupId: setup.id,
+                              positionId: assignment.position_id ?? "",
+                              userId: assignment.user_id,
+                              arrivalTime: assignment.arrival_time ?? "",
+                              scheduledEnd,
                             }),
                           );
                         }}
@@ -476,7 +521,8 @@ export function SetupBoard({
                 }}
               >
                 <span className="truncate text-[13px] font-semibold leading-tight text-ink">
-                  {tile.area_label || (tile.position_id ? positionName.get(tile.position_id) : "Tile")}
+                  {/* Position name first; the area label only names an area-only tile (see layout-editor.tsx). */}
+                  {(tile.position_id ? positionName.get(tile.position_id) : undefined) || tile.area_label || "Tile"}
                 </span>
                 <span className="truncate text-[11px] text-muted-ink">
                   {assignedProfile ? assignedProfile.name : "Unassigned"}

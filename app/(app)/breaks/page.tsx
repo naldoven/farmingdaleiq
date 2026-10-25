@@ -4,6 +4,7 @@ import { BreakBoard } from "@/components/breaks/break-board";
 import { HScroll, SectionCard, StatTile } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBreakDueAt, entitledMinutesForKind } from "@/lib/breaks/entitlement";
+import { APP_FEATURES } from "@/lib/features";
 import { createClient } from "@/lib/supabase/server";
 import { storeLocalDate } from "@/lib/time";
 
@@ -103,12 +104,15 @@ export default async function BreaksPage({
         >
           Compliance report
         </Link>
-        <Link
-          href="/setups"
-          className="inline-flex shrink-0 items-center rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink hover:bg-secondary"
-        >
-          Setup board
-        </Link>
+        {/* /setups 404s while the Setups module is dormant; never link to a route that is not there. */}
+        {APP_FEATURES.setups && (
+          <Link
+            href="/setups"
+            className="inline-flex shrink-0 items-center rounded-full border border-line bg-card px-3.5 py-1.5 text-[13px] font-semibold text-muted-ink hover:bg-secondary"
+          >
+            Setup board
+          </Link>
+        )}
       </div>
 
       <HScroll>
@@ -148,6 +152,7 @@ export default async function BreaksPage({
       <SectionCard title="Break sequence" flush>
         <BreakBoard
           setupId={setup?.id ?? null}
+          setupsEnabled={APP_FEATURES.setups}
           canManage={canManage}
           breaks={breakRows}
           profiles={profiles ?? []}

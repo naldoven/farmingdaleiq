@@ -25,13 +25,37 @@ describe("STORE_SETUP_AREAS registry", () => {
     }
   });
 
-  it("gates every money area on a manage-level key, never a shift-leader key", () => {
-    // Guardrail from docs/STORE-SETUP.md: costs, prices, and token amounts
-    // need the module's manage permission. A `.log`, `.view`, `.claim`, or
-    // `.complete` key here would let a shift leader change money values.
-    for (const area of STORE_SETUP_AREAS.filter((a) => a.money)) {
-      expect(area.editPermission.endsWith(".manage")).toBe(true);
+  it("gates each money area on its module's exact manage key", () => {
+    // docs/STORE-SETUP.md ("Who can change money values today"): costs, prices,
+    // and token amounts are edited with the module's own manage key. Pin the
+    // exact key per area so a swap to another .manage key (or to a .log,
+    // .view, .claim, or .complete key) fails here. This does NOT claim a shift
+    // leader is locked out: the seeded Team Leader holds catering.manage and
+    // the seeded Shift Supervisor holds waste.manage.
+    const expected = {
+      waste_items: "waste.manage",
+      token_rules: "tokens.manage",
+      rewards: "rewards.manage",
+      catering_menu: "catering.manage",
+    } as const;
+    const moneyAreas = STORE_SETUP_AREAS.filter((a) => a.money);
+    expect(moneyAreas.map((a) => a.key).sort()).toEqual(Object.keys(expected).sort());
+    for (const area of moneyAreas) {
+      expect(area.editPermission, area.key).toBe(expected[area.key as keyof typeof expected]);
     }
+  });
+
+  it("audits the checklist templates and catering menu accurately", () => {
+    // Regression for the first audit: it called the checklist inventory real
+    // (only 18 of 67 names were ever seeded, all inactive drafts) and called
+    // the catering menu five invented items (it holds the real priced catalog).
+    const checklists = findStoreSetupArea("checklist_templates");
+    expect(checklists.description).toContain("18 of the 67");
+    expect(checklists.editPermission).toBe("checklists.manage_templates");
+    const catering = findStoreSetupArea("catering_menu");
+    expect(catering.description).toContain("prices are real");
+    expect(catering.description).toContain("empty scaling rules");
+    expect(catering.description).not.toContain("made-up");
   });
 
   it("links every editor to a route that exists and is switched on", () => {

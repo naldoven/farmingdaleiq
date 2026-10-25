@@ -14,26 +14,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { setEventRoute } from "@/app/(app)/settings/discord/actions";
 import type { ChannelRow } from "@/components/settings/channel-list";
+import { EVENT_LABELS } from "@/components/settings/event-labels";
 
-const EVENT_LABELS: Record<string, string> = {
-  task_overdue: "Task overdue",
-  checklist_missed: "Checklist missed",
-  break_overdue: "Break overdue",
-  temp_failed: "Out-of-range temperature",
-  maint_request: "New maintenance request",
-  work_order_status: "Work order status change",
-  equipment_down: "Equipment down",
-  equipment_up: "Equipment back up",
-  pm_due: "PM coming due",
-  recognition: "Recognition",
-  top_performer: "Top Performer",
-  broadcast: "Broadcast",
-  reward_claim: "Reward claim",
-  catering_order_new: "New catering order",
-  catering_stage_change: "Catering stage change",
-  infraction_issued: "Infraction issued (name only, no points)",
-  disciplinary_triggered: "Disciplinary action (name only, no points)",
-};
 
 interface RouteConfig {
   event_key: string;

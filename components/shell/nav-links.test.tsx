@@ -184,3 +184,30 @@ describe("NavLinks collapsed rail", () => {
     expect(screen.getByRole("link", { name: "Confirmation Calls" })).toBeInTheDocument();
   });
 });
+
+describe("NavLinks with a hidden page-map route (/guide)", () => {
+  it("keeps Home a plain link in the sidebar and lists no row for the guide", () => {
+    render(<NavLinks />);
+
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    // Two visible items would have made Home a fold-out button.
+    expect(screen.queryByRole("button", { name: /Home/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "First-shift guide" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Home icon in the collapsed rail a link, not an expand button", () => {
+    render(<NavLinks collapsed />);
+
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(
+      screen.queryByRole("button", { name: /Home — expand menu/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("highlights nothing as current while standing on the guide", () => {
+    pathname.current = "/guide";
+    render(<NavLinks />);
+
+    expect(screen.getAllByRole("link").filter((l) => l.getAttribute("aria-current"))).toHaveLength(0);
+  });
+});

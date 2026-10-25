@@ -14,11 +14,13 @@ import BreaksLayout from "./breaks/layout";
 import SetupsLayout from "./setups/layout";
 
 describe("dormant feature routes", () => {
-  it("returns not found for the complete Breaks route tree", () => {
-    expect(() => BreaksLayout({ children: null })).toThrow("NEXT_NOT_FOUND");
+  it("renders the Breaks route tree now that the module is live", () => {
+    expect(BreaksLayout({ children: "breaks" })).toBe("breaks");
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 
-  it("returns not found for the complete Setups route tree", () => {
-    expect(() => SetupsLayout({ children: null })).toThrow("NEXT_NOT_FOUND");
+  it("renders the Setups route tree now that the module is live", () => {
+    expect(SetupsLayout({ children: "setups" })).toBe("setups");
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 });

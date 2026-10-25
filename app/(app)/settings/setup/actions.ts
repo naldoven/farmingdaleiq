@@ -34,14 +34,18 @@ export async function markAreaConfirmed(input: SetupAreaKeyInput): Promise<Actio
     const parsed = setupAreaKeySchema.parse(input);
     const supabase = await createClient();
 
+    // confirmed_by always comes from the session, never from input. The RLS
+    // policy checks confirmed_by = auth.uid() as well, so a row can never name
+    // someone else as the confirmer.
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "You need to be signed in." };
 
     const { error } = await supabase.from("store_setup_areas").upsert({
       area_key: parsed.areaKey,
       confirmed_at: new Date().toISOString(),
-      confirmed_by: user?.id ?? null,
+      confirmed_by: user.id,
     });
 
     if (error) return { ok: false, error: error.message };
