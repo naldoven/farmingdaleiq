@@ -1151,3 +1151,73 @@ export function formatStageOverrideMessage(input: {
   // free text typed by a manager, so it gets the same treatment here.
   return `${formatStageChangeMessage(input)}. ${action} by a manager: ${neutralizeDiscordMentions(input.reason)}`;
 }
+
+export type OrderSearchKind =
+  | { kind: "empty" }
+  | { kind: "date"; isoDate: string }
+  | { kind: "phone"; digits: string }
+  | { kind: "text"; text: string };
+
+/** True when year/month/day is a real calendar date (rejects 2/30, 13/1). */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
+function toIsoDate(year: number, month: number, day: number): string | null {
+  if (!isRealCalendarDate(year, month, day)) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Decides what a leader typed into the order search box: an event date, a
+ * phone number, or part of a guest name. Dates win over phones so "5/30" is
+ * never read as digits. A date that is not on the calendar (2/30) falls
+ * through to text instead of erroring. M/D with no year uses the store's
+ * current year, not the server's UTC clock.
+ */
+export function classifyOrderSearch(query: string, now: Date = new Date()): OrderSearchKind {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return { kind: "empty" };
+
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  if (iso) {
+    const isoDate = toIsoDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+    if (isoDate) return { kind: "date", isoDate };
+  }
+
+  const slash = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(trimmed);
+  if (slash) {
+    const month = Number(slash[1]);
+    const day = Number(slash[2]);
+    let year: number;
+    if (slash[3] === undefined) year = Number(getStoreLocalDate(now).slice(0, 4));
+    else if (slash[3].length === 2) year = 2000 + Number(slash[3]);
+    else year = Number(slash[3]);
+    const isoDate = toIsoDate(year, month, day);
+    if (isoDate) return { kind: "date", isoDate };
+  }
+
+  const digits = normalizePhone(trimmed);
+  if (digits.length >= 4 && !/\p{L}/u.test(trimmed)) return { kind: "phone", digits };
+
+  return { kind: "text", text: trimmed };
+}
+
+/**
+ * ILIKE pattern with a percent sign between every digit. catering_orders.phone
+ * is free text and can be stored as "(555) 123-4567" or "5551234567", so one
+ * pattern of "%5%5%5%1%2%3%" matches both without a database change or a
+ * stored normalized column.
+ */
+export function phoneLikePattern(digits: string): string {
+  return `%${digits.split("").join("%")}%`;
+}
+
+/**
+ * Escapes backslash, percent and underscore so a typed "%" or "_" is matched
+ * literally in an ILIKE instead of acting as a wildcard.
+ */
+export function escapeLikePattern(text: string): string {
+  return text.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}

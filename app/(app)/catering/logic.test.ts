@@ -5,6 +5,9 @@ import {
   buildPhysicalOrderSetup,
   canBuildCateringSetup,
   canCronMoveToSetup,
+  classifyOrderSearch,
+  escapeLikePattern,
+  phoneLikePattern,
   cateringStageAdvanceError,
   checklistRequiredBeforeStageAdvance,
   computeContactRollups,
@@ -812,5 +815,56 @@ describe("revenue stage exclusion (CAT1/CAT4)", () => {
 
     const rollups = computeContactRollups(countable);
     expect(rollups.get("c1")).toMatchObject({ orderCount: 1, lifetimeSpend: 100 });
+  });
+});
+
+describe("classifyOrderSearch", () => {
+  // 2026-10-25 noon UTC, still Oct 25 in New York.
+  const now = new Date("2026-10-25T16:00:00Z");
+
+  it("returns empty under 2 characters", () => {
+    expect(classifyOrderSearch("", now)).toEqual({ kind: "empty" });
+    expect(classifyOrderSearch(" a ", now)).toEqual({ kind: "empty" });
+  });
+
+  it("reads ISO, M/D, M/D/YY and M/D/YYYY as dates", () => {
+    expect(classifyOrderSearch("2026-11-05", now)).toEqual({ kind: "date", isoDate: "2026-11-05" });
+    expect(classifyOrderSearch("11/5", now)).toEqual({ kind: "date", isoDate: "2026-11-05" });
+    expect(classifyOrderSearch("11/5/27", now)).toEqual({ kind: "date", isoDate: "2027-11-05" });
+    expect(classifyOrderSearch("1/15/2025", now)).toEqual({ kind: "date", isoDate: "2025-01-15" });
+  });
+
+  it("uses the store year, not the UTC year, for M/D", () => {
+    const newYearsEveNight = new Date("2027-01-01T03:00:00Z"); // still Dec 31 in New York
+    expect(classifyOrderSearch("12/31", newYearsEveNight)).toEqual({ kind: "date", isoDate: "2026-12-31" });
+  });
+
+  it("falls through to text for dates that are not on the calendar", () => {
+    expect(classifyOrderSearch("2/30", now)).toEqual({ kind: "text", text: "2/30" });
+    expect(classifyOrderSearch("13/1", now)).toEqual({ kind: "text", text: "13/1" });
+  });
+
+  it("reads 4 or more digits with no letters as a phone", () => {
+    expect(classifyOrderSearch("(555) 123-4567", now)).toEqual({ kind: "phone", digits: "5551234567" });
+    expect(classifyOrderSearch("4567", now)).toEqual({ kind: "phone", digits: "4567" });
+  });
+
+  it("treats short digit strings and anything with letters as text", () => {
+    expect(classifyOrderSearch("123", now)).toEqual({ kind: "text", text: "123" });
+    expect(classifyOrderSearch("Room 4567", now)).toEqual({ kind: "text", text: "Room 4567" });
+    expect(classifyOrderSearch("  Jane Doe ", now)).toEqual({ kind: "text", text: "Jane Doe" });
+  });
+});
+
+describe("phoneLikePattern", () => {
+  it("puts a percent sign between every digit and at both ends", () => {
+    expect(phoneLikePattern("5551")).toBe("%5%5%5%1%");
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("escapes backslash, percent and underscore", () => {
+    expect(escapeLikePattern("50%_off\\")).toBe("50\\%\\_off\\\\");
+    expect(escapeLikePattern("Jane")).toBe("Jane");
   });
 });

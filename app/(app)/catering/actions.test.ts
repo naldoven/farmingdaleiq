@@ -29,6 +29,7 @@ const CHAIN_METHODS = [
   "is",
   "not",
   "in",
+  "ilike",
   "order",
   "limit",
   "insert",
@@ -119,7 +120,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // vi.mock(...) calls above are hoisted above this import by Vitest's transform.
-import { changeStage, moveOrderBack, rescaleOrderSetup, restoreOrder } from "./actions";
+import { changeStage, moveOrderBack, rescaleOrderSetup, restoreOrder, searchCateringOrders } from "./actions";
 
 function order(fields: Record<string, unknown>): Response {
   return {
@@ -580,5 +581,85 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
       error: "The packing list can't be built until the day before the event.",
     });
     expect(client.calls).toHaveLength(1);
+  });
+});
+
+describe("searchCateringOrders", () => {
+  const row = {
+    id: ORDER_ID,
+    guest_name: "Jane Doe",
+    event_date: "2026-08-20",
+    event_time: "11:30:00",
+    stage: "confirm",
+    headcount: 25,
+  };
+
+  beforeEach(() => {
+    requirePermissionMock.mockClear();
+  });
+
+  it("requires catering.view and maps rows without phone or email", async () => {
+    client = createFakeClient({
+      catering_orders: [{ data: [{ ...row, phone: "5551234567", email: "j@example.com" }], error: null }],
+    });
+
+    const result = await searchCateringOrders({ query: "Jane" });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.view");
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        {
+          id: ORDER_ID,
+          guestName: "Jane Doe",
+          eventDate: "2026-08-20",
+          eventTime: "11:30:00",
+          stage: "confirm",
+          headcount: 25,
+        },
+      ],
+    });
+    expect(opArgs(client, "catering_orders", "limit")).toEqual([20]);
+    expect(opArgs(client, "catering_orders", "order")).toEqual(["event_date", { ascending: false }]);
+  });
+
+  it("matches a phone query on phone with a percent pattern between digits", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "(555) 123" });
+
+    expect(opArgs(client, "catering_orders", "ilike")).toEqual(["phone", "%5%5%5%1%2%3%"]);
+  });
+
+  it("matches a text query on guest_name and escapes wildcards", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "50%_Jo" });
+
+    expect(opArgs(client, "catering_orders", "ilike")).toEqual(["guest_name", "%50\\%\\_Jo%"]);
+  });
+
+  it("matches a date query on event_date", async () => {
+    client = createFakeClient({ catering_orders: [{ data: [], error: null }] });
+
+    await searchCateringOrders({ query: "2026-08-20" });
+
+    expect(filtersOn(client, "catering_orders", "select")).toContainEqual(["event_date", "2026-08-20"]);
+    expect(opArgs(client, "catering_orders", "ilike")).toBeUndefined();
+  });
+
+  it("makes no database call for an empty query", async () => {
+    client = createFakeClient({});
+
+    expect(await searchCateringOrders({ query: " a" })).toEqual({ ok: true, data: [] });
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("returns the database error text", async () => {
+    client = createFakeClient({ catering_orders: [{ data: null, error: { message: "boom" } }] });
+
+    const result = await searchCateringOrders({ query: "Jane" });
+
+    expect(result.ok).toBe(false);
   });
 });

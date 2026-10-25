@@ -7,6 +7,7 @@ import {
   createOrderSchema,
   menuItemSchema,
   moveOrderBackSchema,
+  orderSearchSchema,
   resolveFollowUpSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
@@ -253,5 +254,19 @@ describe("menuItemSchema", () => {
       componentsText: '{"name":"Sandwich"}',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("orderSearchSchema", () => {
+  it("trims the query", () => {
+    expect(orderSearchSchema.parse({ query: "  Jane  " })).toEqual({ query: "Jane" });
+  });
+
+  it("allows an empty query (the action returns no results)", () => {
+    expect(orderSearchSchema.safeParse({ query: "   " }).success).toBe(true);
+  });
+
+  it("rejects a query over 80 characters", () => {
+    expect(orderSearchSchema.safeParse({ query: "a".repeat(81) }).success).toBe(false);
   });
 });

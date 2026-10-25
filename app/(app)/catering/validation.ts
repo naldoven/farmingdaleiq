@@ -213,3 +213,7 @@ export const toggleChecklistDefaultActiveSchema = checklistDefaultIdSchema.exten
   active: z.boolean(),
 });
 export type ToggleChecklistDefaultActiveInput = z.infer<typeof toggleChecklistDefaultActiveSchema>;
+
+/** Order search box on /catering. The 2-character floor lives in classifyOrderSearch. */
+export const orderSearchSchema = z.object({ query: z.string().trim().max(80) });
+export type OrderSearchInput = z.infer<typeof orderSearchSchema>;
