@@ -55,6 +55,12 @@ import {
   storeLocalDate,
   PACKING_LIST_NOT_BUILT_ERROR,
   packingListGateError,
+  STALE_CLOSABLE_STAGES,
+  describeBulkCloseSummary,
+  isStaleOpenOrder,
+  summarizeBulkClose,
+  BULK_CLOSE_MAX_ORDERS,
+  staleListNotice,
 } from "@/app/(app)/catering/logic";
 
 const PRE_ORDER_LABELS = planPreOrderChecklist().map((item) => item.label);
@@ -884,6 +890,63 @@ describe("revenue stage exclusion (CAT1/CAT4)", () => {
 
     const rollups = computeContactRollups(countable);
     expect(rollups.get("c1")).toMatchObject({ orderCount: 1, lifetimeSpend: 100 });
+  });
+});
+
+describe("stale order bulk close", () => {
+  it("offers every flow stage except closed, and never cancelled", () => {
+    expect(STALE_CLOSABLE_STAGES).toEqual(["new", "confirm", "setup", "out", "followup"]);
+  });
+
+  it("flags an open order whose event date is before today's store date", () => {
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-10-01" }, "2026-10-25")).toBe(true);
+    expect(isStaleOpenOrder({ stage: "followup", event_date: "2026-10-24" }, "2026-10-25")).toBe(true);
+  });
+
+  it("does not flag today's or future events, closed orders, or cancelled orders", () => {
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-10-25" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-11-02" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "closed", event_date: "2026-10-01" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "cancelled", event_date: "2026-10-01" }, "2026-10-25")).toBe(false);
+  });
+
+  it("counts each outcome, with unknown outcomes as not found", () => {
+    expect(
+      summarizeBulkClose([
+        { outcome: "closed" },
+        { outcome: "closed" },
+        { outcome: "already_closed" },
+        { outcome: "cancelled" },
+        { outcome: "not_past" },
+        { outcome: "not_found" },
+        { outcome: "something_else" },
+      ]),
+    ).toEqual({ closed: 2, alreadyClosed: 1, cancelled: 1, notPast: 1, notFound: 2 });
+  });
+
+  it("describes a clean run in one sentence and a rerun as already closed", () => {
+    expect(describeBulkCloseSummary({ closed: 12, alreadyClosed: 0, cancelled: 0, notPast: 0, notFound: 0 })).toBe(
+      "Closed 12 orders.",
+    );
+    expect(describeBulkCloseSummary({ closed: 0, alreadyClosed: 1, cancelled: 0, notPast: 0, notFound: 0 })).toBe(
+      "Closed 0 orders. 1 order was already closed.",
+    );
+    expect(describeBulkCloseSummary({ closed: 1, alreadyClosed: 0, cancelled: 2, notPast: 1, notFound: 3 })).toBe(
+      "Closed 1 order. 2 orders are cancelled and stayed that way. 1 order is not past yet and stayed open. 3 orders could not be found.",
+    );
+  });
+
+  it("loads no more orders than one bulk close accepts", () => {
+    expect(BULK_CLOSE_MAX_ORDERS).toBe(200);
+  });
+
+  it("says it is showing the oldest slice only when more are open than shown", () => {
+    expect(staleListNotice(200, 372)).toBe(
+      "Showing the oldest 200 of 372 past-event orders. The next batch appears after you close these.",
+    );
+    expect(staleListNotice(200, 200)).toBeNull();
+    expect(staleListNotice(40, 40)).toBeNull();
+    expect(staleListNotice(0, 0)).toBeNull();
   });
 });
 

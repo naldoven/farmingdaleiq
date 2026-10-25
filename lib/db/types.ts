@@ -3901,6 +3901,10 @@ export type Database = {
           preorder_rows: number
         }[]
       }
+      catering_bulk_close: {
+        Args: { p_order_ids: string[]; p_reason: string }
+        Returns: { order_id: string; outcome: string }[]
+      }
     }
     Enums: {
       [_ in never]: never

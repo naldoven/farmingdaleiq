@@ -131,6 +131,88 @@ export function stageOverrideTargetError(
 }
 
 /**
+ * Stages a stale order can still sit in. Closed is done and cancelled has its
+ * own manager path (Restore), so neither is offered on the bulk close screen.
+ * Derived from ORDER_STAGES so a stage added to the flow is covered.
+ */
+export const STALE_CLOSABLE_STAGES = ORDER_STAGES.filter(
+  (stage): stage is Exclude<FlowStage, "closed"> => stage !== "closed",
+);
+
+/**
+ * Whether an order is a past-event order still open on the pipeline: the
+ * event date is before today's store date and the stage is one a manager may
+ * bulk close. Same rule the catering_bulk_close function and the stage guard
+ * apply in the database (supabase/migrations/20261026020000_catering_bulk_close.sql).
+ */
+export function isStaleOpenOrder(
+  order: { stage: string; event_date: string },
+  today: string = getStoreLocalDate(new Date()),
+): boolean {
+  return (
+    (STALE_CLOSABLE_STAGES as readonly string[]).includes(order.stage) && order.event_date < today
+  );
+}
+
+/**
+ * Most orders one bulk close takes (bulkCloseStaleOrdersSchema rejects more),
+ * and so the most the stale-orders screen loads. Loading more than this would
+ * let "Select all" pick a batch the action refuses.
+ */
+export const BULK_CLOSE_MAX_ORDERS = 200;
+
+/**
+ * The note shown above the stale-orders list when the screen holds only the
+ * oldest slice of a longer backlog. Null when everything fits.
+ */
+export function staleListNotice(shown: number, total: number): string | null {
+  if (total <= shown) return null;
+  return `Showing the oldest ${shown} of ${total} past-event orders. The next batch appears after you close these.`;
+}
+
+/** Per-order results catering_bulk_close returns, mirrored here for the summary text. */
+export const BULK_CLOSE_OUTCOMES = ["closed", "already_closed", "cancelled", "not_past", "not_found"] as const;
+export type BulkCloseOutcome = (typeof BULK_CLOSE_OUTCOMES)[number];
+
+export interface BulkCloseSummary {
+  closed: number;
+  alreadyClosed: number;
+  cancelled: number;
+  notPast: number;
+  notFound: number;
+}
+
+/** Counts the outcomes of one bulk close. Unknown outcomes count as not found. */
+export function summarizeBulkClose(rows: readonly { outcome: string }[]): BulkCloseSummary {
+  const summary: BulkCloseSummary = { closed: 0, alreadyClosed: 0, cancelled: 0, notPast: 0, notFound: 0 };
+  for (const row of rows) {
+    if (row.outcome === "closed") summary.closed += 1;
+    else if (row.outcome === "already_closed") summary.alreadyClosed += 1;
+    else if (row.outcome === "cancelled") summary.cancelled += 1;
+    else if (row.outcome === "not_past") summary.notPast += 1;
+    else summary.notFound += 1;
+  }
+  return summary;
+}
+
+function countOrders(count: number): string {
+  return `${count} ${count === 1 ? "order" : "orders"}`;
+}
+
+/**
+ * One plain sentence per outcome the manager needs to know about. A rerun of
+ * the same batch reports "already closed" instead of looking like it failed.
+ */
+export function describeBulkCloseSummary(summary: BulkCloseSummary): string {
+  const parts: string[] = [`Closed ${countOrders(summary.closed)}.`];
+  if (summary.alreadyClosed > 0) parts.push(`${countOrders(summary.alreadyClosed)} ${summary.alreadyClosed === 1 ? "was" : "were"} already closed.`);
+  if (summary.cancelled > 0) parts.push(`${countOrders(summary.cancelled)} ${summary.cancelled === 1 ? "is" : "are"} cancelled and stayed that way.`);
+  if (summary.notPast > 0) parts.push(`${countOrders(summary.notPast)} ${summary.notPast === 1 ? "is" : "are"} not past yet and stayed open.`);
+  if (summary.notFound > 0) parts.push(`${countOrders(summary.notFound)} could not be found.`);
+  return parts.join(" ");
+}
+
+/**
  * Stages excluded from every money/analytics rollup: `new` (unconfirmed, not
  * real spend yet) and `cancelled` (CAT1 — a cancelled order must never count
  * toward revenue, lifetime spend, or analytics). One shared source of truth so

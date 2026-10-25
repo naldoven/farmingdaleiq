@@ -131,7 +131,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // vi.mock(...) calls above are hoisted above this import by Vitest's transform.
-import { changeStage, moveOrderBack, reorderChecklistDefaults, rescaleOrderSetup, restoreOrder, searchCateringOrders } from "./actions";
+import { bulkCloseStaleOrders, changeStage, moveOrderBack, reorderChecklistDefaults, rescaleOrderSetup, restoreOrder, searchCateringOrders } from "./actions";
 
 function order(fields: Record<string, unknown>): Response {
   return {
@@ -621,6 +621,93 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
       error: "The packing list can't be built until the day before the event.",
     });
     expect(client.calls).toHaveLength(1);
+  });
+});
+
+describe("bulkCloseStaleOrders (manager cleanup)", () => {
+  const OTHER_ID = "44444444-4444-4444-8444-444444444444";
+  const reason = "Event passed, never worked";
+
+  it("is refused without catering.override, before touching the database", async () => {
+    denyKey("catering.override");
+    client = createFakeClient({});
+
+    const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID], reason });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
+    expect(requirePermissionMock).toHaveBeenCalledWith("catering.override");
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("is refused for an override holder without catering.manage", async () => {
+    denyKey("catering.manage");
+    client = createFakeClient({});
+
+    const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID], reason });
+
+    expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
+    expect(requirePermissionMock.mock.calls.map(([key]) => key)).toEqual(["catering.override", "catering.manage"]);
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("is refused without a reason or without any order", async () => {
+    client = createFakeClient({});
+
+    expect(await bulkCloseStaleOrders({ orderIds: [ORDER_ID], reason: " " })).toEqual({
+      ok: false,
+      error: "Add a short reason.",
+    });
+    expect(await bulkCloseStaleOrders({ orderIds: [], reason })).toEqual({
+      ok: false,
+      error: "Pick at least one order.",
+    });
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("closes through the database function with the batch and the reason, and sums the outcomes", async () => {
+    client = createFakeClient({
+      "rpc:catering_bulk_close": [
+        {
+          data: [
+            { order_id: ORDER_ID, outcome: "closed" },
+            { order_id: OTHER_ID, outcome: "already_closed" },
+          ],
+          error: null,
+        },
+      ],
+    });
+
+    const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID, OTHER_ID], reason });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { closed: 1, alreadyClosed: 1, cancelled: 0, notPast: 0, notFound: 0 },
+    });
+    expect(client.calls).toEqual([
+      {
+        table: "rpc:catering_bulk_close",
+        ops: [["rpc", [{ p_order_ids: [ORDER_ID, OTHER_ID], p_reason: reason }]]],
+      },
+    ]);
+    // The function writes the audit rows itself; the action must not emit a
+    // second event per order (that would also reach Discord), and it never
+    // touches the orders or follow-ups tables directly.
+    expect(emitEventMock).not.toHaveBeenCalled();
+  });
+
+  it("reports the database function's refusal as the action error", async () => {
+    client = createFakeClient({
+      "rpc:catering_bulk_close": [
+        { data: null, error: { message: "Closing stale orders needs catering.override and catering.manage." } },
+      ],
+    });
+
+    const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID], reason });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Closing stale orders needs catering.override and catering.manage.",
+    });
   });
 });
 

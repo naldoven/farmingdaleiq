@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addChecklistItemSchema,
+  bulkCloseStaleOrdersSchema,
   changeStageSchema,
   checklistDefaultSchema,
   createOrderSchema,
@@ -255,6 +256,38 @@ describe("menuItemSchema", () => {
       componentsText: '{"name":"Sandwich"}',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("bulkCloseStaleOrdersSchema", () => {
+  const id = "33333333-3333-4333-8333-333333333333";
+
+  it("accepts a batch with a reason", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: "Event passed" }).success).toBe(true);
+  });
+
+  it("rejects an empty batch", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: [], reason: "Event passed" });
+    expect(result.success).toBe(false);
+  });
+
+  it("caps a batch at 200 orders", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: Array(201).fill(id), reason: "Event passed" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a full screen of exactly 200, which is all the stale page loads", () => {
+    const result = bulkCloseStaleOrdersSchema.safeParse({ orderIds: Array(200).fill(id), reason: "Event passed" });
+    expect(result.success).toBe(true);
+  });
+
+  it("needs the same short reason as the other manager overrides", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: " x " }).success).toBe(false);
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: [id], reason: "a".repeat(301) }).success).toBe(false);
+  });
+
+  it("rejects ids that are not uuids", () => {
+    expect(bulkCloseStaleOrdersSchema.safeParse({ orderIds: ["not-an-id"], reason: "Event passed" }).success).toBe(false);
   });
 });
 
