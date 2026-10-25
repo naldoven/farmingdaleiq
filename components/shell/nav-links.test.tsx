@@ -133,14 +133,17 @@ describe("NavLinks expanded", () => {
   });
 
   it("collapses a group to a link when gating leaves it one reachable page", () => {
-    render(<NavLinks allowedPermissions={["settings.manage"]} />);
+    render(<NavLinks allowedPermissions={["checklists.complete"]} />);
 
-    // Only /settings survives its group, so it renders as a direct link.
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    // Only /checklists survives its group (Templates needs
+    // checklists.manage_templates), so it renders as a direct link. Settings
+    // no longer works for this case: /settings and /settings/setup share the
+    // same key, so that group keeps two pages and stays an accordion.
+    expect(screen.getByRole("link", { name: "Checklists" })).toHaveAttribute(
       "href",
-      "/settings",
+      "/checklists",
     );
-    expect(screen.queryByRole("button", { name: /Settings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Checklists/ })).not.toBeInTheDocument();
   });
 });
 

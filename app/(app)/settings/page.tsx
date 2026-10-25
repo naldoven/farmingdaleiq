@@ -1,4 +1,5 @@
 import {
+  ClipboardCheck,
   Clock,
   Coffee,
   Coins,
@@ -14,6 +15,9 @@ import {
 import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
 import { requirePermission } from "@/lib/auth/permissions";
 import { APP_FEATURES } from "@/lib/features";
+import { createClient } from "@/lib/supabase/server";
+import { summarizeStoreSetup } from "@/lib/store-setup/areas";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 
 /**
  * /settings — Admin hub (ARCHITECTURE.md page map: "Day-parts, earning
@@ -38,10 +42,28 @@ export const metadata = { title: "Settings" };
 export default async function SettingsPage() {
   await requirePermission("settings.manage");
 
+  // The one read on this hub: how many setup areas are still default, so a
+  // manager sees the count without opening Store setup (docs/STORE-SETUP.md).
+  const supabase = await createClient();
+  const confirmed = await getConfirmedAreas(supabase);
+  const { defaultCount } = summarizeStoreSetup(confirmed.keys);
+
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
       <SectionCard flush>
         <div className="divide-y divide-line">
+          <ListRow
+            icon={ClipboardCheck}
+            iconTone="accent"
+            title="Store setup"
+            description="Every value that shipped as a default, with its editor and a confirm toggle."
+            href="/settings/setup"
+            trailing={
+              <StatusBadge tone={defaultCount === 0 ? "success" : "warning"}>
+                {defaultCount === 0 ? "Done" : `${defaultCount} to confirm`}
+              </StatusBadge>
+            }
+          />
           <ListRow
             icon={ShieldAlert}
             iconTone="danger"

@@ -2,12 +2,14 @@ import { redirect } from "next/navigation";
 import { Coins } from "lucide-react";
 
 import { SectionCard, SectionLabel } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { EarningRulesAdmin, type EarningRuleRow } from "@/components/tokens/earning-rules-admin";
 import { GiftForm } from "@/components/tokens/gift-form";
 import { TransactionHistory } from "@/components/tokens/transaction-history";
 import { AdjustTokensForm } from "@/app/(app)/tokens/adjust-tokens-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
 
 const EARNING_RULE_LABELS: Record<string, string> = {
@@ -29,6 +31,8 @@ export const metadata = { title: "Tokens" };
 
 export default async function TokensPage() {
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -115,7 +119,9 @@ export default async function TokensPage() {
 
       {canManage && (
         <section className="flex flex-col gap-3">
-          <SectionLabel>Earning rules</SectionLabel>
+          <SectionLabel action={<SetupDefaultTag area="token_rules" confirmed={setupAreas.keys} />}>
+            Earning rules
+          </SectionLabel>
           <SectionCard flush>
             <EarningRulesAdmin rules={earningRules} />
           </SectionCard>

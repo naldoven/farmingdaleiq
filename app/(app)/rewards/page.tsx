@@ -2,12 +2,14 @@ import { redirect } from "next/navigation";
 import { Coins } from "lucide-react";
 
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { ClaimsQueue, type ClaimQueueRow } from "@/components/tokens/claims-queue";
 import { RewardAdminForm } from "@/components/tokens/reward-admin-form";
 import { RewardAdminList, type RewardAdminRow } from "@/components/tokens/reward-admin-list";
 import { RewardCard, type RewardCardData } from "@/components/tokens/reward-card";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { getBalance } from "@/lib/tokens/ledger";
 
 /**
@@ -22,6 +24,8 @@ export const metadata = { title: "Rewards" };
 
 export default async function RewardsPage() {
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -150,7 +154,9 @@ export default async function RewardsPage() {
 
       {canManage && (
         <section className="flex flex-col gap-3">
-          <SectionLabel>Manage rewards</SectionLabel>
+          <SectionLabel action={<SetupDefaultTag area="rewards" confirmed={setupAreas.keys} />}>
+            Manage rewards
+          </SectionLabel>
           <SectionCard>
             <RewardAdminForm />
           </SectionCard>

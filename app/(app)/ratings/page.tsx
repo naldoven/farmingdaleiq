@@ -9,10 +9,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ListRow, SectionCard, StatusBadge } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { RateCell } from "@/components/training/rate-cell";
 import { ResolveRerateButton } from "@/components/training/resolve-rerate-button";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 import { computeAverage, rateableColumns } from "@/app/(app)/ratings/logic";
 
 /**
@@ -31,6 +33,8 @@ export default async function RatingsPage() {
   const canRate = await hasPermission("ratings.rate");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   const [
     { data: profiles },
@@ -89,9 +93,13 @@ export default async function RatingsPage() {
 
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-4">
-      <p className="text-[13px] text-muted-ink">
-        3.0+ = qualified. Blue = above store average, red = below.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[13px] text-muted-ink">
+          3.0+ = qualified. Blue = above store average, red = below.
+        </p>
+        {/* Rubrics decide quick-rate vs the 4-category form; none exist yet. */}
+        <SetupDefaultTag area="rating_rubrics" confirmed={setupAreas.keys} />
+      </div>
 
       {(rerates ?? []).length > 0 && (
         <SectionCard title="Re-rate Queue" flush>

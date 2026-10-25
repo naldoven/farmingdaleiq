@@ -1,8 +1,10 @@
 import { SectionCard, StatusBadge } from "@/components/mobile";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { CreateTierForm } from "@/components/training/create-tier-form";
 import { OrgTierCard } from "@/components/training/org-tier-card";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 
 const DEPARTMENTS = ["foh", "kitchen", "store"] as const;
 const DEPARTMENT_LABEL: Record<(typeof DEPARTMENTS)[number], string> = {
@@ -24,6 +26,8 @@ export default async function OrgChartPage() {
   const canManage = await hasPermission("training.org_chart_manage");
 
   const supabase = await createClient();
+  // Store setup tag (docs/STORE-SETUP.md): hidden once a manager confirms this area.
+  const setupAreas = await getConfirmedAreas(supabase);
 
   const [{ data: tiers }, { data: slots }, { data: people }] = await Promise.all([
     supabase.from("org_tiers").select("id, department, name, goal_count, sort").order("sort"),
@@ -39,7 +43,8 @@ export default async function OrgChartPage() {
 
   return (
     <div className="mx-auto flex max-w-[640px] flex-col gap-4">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <SetupDefaultTag area="org_chart" confirmed={setupAreas.keys} />
         <StatusBadge tone={totalVacancy > 0 ? "warning" : "success"}>{totalVacancy} total vacancies</StatusBadge>
       </div>
 

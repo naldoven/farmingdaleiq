@@ -4,11 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChannelForm } from "@/components/settings/channel-form";
 import { ChannelList } from "@/components/settings/channel-list";
 import { EventRouteTable } from "@/components/settings/event-route-table";
+import { SetupDefaultTag } from "@/components/settings/setup-default-tag";
 import { SilentEventsChecklist } from "@/components/settings/silent-events-checklist";
 import { silentEventKeys } from "@/app/(app)/settings/discord/logic";
 import { DISCORD_ROUTABLE_EVENT_KEYS } from "@/lib/discord/format";
 import { requirePermission } from "@/lib/auth/permissions";
-import { createServiceRoleClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { getConfirmedAreas } from "@/lib/store-setup/status";
 
 /**
  * /settings/discord (ARCHITECTURE.md page map: "Register channel webhooks,
@@ -25,6 +27,9 @@ export default async function DiscordSettingsPage() {
   await requirePermission("discord.manage");
 
   const admin = createServiceRoleClient();
+  // Store setup tag (docs/STORE-SETUP.md) reads through the normal client so
+  // RLS, not the service role, answers it.
+  const setupAreas = await getConfirmedAreas(await createClient());
 
   const [{ data: channels }, { data: routes }] = await Promise.all([
     admin
@@ -42,7 +47,10 @@ export default async function DiscordSettingsPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Discord</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold">Discord</h1>
+          <SetupDefaultTag area="discord" confirmed={setupAreas.keys} />
+        </div>
         <Link href="/settings" className="text-sm text-muted-foreground hover:underline">
           &larr; Settings
         </Link>
