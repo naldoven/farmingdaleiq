@@ -68,7 +68,7 @@ export default async function SetupsPage({
   const { data: assignments } = setup
     ? await supabase
         .from("setup_assignments")
-        .select("id, position_id, user_id, arrival_time")
+        .select("id, position_id, user_id, arrival_time, scheduled_end")
         .eq("setup_id", setup.id)
     : { data: [] };
 

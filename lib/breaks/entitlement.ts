@@ -6,6 +6,8 @@
  * fetch rows and pass plain data in.
  */
 
+import { storeLocalDate } from "@/lib/time";
+
 export type AgeBand = "adult" | "minor";
 
 export interface BreakRule {
@@ -28,18 +30,66 @@ export type BreakStatus =
   | "overdue"
   | "missed";
 
-/** Minors are anyone under 18; a missing birthdate defaults to adult (can't assume minor without data). */
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+function dateParts(value: string): [number, number, number] | null {
+  const match = DATE_ONLY_RE.exec(value);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/**
+ * Minors are anyone under 18; a missing birthdate defaults to adult (can't
+ * assume minor without data). Age is computed on the store's calendar day
+ * (lib/time storeLocalDate), not the server's: Vercel runs in UTC, so between
+ * 8pm and midnight New York time the server's "today" is already tomorrow,
+ * and someone's 18th birthday would be recognized a day early.
+ */
 export function ageBandFromBirthdate(birthdate: string | null, now: Date): AgeBand {
   if (!birthdate) return "adult";
-  const dob = new Date(birthdate);
-  if (Number.isNaN(dob.getTime())) return "adult";
+  const dob = dateParts(birthdate);
+  const today = dateParts(storeLocalDate(now));
+  if (!dob || !today) return "adult";
 
-  let age = now.getFullYear() - dob.getFullYear();
-  const monthDiff = now.getMonth() - dob.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+  const [dobYear, dobMonth, dobDay] = dob;
+  const [year, month, day] = today;
+  let age = year - dobYear;
+  if (month < dobMonth || (month === dobMonth && day < dobDay)) {
     age -= 1;
   }
   return age < 18 ? "minor" : "adult";
+}
+
+export interface ShiftWindow {
+  /** When the person actually arrives (setup_assignments.arrival_time). */
+  arrival: Date | null;
+  /** When the person is scheduled to leave (setup_assignments.scheduled_end). */
+  scheduledEnd: Date | null;
+  /** The setup's day-part window, used only as the fallback. */
+  dayPartStart: Date | null;
+  dayPartEnd: Date | null;
+}
+
+/**
+ * Length of the shift the break rule is measured against, in minutes.
+ *
+ * The confirmed Farmingdale rule is about the SCHEDULED shift ("scheduled 6
+ * hours earns one 30-minute break"), so the preferred measure is arrival ->
+ * scheduled_end. Before scheduled_end existed the engine measured arrival ->
+ * day-part end, and every seeded day-part is under five hours, so no adult
+ * ever qualified. The day-part end stays as the fallback for an assignment
+ * with no scheduled end recorded, which keeps old rows and the e2e fixture
+ * behaving exactly as before. A scheduled end at or before the start is
+ * treated as missing rather than producing a negative shift.
+ */
+export function computeShiftMinutes(window: ShiftWindow): number {
+  const start = window.arrival ?? window.dayPartStart;
+  if (!start) return 0;
+  const scheduledEnd =
+    window.scheduledEnd && window.scheduledEnd.getTime() > start.getTime() ? window.scheduledEnd : null;
+  const end = scheduledEnd ?? window.dayPartEnd;
+  if (!end) return 0;
+  return Math.max(0, (end.getTime() - start.getTime()) / 60_000);
 }
 
 /**
@@ -151,6 +201,33 @@ export function isOverdue(
 export function isMissed(breakRow: BreakRow, shiftEnd: Date, now: Date): boolean {
   if (!["pending", "authorized", "overdue"].includes(breakRow.status)) return false;
   return now.getTime() >= shiftEnd.getTime();
+}
+
+/**
+ * The instant after which an open break is swept to 'missed' (final).
+ *
+ * Not the day-part end on its own: a break becomes due at arrival plus the
+ * rule's min_shift_minutes (360 for the live Farmingdale rule) and every
+ * seeded day-part is five hours or less. An adult working 06:00 to 14:00 on
+ * the Morning setup (06:00 to 11:00) is due at 12:00, so sweeping at 11:00
+ * would mark the break missed an hour before the person can even take it.
+ * The cutoff is therefore the LATEST of the day-part end, the person's
+ * scheduled end, and the break's own due time. Returns null when there is no
+ * day-part end to anchor on (an "any day-part" setup is left alone).
+ */
+export function computeMissedCutoff(input: {
+  dayPartEnd: Date | null;
+  scheduledEnd: Date | null;
+  dueAt: Date | null;
+}): Date | null {
+  if (!input.dayPartEnd || Number.isNaN(input.dayPartEnd.getTime())) return null;
+  let cutoff = input.dayPartEnd.getTime();
+  for (const candidate of [input.scheduledEnd, input.dueAt]) {
+    if (candidate && !Number.isNaN(candidate.getTime()) && candidate.getTime() > cutoff) {
+      cutoff = candidate.getTime();
+    }
+  }
+  return new Date(cutoff);
 }
 
 /**

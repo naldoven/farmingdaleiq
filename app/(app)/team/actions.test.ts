@@ -42,6 +42,7 @@ function createFakeClient(
       builder.eq = chain;
       builder.order = chain;
       builder.limit = chain;
+      builder.gte = chain;
       builder.insert = chain;
       builder.update = chain;
       builder.delete = chain;
@@ -97,7 +98,7 @@ vi.mock("@/lib/supabase/server", () => ({
 // transform, so actions.ts picks up the mocked modules. awardTokens itself is
 // deliberately NOT mocked -- the real ledger code runs against whichever fake
 // client createRecognition hands it, which is exactly what these tests assert.
-import { createRecognition } from "./actions";
+import { createBroadcast, createRecognition } from "./actions";
 
 beforeEach(() => {
   requirePermissionMock.mockClear();
@@ -105,6 +106,59 @@ beforeEach(() => {
   emitEventMock.mockClear();
   perRequestTableCalls.length = 0;
   serviceRoleTableCalls.length = 0;
+});
+
+describe("createBroadcast", () => {
+  it("returns the existing post for a repeated submit inside the dedupe window, without re-emitting", async () => {
+    perRequestClient = createFakeClient(
+      { feed_posts: [{ data: { id: "existing-post" }, error: null }] },
+      (t) => perRequestTableCalls.push(t),
+      AUTHOR_ID,
+    );
+
+    const result = await createBroadcast({ body: "Store closes early Friday." });
+
+    expect(result).toEqual({ ok: true, data: { postId: "existing-post" } });
+    expect(perRequestTableCalls).toEqual(["feed_posts"]);
+    expect(emitEventMock).not.toHaveBeenCalled();
+    expect(requirePermissionMock).toHaveBeenCalledWith("feed.post_broadcast");
+  });
+
+  it("inserts a new broadcast and emits one store-wide broadcast event", async () => {
+    perRequestClient = createFakeClient(
+      {
+        feed_posts: [
+          { data: null, error: null },
+          { data: { id: "new-broadcast" }, error: null },
+        ],
+      },
+      (t) => perRequestTableCalls.push(t),
+      AUTHOR_ID,
+    );
+
+    const result = await createBroadcast({ body: "Store closes early Friday." });
+
+    expect(result).toEqual({ ok: true, data: { postId: "new-broadcast" } });
+    expect(emitEventMock).toHaveBeenCalledTimes(1);
+    expect(emitEventMock).toHaveBeenCalledWith("broadcast", {
+      post_id: "new-broadcast",
+      author_id: AUTHOR_ID,
+      body: "Store closes early Friday.",
+    });
+  });
+
+  it("refuses without feed.post_broadcast before touching the database", async () => {
+    requirePermissionMock.mockImplementation(async () => {
+      throw new Error("Missing permission: feed.post_broadcast");
+    });
+    perRequestClient = createFakeClient({}, (t) => perRequestTableCalls.push(t), AUTHOR_ID);
+
+    const result = await createBroadcast({ body: "Hello" });
+
+    expect(result.ok).toBe(false);
+    expect(perRequestTableCalls).toHaveLength(0);
+    expect(emitEventMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("createRecognition", () => {

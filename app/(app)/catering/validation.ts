@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  BULK_CLOSE_MAX_ORDERS,
   CHECKLIST_STAGES,
   FULFILLMENT_METHODS,
   HISTORY_PERIODS,
@@ -117,6 +118,19 @@ export const restoreOrderSchema = z.object({
 });
 export type RestoreOrderInput = z.infer<typeof restoreOrderSchema>;
 
+// Bulk close of stale orders (manager override). The reason is shared by the
+// whole batch and lands on every order's audit event. The cap (200) bounds one
+// database call at a month or two of neglect; the screen can be used twice.
+// The stale-orders page loads the same number, so "Select all" always fits.
+export const bulkCloseStaleOrdersSchema = z.object({
+  orderIds: z
+    .array(z.string().uuid())
+    .min(1, "Pick at least one order.")
+    .max(BULK_CLOSE_MAX_ORDERS, `Close at most ${BULK_CLOSE_MAX_ORDERS} orders at a time.`),
+  reason: overrideReasonSchema,
+});
+export type BulkCloseStaleOrdersInput = z.infer<typeof bulkCloseStaleOrdersSchema>;
+
 export const addOrderItemSchema = z.object({
   orderId: z.string().uuid(),
   menuItemId: z.string().uuid(),
@@ -213,3 +227,13 @@ export const toggleChecklistDefaultActiveSchema = checklistDefaultIdSchema.exten
   active: z.boolean(),
 });
 export type ToggleChecklistDefaultActiveInput = z.infer<typeof toggleChecklistDefaultActiveSchema>;
+
+/** Order search box on /catering. The 2-character floor lives in classifyOrderSearch. */
+export const orderSearchSchema = z.object({ query: z.string().trim().max(80) });
+export type OrderSearchInput = z.infer<typeof orderSearchSchema>;
+
+export const reorderChecklistDefaultsSchema = z.object({
+  stage: z.enum(CHECKLIST_STAGES),
+  orderedIds: z.array(z.string().uuid()).min(1).max(200),
+});
+export type ReorderChecklistDefaultsInput = z.infer<typeof reorderChecklistDefaultsSchema>;

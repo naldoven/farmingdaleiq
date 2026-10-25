@@ -289,7 +289,15 @@ export async function processAppEvents(
         }
       }
 
-      await processDiscordForEvent(client, key, evt, payload, recipients, result);
+      // A store-wide event is addressed to everyone, so there is no single
+      // person to @mention. `recipients` was just widened to every active
+      // employee above, and the Discord step pings the FIRST recipient, which
+      // for a broadcast would be an arbitrary staff member tagged on an
+      // announcement meant for the whole #team channel. Hand the Discord step
+      // no recipients for these keys (it then also skips the two profile
+      // lookups). Notifications and push above already used the full list.
+      const discordRecipients = BROADCAST_ALL_KEYS.has(key) ? [] : recipients;
+      await processDiscordForEvent(client, key, evt, payload, discordRecipients, result);
     } catch (eventError) {
       // Per-event isolation: any unexpected failure on one event is logged and
       // skipped (dead-lettered) so a single bad row can never wedge the batch.

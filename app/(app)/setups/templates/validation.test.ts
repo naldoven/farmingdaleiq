@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { GRID_COLUMNS, GRID_ROWS } from "@/lib/setups/layout-grid";
+
 import {
+  SEED_DEFAULT_LAYOUT_TILES,
+  SEED_DEFAULT_POSITION_GROUPS,
   addTemplatePositionSchema,
+  buildDefaultLayoutTiles,
   createPositionGroupSchema,
   createPositionSchema,
   createSetupTemplateSchema,
@@ -90,6 +95,57 @@ describe("hasSeedPositionGroups", () => {
 
   it("is true once any seed group name is present", () => {
     expect(hasSeedPositionGroups(["FOH", "Kitchen"])).toBe(true);
+  });
+});
+
+describe("SEED_DEFAULT_LAYOUT_TILES", () => {
+  it("places every seeded setup position exactly once, inside the canvas, with no overlaps", () => {
+    const seededPositions = SEED_DEFAULT_POSITION_GROUPS.flatMap((g) => g.positions);
+    expect([...SEED_DEFAULT_LAYOUT_TILES.map((t) => t.position)].sort()).toEqual([...seededPositions].sort());
+
+    const occupied = new Set<string>();
+    for (const tile of SEED_DEFAULT_LAYOUT_TILES) {
+      expect(tile.x + tile.w, tile.position).toBeLessThanOrEqual(GRID_COLUMNS);
+      expect(tile.y + tile.h, tile.position).toBeLessThanOrEqual(GRID_ROWS);
+      for (let dx = 0; dx < tile.w; dx += 1) {
+        for (let dy = 0; dy < tile.h; dy += 1) {
+          const cell = `${tile.x + dx},${tile.y + dy}`;
+          expect(occupied.has(cell), `${tile.position} overlaps at ${cell}`).toBe(false);
+          occupied.add(cell);
+        }
+      }
+    }
+  });
+});
+
+describe("buildDefaultLayoutTiles", () => {
+  it("resolves seed tiles to position ids and skips positions the store no longer has", () => {
+    const tiles = buildDefaultLayoutTiles(
+      [
+        { id: "p-reg1", name: "Register 1" },
+        { id: "p-dishes", name: "Dishes" },
+      ],
+      [
+        { position: "Register 1", x: 0, y: 0, w: 2, h: 1 },
+        { position: "Sauces", x: 8, y: 5, w: 2, h: 1 },
+        { position: "Dishes", x: 0, y: 7, w: 2, h: 1 },
+      ],
+    );
+    expect(tiles).toEqual([
+      { position_id: "p-reg1", x: 0, y: 0, w: 2, h: 1 },
+      { position_id: "p-dishes", x: 0, y: 7, w: 2, h: 1 },
+    ]);
+  });
+
+  it("prefers the first position when two share a name (setup position before a roadmap station)", () => {
+    const tiles = buildDefaultLayoutTiles(
+      [
+        { id: "setup-reg1", name: "Register 1" },
+        { id: "roadmap-reg1", name: "Register 1" },
+      ],
+      [{ position: "Register 1", x: 0, y: 0, w: 2, h: 1 }],
+    );
+    expect(tiles.map((t) => t.position_id)).toEqual(["setup-reg1"]);
   });
 });
 
