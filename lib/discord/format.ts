@@ -30,6 +30,7 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Catering
   "catering_order_new",
   "catering_stage_change",
+  "catering_tomorrow_digest",
 ]);
 
 /**
@@ -59,6 +60,7 @@ const EMOJI: Partial<Record<EventKey, string>> = {
   reward_claim: "🎁",
   catering_order_new: "🍽️",
   catering_stage_change: "🍽️",
+  catering_tomorrow_digest: "🍽️",
   infraction_issued: "⚠️",
   disciplinary_triggered: "⚠️",
 };
@@ -79,6 +81,7 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   reward_claim: "Reward claim submitted",
   catering_order_new: "New catering order",
   catering_stage_change: "Catering order stage change",
+  catering_tomorrow_digest: "Tomorrow's catering",
 };
 
 /**

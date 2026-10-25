@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { buildDiscordMessage } from "@/lib/discord/format";
+
 import {
   computeAnalytics,
   buildPhysicalOrderSetup,
   canBuildCateringSetup,
   canCronMoveToSetup,
+  classifyOrderSearch,
+  escapeLikePattern,
+  phoneLikePattern,
   cancelledOnLabel,
   cancelledOrderDetails,
   cateringStageAdvanceError,
@@ -20,6 +25,8 @@ import {
   formatScaledLabel,
   formatStageChangeMessage,
   formatStageOverrideMessage,
+  formatTomorrowDigest,
+  DIGEST_MAX_CHARS,
   isCateringFollowUpDue,
   isCateringSetupDay,
   isCateringSetupDue,
@@ -30,6 +37,7 @@ import {
   isSetupBuildStage,
   isStageTouchedInSetupWindow,
   isoWeekKey,
+  moveIdWithin,
   normalizePhone,
   parseComponents,
   parseOrderItemsFromNotes,
@@ -47,6 +55,12 @@ import {
   storeLocalDate,
   PACKING_LIST_NOT_BUILT_ERROR,
   packingListGateError,
+  STALE_CLOSABLE_STAGES,
+  describeBulkCloseSummary,
+  isStaleOpenOrder,
+  summarizeBulkClose,
+  BULK_CLOSE_MAX_ORDERS,
+  staleListNotice,
 } from "@/app/(app)/catering/logic";
 
 const PRE_ORDER_LABELS = planPreOrderChecklist().map((item) => item.label);
@@ -879,6 +893,144 @@ describe("revenue stage exclusion (CAT1/CAT4)", () => {
   });
 });
 
+describe("stale order bulk close", () => {
+  it("offers every flow stage except closed, and never cancelled", () => {
+    expect(STALE_CLOSABLE_STAGES).toEqual(["new", "confirm", "setup", "out", "followup"]);
+  });
+
+  it("flags an open order whose event date is before today's store date", () => {
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-10-01" }, "2026-10-25")).toBe(true);
+    expect(isStaleOpenOrder({ stage: "followup", event_date: "2026-10-24" }, "2026-10-25")).toBe(true);
+  });
+
+  it("does not flag today's or future events, closed orders, or cancelled orders", () => {
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-10-25" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "new", event_date: "2026-11-02" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "closed", event_date: "2026-10-01" }, "2026-10-25")).toBe(false);
+    expect(isStaleOpenOrder({ stage: "cancelled", event_date: "2026-10-01" }, "2026-10-25")).toBe(false);
+  });
+
+  it("counts each outcome, with unknown outcomes as not found", () => {
+    expect(
+      summarizeBulkClose([
+        { outcome: "closed" },
+        { outcome: "closed" },
+        { outcome: "already_closed" },
+        { outcome: "cancelled" },
+        { outcome: "not_past" },
+        { outcome: "not_found" },
+        { outcome: "something_else" },
+      ]),
+    ).toEqual({ closed: 2, alreadyClosed: 1, cancelled: 1, notPast: 1, notFound: 2 });
+  });
+
+  it("describes a clean run in one sentence and a rerun as already closed", () => {
+    expect(describeBulkCloseSummary({ closed: 12, alreadyClosed: 0, cancelled: 0, notPast: 0, notFound: 0 })).toBe(
+      "Closed 12 orders.",
+    );
+    expect(describeBulkCloseSummary({ closed: 0, alreadyClosed: 1, cancelled: 0, notPast: 0, notFound: 0 })).toBe(
+      "Closed 0 orders. 1 order was already closed.",
+    );
+    expect(describeBulkCloseSummary({ closed: 1, alreadyClosed: 0, cancelled: 2, notPast: 1, notFound: 3 })).toBe(
+      "Closed 1 order. 2 orders are cancelled and stayed that way. 1 order is not past yet and stayed open. 3 orders could not be found.",
+    );
+  });
+
+  it("loads no more orders than one bulk close accepts", () => {
+    expect(BULK_CLOSE_MAX_ORDERS).toBe(200);
+  });
+
+  it("says it is showing the oldest slice only when more are open than shown", () => {
+    expect(staleListNotice(200, 372)).toBe(
+      "Showing the oldest 200 of 372 past-event orders. The next batch appears after you close these.",
+    );
+    expect(staleListNotice(200, 200)).toBeNull();
+    expect(staleListNotice(40, 40)).toBeNull();
+    expect(staleListNotice(0, 0)).toBeNull();
+  });
+});
+
+describe("classifyOrderSearch", () => {
+  // 2026-10-25 noon UTC, still Oct 25 in New York.
+  const now = new Date("2026-10-25T16:00:00Z");
+
+  it("returns empty under 2 characters", () => {
+    expect(classifyOrderSearch("", now)).toEqual({ kind: "empty" });
+    expect(classifyOrderSearch(" a ", now)).toEqual({ kind: "empty" });
+  });
+
+  it("reads ISO, M/D, M/D/YY and M/D/YYYY as dates", () => {
+    expect(classifyOrderSearch("2026-11-05", now)).toEqual({ kind: "date", isoDate: "2026-11-05" });
+    expect(classifyOrderSearch("11/5", now)).toEqual({ kind: "date", isoDate: "2026-11-05" });
+    expect(classifyOrderSearch("11/5/27", now)).toEqual({ kind: "date", isoDate: "2027-11-05" });
+    expect(classifyOrderSearch("1/15/2025", now)).toEqual({ kind: "date", isoDate: "2025-01-15" });
+  });
+
+  it("uses the store year, not the UTC year, for M/D", () => {
+    const newYearsEveNight = new Date("2027-01-01T03:00:00Z"); // still Dec 31 in New York
+    expect(classifyOrderSearch("12/31", newYearsEveNight)).toEqual({ kind: "date", isoDate: "2026-12-31" });
+  });
+
+  it("falls through to text for dates that are not on the calendar", () => {
+    expect(classifyOrderSearch("2/30", now)).toEqual({ kind: "text", text: "2/30" });
+    expect(classifyOrderSearch("13/1", now)).toEqual({ kind: "text", text: "13/1" });
+  });
+
+  it("reads 4 or more digits with no letters as a phone", () => {
+    expect(classifyOrderSearch("(555) 123-4567", now)).toEqual({ kind: "phone", digits: "5551234567" });
+    expect(classifyOrderSearch("4567", now)).toEqual({ kind: "phone", digits: "4567" });
+  });
+
+  it("treats short digit strings and anything with letters as text", () => {
+    expect(classifyOrderSearch("123", now)).toEqual({ kind: "text", text: "123" });
+    expect(classifyOrderSearch("Room 4567", now)).toEqual({ kind: "text", text: "Room 4567" });
+    expect(classifyOrderSearch("  Jane Doe ", now)).toEqual({ kind: "text", text: "Jane Doe" });
+  });
+});
+
+describe("phoneLikePattern", () => {
+  it("puts a percent sign between every digit and at both ends", () => {
+    expect(phoneLikePattern("5551")).toBe("%5%5%5%1%");
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("escapes backslash, percent and underscore", () => {
+    expect(escapeLikePattern("50%_off\\")).toBe("50\\%\\_off\\\\");
+    expect(escapeLikePattern("Jane")).toBe("Jane");
+  });
+});
+
+describe("moveIdWithin", () => {
+  const ids = ["a", "b", "c"];
+
+  it("moves an id up one place", () => {
+    expect(moveIdWithin(ids, "b", "up")).toEqual(["b", "a", "c"]);
+  });
+
+  it("moves an id down one place", () => {
+    expect(moveIdWithin(ids, "b", "down")).toEqual(["a", "c", "b"]);
+  });
+
+  it("leaves the order alone at the edges", () => {
+    expect(moveIdWithin(ids, "a", "up")).toEqual(ids);
+    expect(moveIdWithin(ids, "c", "down")).toEqual(ids);
+  });
+
+  it("leaves the order alone when the id is absent", () => {
+    expect(moveIdWithin(ids, "z", "up")).toEqual(ids);
+    expect(moveIdWithin(ids, "z", "down")).toEqual(ids);
+  });
+
+  it("never mutates the input", () => {
+    const input = Object.freeze(["a", "b", "c"]);
+    const out = moveIdWithin(input, "a", "down");
+    expect(out).toEqual(["b", "a", "c"]);
+    expect(input).toEqual(["a", "b", "c"]);
+    expect(out).not.toBe(input);
+  });
+});
+
 describe("cancelled orders list", () => {
   it("cancelledOrderDetails joins the event date, fulfillment and headcount", () => {
     expect(
@@ -907,5 +1059,144 @@ describe("cancelled orders list", () => {
   it("cancelledOnLabel says so when the cancel time was never stamped", () => {
     expect(cancelledOnLabel(null)).toBe("Cancel time not recorded");
     expect(cancelledOnLabel("not a date")).toBe("Cancel time not recorded");
+  });
+});
+
+describe("formatTomorrowDigest", () => {
+  const order = (fields: Partial<Parameters<typeof formatTomorrowDigest>[0]["orders"][number]> = {}) => ({
+    guestName: "Pat Lee",
+    eventTime: "11:30:00",
+    headcount: 25,
+    fulfillment: "delivery",
+    stage: "setup",
+    callDone: true,
+    ...fields,
+  });
+
+  it("says so when there are no orders", () => {
+    expect(formatTomorrowDigest({ tomorrow: "2026-10-26", orders: [] })).toBe(
+      "Mon, Oct 26: no catering orders.",
+    );
+  });
+
+  it("uses the singular and says all calls are done", () => {
+    expect(formatTomorrowDigest({ tomorrow: "2026-10-26", orders: [order()] })).toBe(
+      "Mon, Oct 26: 1 order, all confirmation calls done\n• 11:30 AM · Pat Lee · 25 guests · delivery",
+    );
+  });
+
+  it("counts open calls with correct plurals and flags each one", () => {
+    const one = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order(), order({ guestName: "Sam Roe", callDone: false })],
+    });
+    expect(one.split("\n")[0]).toBe("Mon, Oct 26: 2 orders, 1 still needs a confirmation call");
+    expect(one).toContain("Sam Roe · 25 guests · delivery · CALL NOT DONE");
+    expect(one).not.toContain("Pat Lee · 25 guests · delivery · CALL NOT DONE");
+
+    const two = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order({ callDone: false }), order({ guestName: "Sam Roe", callDone: false })],
+    });
+    expect(two.split("\n")[0]).toBe("Mon, Oct 26: 2 orders, 2 still need a confirmation call");
+  });
+
+  it("sorts by event time with missing times last, then by guest name", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [
+        order({ guestName: "Zed", eventTime: null }),
+        order({ guestName: "Bea", eventTime: "13:00:00" }),
+        order({ guestName: "Amy", eventTime: null }),
+        order({ guestName: "Cal", eventTime: "09:05:00" }),
+      ],
+    });
+    const lines = text.split("\n").slice(1);
+    expect(lines[0]).toContain("9:05 AM · Cal");
+    expect(lines[1]).toContain("1:00 PM · Bea");
+    expect(lines[2]).toContain("Time TBD · Amy");
+    expect(lines[3]).toContain("Time TBD · Zed");
+  });
+
+  it("leaves out missing headcount and fulfillment, and renders noon and midnight", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [
+        order({ guestName: "Noon", eventTime: "12:00:00", headcount: null, fulfillment: null }),
+        order({ guestName: "Late", eventTime: "00:15:00", headcount: 1 }),
+      ],
+    });
+    const lines = text.split("\n").slice(1);
+    expect(lines[0]).toBe("• 12:15 AM · Late · 1 guest · delivery");
+    expect(lines[1]).toBe("• 12:00 PM · Noon");
+  });
+
+  it("caps the list at 20 orders and counts the rest", () => {
+    const orders = Array.from({ length: 23 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")}`, eventTime: "10:00:00" }),
+    );
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    expect(lines[0]).toContain("23 orders");
+    expect(lines).toHaveLength(1 + 20 + 1);
+    expect(lines[lines.length - 1]).toBe("+3 more on the board");
+  });
+
+  it("cuts order lines to stay under the Discord limit when guest names run long", () => {
+    // 20 lines of ~170 characters is far past 1900, so some must go.
+    const longName = (i: number) => `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim();
+    const orders = Array.from({ length: 20 }, (_, i) =>
+      order({ guestName: longName(i), eventTime: "10:00:00", callDone: i % 2 === 0 }),
+    );
+    const text = formatTomorrowDigest({ tomorrow: "2026-10-26", orders });
+    const lines = text.split("\n");
+
+    expect(text.length).toBeLessThanOrEqual(DIGEST_MAX_CHARS);
+    expect(DIGEST_MAX_CHARS).toBe(1900);
+    // The header still counts every order, even the ones left off.
+    expect(lines[0]).toContain("20 orders");
+    expect(lines[0]).toContain("10 still need a confirmation call");
+    // Kept lines come first in sort order, and the last line says how many went.
+    const orderLines = lines.slice(1, -1);
+    expect(orderLines.length).toBeGreaterThan(0);
+    expect(orderLines.length).toBeLessThan(20);
+    expect(orderLines[0]).toContain("Guest 00");
+    expect(lines[lines.length - 1]).toBe(`+${20 - orderLines.length} more on the board`);
+  });
+
+  it("counts both the 20-line cap and the length cut in one overflow line", () => {
+    const orders = Array.from({ length: 30 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim(), eventTime: "10:00:00" }),
+    );
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    const orderLines = lines.slice(1, -1);
+    expect(lines[0]).toContain("30 orders");
+    expect(lines[lines.length - 1]).toBe(`+${30 - orderLines.length} more on the board`);
+    expect(lines.filter((line) => line.startsWith("+"))).toHaveLength(1);
+  });
+
+  it("still fits inside a Discord message once the title and emoji are added", () => {
+    const orders = Array.from({ length: 20 }, (_, i) =>
+      order({ guestName: `Guest ${String(i).padStart(2, "0")} ${"Longname ".repeat(16)}`.trim(), eventTime: "10:00:00" }),
+    );
+    const message = formatTomorrowDigest({ tomorrow: "2026-10-26", orders });
+    const posted = buildDiscordMessage("catering_tomorrow_digest", { title: "Tomorrow's catering", message });
+    expect(posted.content.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("leaves a digest that already fits untouched", () => {
+    const orders = Array.from({ length: 5 }, (_, i) => order({ guestName: `Guest ${i}`, eventTime: "10:00:00" }));
+    const lines = formatTomorrowDigest({ tomorrow: "2026-10-26", orders }).split("\n");
+    expect(lines).toHaveLength(1 + 5);
+    expect(lines.some((line) => line.startsWith("+"))).toBe(false);
+  });
+
+  it("neutralizes mentions in guest names and never uses an em dash", () => {
+    const text = formatTomorrowDigest({
+      tomorrow: "2026-10-26",
+      orders: [order({ guestName: "@everyone Lee", callDone: false })],
+    });
+    expect(text).not.toContain("@everyone");
+    expect(text).toContain("@\u200beveryone");
+    expect(text).not.toContain("\u2014");
   });
 });

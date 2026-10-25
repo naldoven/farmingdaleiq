@@ -20,6 +20,8 @@ import type { Json } from "@/lib/db/types";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { addStoreCalendarDays, storeLocalDate } from "@/lib/time";
 
+import { queueTomorrowDigest } from "./digest";
+
 /**
  * Builds physical setups on the Farmingdale calendar day before the event
  * (and on the event day when the list is still missing, for same-day orders
@@ -271,10 +273,14 @@ async function run(request: NextRequest) {
     }
   }
 
+  const digest = await queueTomorrowDigest(supabase, now);
+  if (digest.status === "error") errors.push(`digest: ${digest.error}`);
+
   return NextResponse.json({
     ok: errors.length === 0,
     scanned: activeHandoffs?.length ?? 0,
     advanced,
+    digest: digest.status,
     errors,
   });
 }

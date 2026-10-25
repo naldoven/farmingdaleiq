@@ -54,6 +54,8 @@ export const EVENT_KEYS = [
   // Catering
   "catering_order_new",
   "catering_stage_change",
+  // Nightly list of tomorrow's orders and open confirmation calls. Discord only, so it is not in NOTIFIABLE_EVENT_KEYS.
+  "catering_tomorrow_digest",
 
   // Waste
   //
