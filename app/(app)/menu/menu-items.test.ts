@@ -43,7 +43,11 @@ describe("visibleActions", () => {
       "accountability.issue": true,
       "feed.post_broadcast": true,
     });
-    expect(result.map((a) => a.key)).toEqual(["recognition", "infraction"]);
+    expect(result.map((a) => a.key)).toEqual(["recognition", "infraction", "broadcast"]);
+  });
+
+  it("sends Broadcast to the feed page, where the form lives", () => {
+    expect(SEND_ACTIONS.find((a) => a.key === "broadcast")?.href).toBe("/team/feed");
   });
 });
 
@@ -122,10 +126,6 @@ describe("menu data", () => {
       "reporting",
       "notifications",
     ]);
-  });
-
-  it("does not expose dormant features", () => {
-    expect(SEND_ACTIONS.map((item) => item.key)).not.toContain("broadcast");
   });
 
   it("files every module under a known section", () => {
