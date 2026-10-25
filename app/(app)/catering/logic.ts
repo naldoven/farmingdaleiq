@@ -1,5 +1,6 @@
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
 import {
+  STORE_TIME_ZONE,
   addStoreCalendarDays,
   formatStoreDate,
   formatStoreDateTime,
@@ -1195,6 +1196,103 @@ export function formatStageChangeMessage(input: {
   return `${neutralizeDiscordMentions(input.guestName)} — ${input.eventDate}: ${ORDER_STAGE_LABELS[input.fromStage]} → ${ORDER_STAGE_LABELS[input.toStage]}`;
 }
 
+const DIGEST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: STORE_TIME_ZONE,
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
+
+/** Max order lines in the nightly digest, so one busy night stays readable in Discord. */
+export const DIGEST_MAX_ORDER_LINES = 20;
+
+/**
+ * Max length of the digest text. Discord's hard limit is 2000 characters for a
+ * whole message, and buildDiscordMessage adds an emoji and the title around
+ * this text, so 1900 leaves room for that wrapper.
+ */
+export const DIGEST_MAX_CHARS = 1900;
+
+/** "14:30:00" -> "2:30 PM". Null for a missing or malformed stored time. */
+function formatDigestClock(eventTime: string | null): string | null {
+  const match = /^(\d{2}):(\d{2})/.exec((eventTime ?? "").slice(0, 5));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  if (hour > 23 || Number(match[2]) > 59) return null;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${match[2]} ${suffix}`;
+}
+
+/**
+ * Discord body for the nightly "tomorrow's catering" digest. Lists each order
+ * with its time, guest, headcount and fulfillment, and flags the ones whose
+ * Confirmation Call is not done so a leader can chase them that evening.
+ * Deliberately carries no phone number or email: the channel is not the place
+ * for guest contact details. `tomorrow` is a store-local YYYY-MM-DD. The text
+ * never exceeds DIGEST_MAX_CHARS: lines are cut from the end and one
+ * "+N more" line says how many were left off.
+ */
+export function formatTomorrowDigest(input: {
+  tomorrow: string;
+  orders: Array<{
+    guestName: string;
+    eventTime: string | null;
+    headcount: number | null;
+    fulfillment: string | null;
+    stage: string;
+    callDone: boolean;
+  }>;
+}): string {
+  // Date-only values are anchored at noon UTC so the store zone never shifts the day.
+  const anchor = new Date(`${input.tomorrow}T12:00:00.000Z`);
+  const date = Number.isNaN(anchor.getTime()) ? input.tomorrow : DIGEST_DATE_FORMATTER.format(anchor);
+  if (input.orders.length === 0) return `${date}: no catering orders.`;
+
+  const sorted = [...input.orders].sort((a, b) => {
+    const aTime = formatDigestClock(a.eventTime) ? (a.eventTime as string).slice(0, 5) : null;
+    const bTime = formatDigestClock(b.eventTime) ? (b.eventTime as string).slice(0, 5) : null;
+    if (aTime !== bTime) {
+      if (aTime === null) return 1;
+      if (bTime === null) return -1;
+      return aTime < bTime ? -1 : 1;
+    }
+    return a.guestName.localeCompare(b.guestName);
+  });
+
+  const outstanding = sorted.filter((order) => !order.callDone).length;
+  const count = sorted.length;
+  const calls =
+    outstanding === 0
+      ? "all confirmation calls done"
+      : `${outstanding} still ${outstanding === 1 ? "needs" : "need"} a confirmation call`;
+  const header = `${date}: ${count} ${count === 1 ? "order" : "orders"}, ${calls}`;
+
+  const orderLines = sorted.slice(0, DIGEST_MAX_ORDER_LINES).map((order) => {
+    const parts = [
+      formatDigestClock(order.eventTime) ?? "Time TBD",
+      neutralizeDiscordMentions(order.guestName),
+    ];
+    if (order.headcount != null) parts.push(`${order.headcount} ${order.headcount === 1 ? "guest" : "guests"}`);
+    if (order.fulfillment) parts.push(order.fulfillment);
+    if (!order.callDone) parts.push("CALL NOT DONE");
+    return `• ${parts.join(" · ")}`;
+  });
+
+  // Discord rejects a message over 2000 characters with a 400, and the post is
+  // lost once the outbox runs out of retries. Guest names are free text, so
+  // even 20 lines can run long. Keep the first `kept` lines and say how many
+  // were left off. The counts in the header always cover every order.
+  const build = (kept: number): string => {
+    const dropped = sorted.length - kept;
+    const lines = [header, ...orderLines.slice(0, kept)];
+    if (dropped > 0) lines.push(`+${dropped} more on the board`);
+    return lines.join("\n");
+  };
+  let kept = orderLines.length;
+  while (kept > 0 && build(kept).length > DIGEST_MAX_CHARS) kept -= 1;
+  return build(kept);
+}
+
 export type StageOverrideKind = "move_back" | "restore";
 
 /**
@@ -1283,4 +1381,22 @@ export function phoneLikePattern(digits: string): string {
  */
 export function escapeLikePattern(text: string): string {
   return text.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * Swaps `id` one place up or down in an ordered id list. Returns a new array
+ * and never mutates the input. At either edge, or when `id` is not in the
+ * list, it returns the same order so callers can skip the write.
+ */
+export function moveIdWithin(
+  ids: readonly string[],
+  id: string,
+  direction: "up" | "down",
+): string[] {
+  const next = [...ids];
+  const from = next.indexOf(id);
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (from === -1 || to < 0 || to >= next.length) return next;
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
 }

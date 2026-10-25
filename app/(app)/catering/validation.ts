@@ -217,3 +217,9 @@ export type ToggleChecklistDefaultActiveInput = z.infer<typeof toggleChecklistDe
 /** Order search box on /catering. The 2-character floor lives in classifyOrderSearch. */
 export const orderSearchSchema = z.object({ query: z.string().trim().max(80) });
 export type OrderSearchInput = z.infer<typeof orderSearchSchema>;
+
+export const reorderChecklistDefaultsSchema = z.object({
+  stage: z.enum(CHECKLIST_STAGES),
+  orderedIds: z.array(z.string().uuid()).min(1).max(200),
+});
+export type ReorderChecklistDefaultsInput = z.infer<typeof reorderChecklistDefaultsSchema>;

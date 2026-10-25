@@ -8,6 +8,7 @@ import {
   menuItemSchema,
   moveOrderBackSchema,
   orderSearchSchema,
+  reorderChecklistDefaultsSchema,
   resolveFollowUpSchema,
   restoreOrderSchema,
   toggleChecklistDefaultActiveSchema,
@@ -268,5 +269,21 @@ describe("orderSearchSchema", () => {
 
   it("rejects a query over 80 characters", () => {
     expect(orderSearchSchema.safeParse({ query: "a".repeat(81) }).success).toBe(false);
+  });
+});
+
+describe("reorderChecklistDefaultsSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a stage with a list of ids", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [id] }).success).toBe(true);
+  });
+
+  it("rejects a bad stage", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "nope", orderedIds: [id] }).success).toBe(false);
+  });
+
+  it("rejects an empty list", () => {
+    expect(reorderChecklistDefaultsSchema.safeParse({ stage: "setup", orderedIds: [] }).success).toBe(false);
   });
 });
