@@ -6,6 +6,7 @@ import {
   buildBreakPlan,
   canTransition,
   computeBreakDueAt,
+  computeMissedCutoff,
   computeShiftMinutes,
   entitledMinutesForKind,
   expandRuleToBreaks,
@@ -223,6 +224,52 @@ describe("computeBreakDueAt", () => {
 
   it("is null with no matched rule", () => {
     expect(computeBreakDueAt(new Date(), null)).toBeNull();
+  });
+});
+
+describe("computeMissedCutoff", () => {
+  const MORNING_END = new Date("2026-07-07T11:00:00-04:00");
+
+  it("waits for a scheduled end that is later than the day-part end (Morning 06:00-11:00, adult works to 14:00)", () => {
+    const arrival = new Date("2026-07-07T06:00:00-04:00");
+    const cutoff = computeMissedCutoff({
+      dayPartEnd: MORNING_END,
+      scheduledEnd: new Date("2026-07-07T14:00:00-04:00"),
+      dueAt: computeBreakDueAt(arrival, ADULT_RULE), // 12:00
+    });
+    expect(cutoff?.toISOString()).toBe(new Date("2026-07-07T14:00:00-04:00").toISOString());
+  });
+
+  it("never lands before the break's own due time", () => {
+    const cutoff = computeMissedCutoff({
+      dayPartEnd: MORNING_END,
+      scheduledEnd: new Date("2026-07-07T11:30:00-04:00"),
+      dueAt: new Date("2026-07-07T12:00:00-04:00"),
+    });
+    expect(cutoff?.toISOString()).toBe(new Date("2026-07-07T12:00:00-04:00").toISOString());
+  });
+
+  it("is the day-part end when the scheduled end and due time are earlier or unknown", () => {
+    expect(
+      computeMissedCutoff({
+        dayPartEnd: MORNING_END,
+        scheduledEnd: new Date("2026-07-07T10:00:00-04:00"),
+        dueAt: null,
+      })?.toISOString(),
+    ).toBe(MORNING_END.toISOString());
+    expect(computeMissedCutoff({ dayPartEnd: MORNING_END, scheduledEnd: null, dueAt: null })?.toISOString()).toBe(
+      MORNING_END.toISOString(),
+    );
+  });
+
+  it("is null with no day-part end to anchor on", () => {
+    expect(
+      computeMissedCutoff({
+        dayPartEnd: null,
+        scheduledEnd: new Date("2026-07-07T14:00:00-04:00"),
+        dueAt: null,
+      }),
+    ).toBeNull();
   });
 });
 

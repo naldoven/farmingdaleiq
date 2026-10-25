@@ -6,7 +6,7 @@ Switched on 2026-10-25 by flipping `breaks` in `lib/features.ts`. Turning the fl
 
 - One live break rule: a scheduled shift of 6 hours or more earns one 30-minute unpaid meal break. This is the only rule confirmed from KitchenIQ.
 - The seeded minor rule (4 hours earns 30 minutes) is a New York law preset marked `SEED-DEFAULT`. It is in the table and the engine will apply it to anyone under 18 with a birthdate on file, but the store has not confirmed it.
-- Breaks are planned per posted setup. A leader authorizes a break, the team member starts it, the leader completes it. A break authorized but not started within 10 minutes is flagged overdue; a break still open when the day-part ends is marked missed. The 10-minute grace is a `SEED-DEFAULT`.
+- Breaks are planned per posted setup. A leader authorizes a break, the team member starts it, the leader completes it. A break authorized but not started within 10 minutes is flagged overdue; a break still open is marked missed only after the later of the person's scheduled end and the day-part end has passed (never before its due time), and only for setups dated today or yesterday in store time. The 10-minute grace is a `SEED-DEFAULT`.
 - Every role can view breaks. Team Leader and above hold `breaks.manage` (authorize, start, complete, regenerate the plan). This matches the live `role_permissions` rows checked on 2026-10-25.
 
 ## What was wrong and what changed
@@ -31,7 +31,7 @@ Checked against the live database on 2026-10-25.
 
 ## Database change (applied by the agent only after Naldo's go)
 
-`supabase/migrations/20261025000000_breaks_release_readiness.sql`:
+`supabase/migrations/20261025000100_breaks_release_readiness.sql` (the `...000000` slot is taken by the already-applied catering migration):
 
 1. Adds the nullable column `setup_assignments.scheduled_end timestamptz`.
 2. Adds the unique index `breaks_setup_user_kind_uq` on `breaks (setup_id, user_id, kind)`.
