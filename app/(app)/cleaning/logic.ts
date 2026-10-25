@@ -6,6 +6,15 @@
 
 import { STORE_WEEKDAYS, type Half } from "@/app/(app)/cleaning/constants";
 
+/**
+ * A drawing on a photo: freehand strokes in normalized 0-1 coordinates of
+ * the photo's own box, so it lines up at any display size. Zod-free twin of
+ * validation.ts markupSchema for client components.
+ */
+export interface MarkupData {
+  strokes: { points: [number, number][] }[];
+}
+
 export interface CadenceLike {
   kind: string;
   days_of_week: number[] | null;
