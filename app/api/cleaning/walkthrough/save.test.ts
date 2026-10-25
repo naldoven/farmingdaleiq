@@ -175,6 +175,16 @@ describe("saveWalkthroughPhoto", () => {
     expect((await saveWalkthroughPhoto(store.deps, newItemSave, JPEG, USER)).status).toBe(500);
   });
 
+  it("lets a failed lookup throw so the route answers 500 and the phone retries", async () => {
+    const store = fakeStore({
+      async findItem() {
+        throw new Error("statement timeout");
+      },
+    });
+    await expect(saveWalkthroughPhoto(store.deps, existingSave, JPEG, USER)).rejects.toThrow("statement timeout");
+    expect(store.calls.upload).toBe(0);
+  });
+
   it("refuses an image type the bucket does not take", async () => {
     const store = fakeStore();
     const result = await saveWalkthroughPhoto(store.deps, newItemSave, { bytes: JPEG.bytes, contentType: "image/heic" }, USER);

@@ -18,6 +18,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 const ZONE_GREEN = "11111111-1111-4111-8111-111111111111";
 const ZONE_BLUE = "22222222-2222-4222-8222-222222222222";
 const ITEM_MOP = "33333333-3333-4333-8333-333333333333";
+const USER = "44444444-4444-4444-8444-444444444444";
+const OTHER = "55555555-5555-4555-8555-555555555555";
 
 const zones = [
   { id: ZONE_GREEN, name: "Green", color: "#16A34A", side: "boh" },
@@ -95,14 +97,14 @@ afterEach(() => {
 
 describe("WalkthroughCamera", () => {
   it("falls back to the phone camera when the live camera is unavailable", async () => {
-    render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     expect(await screen.findByText("The camera is blocked for this site.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Take photo" })).toBeDisabled();
   });
 
   it("saves a new item: details on the spot, one upload, shot cleared from the phone", async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { ok: true, itemId: "x", duplicate: false }));
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
 
     await addPhoto(container);
     expect(store.rows.size).toBe(1);
@@ -123,7 +125,7 @@ describe("WalkthroughCamera", () => {
   });
 
   it("will not save until the details are complete", async () => {
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await addPhoto(container);
     fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
     expect(await screen.findByText("Name the item")).toBeInTheDocument();
@@ -132,7 +134,7 @@ describe("WalkthroughCamera", () => {
 
   it("attaches a photo to an existing item from another zone", async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { ok: true, itemId: ITEM_MOP, duplicate: false }));
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await addPhoto(container);
     fireEvent.click(screen.getByRole("button", { name: "Already on the list" }));
     fireEvent.click(screen.getByLabelText("Show every zone"));
@@ -145,7 +147,7 @@ describe("WalkthroughCamera", () => {
 
   it("holds a refused shot with the server's reason and keeps it on the phone", async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { ok: false, error: "Check its details." }));
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await addPhoto(container);
     fillVariable("Bad one");
     fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
@@ -163,7 +165,7 @@ describe("WalkthroughCamera", () => {
         value: true,
       }),
     );
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await addPhoto(container);
     fillVariable("Prep shelf");
     fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
@@ -179,7 +181,7 @@ describe("WalkthroughCamera", () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(500, { ok: false, error: "Could not store the photo." }))
         .mockResolvedValueOnce(jsonResponse(201, { ok: true, itemId: "x", duplicate: false }));
-      const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+      const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
       await addPhoto(container);
       fillVariable("Walk-in rack 1");
       fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
@@ -195,7 +197,7 @@ describe("WalkthroughCamera", () => {
   });
 
   it("'Later' keeps the shot on the phone and does not send it", async () => {
-    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await addPhoto(container);
     fireEvent.change(screen.getByPlaceholderText("What needs cleaning?"), { target: { value: "Half done" } });
     fireEvent.click(screen.getByRole("button", { name: "Later" }));
@@ -218,19 +220,45 @@ describe("WalkthroughCamera", () => {
     });
     const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
     store = memoryStore([
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", blob, capturedAt: "2026-10-26T22:00:00.000Z", createdAt: 1, payload: { v: 1, aspect: 0.75, form: form("Ready one"), ready: true } },
-      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", blob, capturedAt: "2026-10-26T22:01:00.000Z", createdAt: 2, payload: { v: 1, aspect: 0.75, form: form("Unfinished"), ready: false } },
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", blob, capturedAt: "2026-10-26T22:00:00.000Z", createdAt: 1, payload: { v: 1, aspect: 0.75, form: form("Ready one"), ready: true, userId: USER } },
+      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", blob, capturedAt: "2026-10-26T22:01:00.000Z", createdAt: 2, payload: { v: 1, aspect: 0.75, form: form("Unfinished"), ready: false, userId: USER } },
+      // Another leader's ready shot on the same store phone.
+      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", blob, capturedAt: "2026-10-26T21:00:00.000Z", createdAt: 0, payload: { v: 1, aspect: 0.75, form: form("Not mine"), ready: true, userId: OTHER } },
     ]);
     setShotStoreBackendForTest(store.backend);
 
-    render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" />);
+    render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const payload = JSON.parse((fetchMock.mock.calls[0][1].body as FormData).get("payload") as string);
     expect(payload.photoId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     await waitFor(() => expect(screen.getByText("1 needs details, 1 saved")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.rows.has("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /Photo queue/ }));
     const sheet = screen.getByText("This walk").closest("div")!.parentElement!;
     expect(within(sheet).getByText("Unfinished")).toBeInTheDocument();
+    expect(within(sheet).queryByText("Not mine")).not.toBeInTheDocument();
+  });
+
+  it("warns when edits after a send did not apply because the first try had landed", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(400, { ok: false, error: "Check its details." }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, itemId: "x", duplicate: true }));
+    const { container } = render(<WalkthroughCamera zones={zones} items={items} exitHref="/cleaning/items" userId={USER} />);
+    await addPhoto(container);
+    fillVariable("First name");
+    fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
+    await waitFor(() => expect(screen.getByText("1 stuck")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /Photo queue/ }));
+    fireEvent.click(screen.getByRole("button", { name: /First name/ }));
+    fireEvent.change(await screen.findByPlaceholderText("What needs cleaning?"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and keep shooting" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("1 saved")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Photo queue/ }));
+    expect(screen.getByText(/Later changes did not apply/)).toBeInTheDocument();
   });
 });

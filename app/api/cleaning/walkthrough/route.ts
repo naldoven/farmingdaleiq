@@ -71,16 +71,25 @@ export async function POST(request: NextRequest) {
   }
 
   const deps: SaveDeps = {
+    // A failed read throws so the catch below answers 500 and the phone
+    // retries. Read as "no row", a timeout would turn into a 404 or 409 that
+    // holds the shot for good (PR #88 review).
     async findPhoto(photoId) {
-      const { data } = await supabase.from("cleaning_item_photos").select("item_id").eq("id", photoId).maybeSingle();
+      const { data, error } = await supabase
+        .from("cleaning_item_photos")
+        .select("item_id")
+        .eq("id", photoId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
       return data ? { itemId: data.item_id } : null;
     },
     async findItem(itemId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("cleaning_items")
         .select("status, created_by")
         .eq("id", itemId)
         .maybeSingle();
+      if (error) throw new Error(error.message);
       return data ? { status: data.status, createdBy: data.created_by } : null;
     },
     async upload(path, body, contentType) {

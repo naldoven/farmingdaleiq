@@ -17,11 +17,17 @@ export default async function CleaningWalkthroughPage() {
   const allowed = (await hasPermission("cleaning.complete")) || (await canPlanCleaning(supabase));
   if (!allowed) throw new PermissionError("cleaning.complete");
 
-  const [zones, items] = await Promise.all([loadZones(supabase), loadItems(supabase, ["draft", "active"])]);
+  const [zones, items, { data: auth }] = await Promise.all([
+    loadZones(supabase),
+    loadItems(supabase, ["draft", "active"]),
+    supabase.auth.getUser(),
+  ]);
+  if (!auth.user) throw new PermissionError("cleaning.complete");
 
   return (
     <WalkthroughCamera
       exitHref="/cleaning/items"
+      userId={auth.user.id}
       zones={zones.map((z) => ({ id: z.id, name: z.name, color: z.color, side: z.side }))}
       items={items.map((i) => ({
         id: i.id,

@@ -55,6 +55,10 @@ interface StoredPayload {
   /** Only a form the leader pressed Save on is sent after a restore; a
    * "Later" form waits for them, half-filled details must never post. */
   ready: boolean;
+  /** Who took it. The queue lives per phone, not per person, so on a shared
+   * store phone only the signed-in leader's own shots are restored and sent;
+   * otherwise one leader's photos would post under the next one's name. */
+  userId: string;
 }
 
 interface Shot {
@@ -70,6 +74,9 @@ interface Shot {
   /** Held for a reason that may clear on its own (connection, server), so
    * coming back online retries it. A refused-details hold waits for a fix. */
   retryable: boolean;
+  /** Details changed after a send attempt. If the server then says the shot
+   * was already saved, those changes did not apply and the leader is told. */
+  editedAfterSend: boolean;
 }
 
 type CameraState = "starting" | "live" | "blocked";
@@ -94,7 +101,7 @@ function statusText(shot: Shot): string {
     case "sending":
       return shot.attempts > 0 ? "Retrying..." : "Sending...";
     case "saved":
-      return "Saved";
+      return shot.error ?? "Saved";
     case "held":
       return shot.error ?? "Not sent";
   }
@@ -115,10 +122,12 @@ export function WalkthroughCamera({
   zones,
   items,
   exitHref,
+  userId,
 }: {
   zones: WalkthroughZone[];
   items: WalkthroughItem[];
   exitHref: string;
+  userId: string;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -133,6 +142,8 @@ export function WalkthroughCamera({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [camera, setCamera] = useState<CameraState>("starting");
+  // Bumped to restart the camera when its stream has ended.
+  const [cameraKey, setCameraKey] = useState(0);
   const [flash, setFlash] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -161,6 +172,10 @@ export function WalkthroughCamera({
           return;
         }
         streamRef.current = stream;
+        // iOS can end the stream when the system camera or another app takes
+        // the lens (the phone-camera fallback does exactly that). A frozen
+        // viewfinder would keep saving black frames, so restart instead.
+        stream.getVideoTracks()[0]?.addEventListener("ended", () => setCameraKey((k) => k + 1));
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
@@ -175,10 +190,12 @@ export function WalkthroughCamera({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [cameraKey]);
 
-  // iOS pauses the video when the app goes to the background; resume it.
-  // Also keeps the screen awake during the walk where the browser allows it.
+  // iOS pauses the video when the app goes to the background; resume it, or
+  // restart the camera if the stream ended meanwhile (also retries a blocked
+  // camera after the leader allows it in settings and comes back). Also
+  // keeps the screen awake during the walk where the browser allows it.
   useEffect(() => {
     let lock: WakeLockSentinel | null = null;
     const acquire = async () => {
@@ -190,7 +207,12 @@ export function WalkthroughCamera({
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void videoRef.current?.play().catch(() => {});
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track || track.readyState !== "live") {
+        setCameraKey((k) => k + 1);
+      } else {
+        void videoRef.current?.play().catch(() => {});
+      }
       void acquire();
     };
     void acquire();
@@ -212,7 +234,9 @@ export function WalkthroughCamera({
     if (restoredRef.current) return;
     restoredRef.current = true;
     (async () => {
-      const stored = await loadShots();
+      // Another leader's shots stay on the phone untouched until they open
+      // the walkthrough themselves.
+      const stored = (await loadShots()).filter((s) => isStoredPayload(s.payload) && s.payload.userId === userId);
       if (stored.length === 0) return;
       const restored: Shot[] = stored.map((s) => {
         const payload = isStoredPayload(s.payload) ? s.payload : null;
@@ -236,12 +260,13 @@ export function WalkthroughCamera({
           attempts: 0,
           error: null,
           retryable: true,
+          editedAfterSend: false,
         };
       });
       setShots((current) => [...restored.filter((r) => !current.some((c) => c.id === r.id)), ...current]);
       setNotice(`${restored.length} photo${restored.length === 1 ? "" : "s"} from last time ${restored.length === 1 ? "is" : "are"} back in the queue.`);
     })();
-  }, [zones]);
+  }, [zones, userId]);
 
   // Free preview memory and pending retries when leaving the screen.
   useEffect(() => {
@@ -267,6 +292,7 @@ export function WalkthroughCamera({
 
       let outcome: SendOutcome;
       let message: string | null = null;
+      let duplicate = false;
       try {
         const res = await fetch(ENDPOINT, { method: "POST", body, credentials: "same-origin" });
         const isJson = (res.headers.get("content-type") ?? "").includes("application/json");
@@ -276,6 +302,8 @@ export function WalkthroughCamera({
           message = "Signed out. Sign in again, then tap Retry.";
         } else if (res.ok) {
           outcome = { kind: "ok" };
+          const json = (await res.json().catch(() => null)) as { duplicate?: unknown } | null;
+          duplicate = json?.duplicate === true;
         } else {
           outcome = { kind: "http", status: res.status };
           message = res.status === 401 ? "Signed out. Sign in again, then tap Retry." : await readUploadErrorMessage(res);
@@ -291,7 +319,15 @@ export function WalkthroughCamera({
 
       if (decision === "done") {
         void deleteShot(id);
-        patchShot(id, { status: "saved", attempts, error: null });
+        // An earlier try landed but its answer was lost, and the leader
+        // edited the shot since. The server keeps the first version, so say
+        // where to fix it instead of showing a plain "Saved" (PR #88 review).
+        const lostEdits = duplicate && shot.editedAfterSend;
+        patchShot(id, {
+          status: "saved",
+          attempts,
+          error: lostEdits ? "Saved earlier. Later changes did not apply; fix them on the master list." : null,
+        });
         return;
       }
       if (decision === "retry") {
@@ -349,7 +385,13 @@ export function WalkthroughCamera({
     const form = defaultForm(source);
     // Written before anything else so the shot survives a closed tab. A
     // failed write (private mode, full storage) still lets the walk go on.
-    await writeShot({ id, blob, payload: { v: 1, aspect, form, ready: false } satisfies StoredPayload, capturedAt, createdAt: Date.now() });
+    await writeShot({
+      id,
+      blob,
+      payload: { v: 1, aspect, form, ready: false, userId } satisfies StoredPayload,
+      capturedAt,
+      createdAt: Date.now(),
+    });
     const shot: Shot = {
       id,
       previewUrl: URL.createObjectURL(blob),
@@ -361,6 +403,7 @@ export function WalkthroughCamera({
       attempts: 0,
       error: null,
       retryable: true,
+      editedAfterSend: false,
     };
     setShots((current) => [...current, shot]);
     setActiveId(id);
@@ -397,7 +440,7 @@ export function WalkthroughCamera({
   }
 
   function persistForm(shot: Shot, form: ShotForm, ready: boolean) {
-    void updateShotPayload(shot.id, { v: 1, aspect: shot.aspect, form, ready } satisfies StoredPayload);
+    void updateShotPayload(shot.id, { v: 1, aspect: shot.aspect, form, ready, userId } satisfies StoredPayload);
   }
 
   function discard(id: string) {
@@ -499,7 +542,7 @@ export function WalkthroughCamera({
           </div>
 
           {/* Bottom bar: queue, shutter. */}
-          <div className="flex items-center justify-between px-6 pb-[max(env(safe-area-inset-bottom),18px)] pt-4">
+          <div className="flex items-center justify-between px-6 pb-2 pt-4">
             <button
               type="button"
               onClick={() => setQueueOpen(true)}
@@ -540,7 +583,11 @@ export function WalkthroughCamera({
               <Camera className="h-7 w-7" aria-hidden />
             </button>
           </div>
-          <p className="pb-3 text-center text-[13px] text-[#ffffffb3]">{queueSummary(shots.map((s) => s.status))}</p>
+          {/* The safe-area padding sits on this last line so it clears the
+              iPhone home indicator, not just the shutter row above it. */}
+          <p className="pb-[max(env(safe-area-inset-bottom),12px)] text-center text-[13px] text-[#ffffffb3]">
+            {queueSummary(shots.map((s) => s.status))}
+          </p>
         </div>
         {/* Fallback for a blocked live camera. capture="environment" opens the
             camera app on most phones but is only a hint, so these photos are
@@ -588,7 +635,13 @@ export function WalkthroughCamera({
                     <span className="block text-[15px] font-semibold">{shotLabel(shot)}</span>
                     <span
                       className={`block text-[13px] ${
-                        shot.status === "held" ? "text-danger" : shot.status === "saved" ? "text-success" : "text-muted-ink"
+                        shot.status === "held"
+                          ? "text-danger"
+                          : shot.status === "saved"
+                            ? shot.error
+                              ? "text-warning"
+                              : "text-success"
+                            : "text-muted-ink"
                       }`}
                     >
                       {statusText(shot)}
@@ -637,7 +690,13 @@ export function WalkthroughCamera({
           onSave={(form) => {
             persistForm(active, form, true);
             if (form.mode === "new") setZoneId(form.details.zoneId);
-            patchShot(active.id, { form, status: "waiting", attempts: 0, error: null });
+            patchShot(active.id, {
+              form,
+              status: "waiting",
+              attempts: 0,
+              error: null,
+              editedAfterSend: active.editedAfterSend || active.attempts > 0,
+            });
             setActiveId(null);
           }}
           onLater={(form) => {

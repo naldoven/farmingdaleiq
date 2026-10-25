@@ -112,9 +112,16 @@ stable
 security definer
 set search_path = public
 as $$
+  -- The tag counts only for an active profile, the same rule has_permission
+  -- applies: deactivating someone is how the app offboards them, and a
+  -- former coordinator must not keep planning rights (PR #88 review).
   select public.has_permission('cleaning.plan')
     or exists (
-      select 1 from public.cleaning_coordinators c where c.user_id = auth.uid()
+      select 1
+      from public.cleaning_coordinators c
+      join public.profiles p on p.id = c.user_id
+      where c.user_id = auth.uid()
+        and p.active = true
     );
 $$;
 
