@@ -82,7 +82,7 @@ lib/nav/page-map.ts     # NAV_GROUPS — single source of truth for navigation
 lib/events/bus.ts       # emitEvent(key, payload) → app_events table
 lib/tokens/ledger.ts    # award/gift/redeem — balances are never stored
 lib/supabase/           # server.ts (RSC/actions), client.ts, middleware.ts
-supabase/migrations/    # 66 migrations, timestamp-prefixed, append-only
+supabase/migrations/    # timestamp-prefixed, append-only; never edit an applied one
 e2e/                    # Playwright specs
 ```
 

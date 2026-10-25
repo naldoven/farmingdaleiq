@@ -3885,6 +3885,22 @@ export type Database = {
         Args: { p_group_id: string }
         Returns: undefined
       }
+      catering_replace_setup: {
+        Args: {
+          p_order_id: string
+          p_force: boolean
+          p_stages: string[]
+          p_planned_from: Json
+          p_rows: Json
+          p_preorder_rows: Json
+        }
+        Returns: {
+          generated: boolean
+          outcome: string
+          setup_rows: number
+          preorder_rows: number
+        }[]
+      }
       catering_bulk_close: {
         Args: { p_order_ids: string[]; p_reason: string }
         Returns: { order_id: string; outcome: string }[]

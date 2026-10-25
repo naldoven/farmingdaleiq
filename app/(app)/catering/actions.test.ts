@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PermissionError } from "@/lib/auth/permissions";
-import { PACKING_LIST_NOT_BUILT_ERROR, planPreOrderChecklist } from "@/app/(app)/catering/logic";
+import { PACKING_LIST_NOT_BUILT_ERROR, planPreOrderRows } from "@/app/(app)/catering/logic";
 
 /**
  * Server-action coverage for Catering (app/(app)/catering/actions.ts):
@@ -39,19 +39,22 @@ const CHAIN_METHODS = [
 /**
  * One canned response is consumed per `.from(table)` call, so each queue must
  * follow the action's real query order. A table with nothing queued throws,
- * which is how a test proves a query was never made.
+ * which is how a test proves a query was never made. `.rpc(name, args)` works
+ * the same way with a queue keyed "rpc:<name>", and records one call whose
+ * single op is ["rpc", [args]].
  */
-function createFakeClient(responses: Record<string, Response[]>, rpcResponses: Record<string, Response> = {}) {
+function createFakeClient(responses: Record<string, Response[]>) {
   const calls: Call[] = [];
-  const rpcCalls: Array<{ name: string; args: unknown }> = [];
   return {
     calls,
-    rpcCalls,
     async rpc(name: string, args: unknown) {
-      rpcCalls.push({ name, args });
-      const response = rpcResponses[name];
-      if (!response) throw new Error(`no mock response for rpc "${name}"`);
-      return response;
+      const key = `rpc:${name}`;
+      const queue = responses[key];
+      if (!queue || queue.length === 0) {
+        throw new Error(`no mock response queued for "${key}"`);
+      }
+      calls.push({ table: key, ops: [["rpc", [args]]] });
+      return queue.shift()!;
     },
     from(table: string) {
       const queue = responses[table];
@@ -178,20 +181,21 @@ describe("changeStage handoff guards", () => {
     expect(emitEventMock).not.toHaveBeenCalled();
   });
 
-  it("refuses to leave FOH Setup while the list was stamped moments ago and may still be inserting", async () => {
-    // The build stamps setup_generated_at when it claims the order, before
-    // its rows exist, so a just-stamped order can look built with an empty
-    // list. Leaving is refused until the stamp is older than any build.
-    const justNow = new Date(Date.now() - 30 * 1000).toISOString();
+  it("does not make a list stamped moments ago wait: the stamp and its rows commit together", async () => {
+    // Builds used to stamp before inserting, so a fresh stamp could sit
+    // beside an empty list and the gate waited two minutes. The build is one
+    // database transaction now, so the packing items are checked right away.
+    const justNow = new Date(Date.now() - 5 * 1000).toISOString();
     client = createFakeClient({
-      catering_orders: [order({ stage: "setup", setup_generated_at: justNow })],
+      catering_orders: [order({ stage: "setup", setup_generated_at: justNow }), landed],
+      catering_checklist_items: [none],
     });
 
     const result = await changeStage({ orderId: ORDER_ID, toStage: "out" });
 
-    expect(result).toEqual({ ok: false, error: expect.stringContaining("You can move this order on at") });
-    expect(client.calls).toHaveLength(1);
-    expect(emitEventMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(filtersOn(client, "catering_checklist_items", "select")).toContainEqual(["stage", "setup"]);
+    expect(opArgs(client, "catering_orders", "update")?.[0]).toMatchObject({ stage: "out" });
   });
 
   it("refuses to leave FOH Setup while a packing item is undone", async () => {
@@ -491,80 +495,108 @@ describe("rescaleOrderSetup (manual packing-list build)", () => {
     vi.setSystemTime(new Date("2026-08-21T13:00:00.000Z"));
   });
 
-  it("builds a missing list on the event day and adds only the missing Pre-order items", async () => {
-    client = createFakeClient({
-      catering_orders: [
-        order({ stage: "setup", event_date: "2026-08-21", paper_goods: true, headcount: 10, fulfillment: "pickup", notes: null, selected_condiments: [] }),
-        none, // clear the old generated marker
-        landed, // claim
-        landed, // still holds the claim just before writing
-      ],
-      catering_checklist_items: [
-        { data: [{ label: "Compare packed items to the receipt" }], error: null },
-        none, // delete the old generated rows
-        none, // insert
-      ],
-      catering_order_items: [{ data: [], error: null }],
+  const eventDayOrder = () =>
+    order({
+      stage: "setup",
+      event_date: "2026-08-21",
+      paper_goods: true,
+      headcount: 10,
+      fulfillment: "pickup",
+      notes: null,
+      selected_condiments: [],
     });
-
-    const result = await rescaleOrderSetup({ orderId: ORDER_ID });
-
-    expect(result).toEqual({ ok: true, data: undefined });
-    const inserted = client.calls
-      .filter((c) => c.table === "catering_checklist_items")
-      .flatMap((c) => c.ops.filter(([name]) => name === "insert"))[0]?.[1][0] as Array<Record<string, unknown>>;
-    expect(inserted.some((row) => row.setup_section === "paper_goods")).toBe(true);
-    const preOrderLabels = inserted.filter((row) => row.stage === "out").map((row) => row.label);
-    expect(preOrderLabels).toEqual(
-      planPreOrderChecklist()
-        .map((item) => item.label)
-        .filter((label) => label !== "Compare packed items to the receipt"),
-    );
+  const built = (fields: Record<string, unknown> = {}): Response => ({
+    data: [{ generated: true, outcome: "built", setup_rows: 3, preorder_rows: 2, ...fields }],
+    error: null,
   });
 
-  it("replaces the generated rows inside the claimed build instead of adding a second list", async () => {
+  /** The payload of the one catering_replace_setup call, or undefined. */
+  function buildArgs(): Record<string, unknown> | undefined {
+    const call = client.calls.find((c) => c.table === "rpc:catering_replace_setup");
+    return call?.ops[0]?.[1][0] as Record<string, unknown> | undefined;
+  }
+
+  it("builds the list in one forced catering_replace_setup call, with no direct row writes", async () => {
     client = createFakeClient({
-      catering_orders: [
-        order({ stage: "setup", event_date: "2026-08-21", paper_goods: true, headcount: 10, fulfillment: "pickup", notes: null, selected_condiments: [] }),
-        none,
-        landed,
-        landed,
-      ],
-      catering_checklist_items: [{ data: [], error: null }, none, none],
+      catering_orders: [eventDayOrder()],
       catering_order_items: [{ data: [], error: null }],
+      "rpc:catering_replace_setup": [built()],
     });
 
     expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: true, data: undefined });
 
-    const indexOf = (predicate: (call: (typeof client.calls)[number]) => boolean) =>
-      client.calls.findIndex(predicate);
-    const recheck = indexOf(
-      (c) => c.table === "catering_orders" && c.ops.some(([name, args]) => name === "eq" && args[0] === "setup_generated_at"),
-    );
-    const clear = indexOf((c) => c.table === "catering_checklist_items" && c.ops.some(([name]) => name === "delete"));
-    const insert = indexOf((c) => c.table === "catering_checklist_items" && c.ops.some(([name]) => name === "insert"));
-    expect(recheck).toBeGreaterThan(-1);
-    expect(clear).toBeGreaterThan(recheck);
-    expect(insert).toBeGreaterThan(clear);
-    // Only generated rows go: hand-added and Pre-order rows have no section.
-    expect(client.calls[clear].ops).toContainEqual(["not", ["setup_section", "is", null]]);
+    const args = buildArgs();
+    expect(Object.keys(args ?? {})).toEqual([
+      "p_order_id",
+      "p_force",
+      "p_stages",
+      "p_planned_from",
+      "p_rows",
+      "p_preorder_rows",
+    ]);
+    expect(args).toMatchObject({
+      p_order_id: ORDER_ID,
+      p_force: true,
+      p_stages: ["new", "confirm", "setup", "out"],
+      p_preorder_rows: planPreOrderRows(),
+    });
+    const rows = args?.p_rows as Array<Record<string, unknown>>;
+    expect(rows.some((row) => row.setup_section === "paper_goods")).toBe(true);
+    expect(rows.every((row) => Boolean(row.setup_section) && !("stage" in row))).toBe(true);
+    // The stamp, the delete and the inserts all happen inside the function.
+    expect(client.calls.filter((c) => c.table === "catering_checklist_items")).toEqual([]);
+    expect(opArgs(client, "catering_orders", "update")).toBeUndefined();
+    expect(client.calls.filter((c) => c.table === "rpc:catering_replace_setup")).toHaveLength(1);
   });
 
-  it("writes nothing when an edit or another build took the claim mid-build", async () => {
+  it("sends what the list was planned from, so the database can refuse a stale build", async () => {
     client = createFakeClient({
-      catering_orders: [
-        order({ stage: "setup", event_date: "2026-08-21", notes: null, selected_condiments: [] }),
-        none,
-        landed,
-        none, // the claim is gone by the time this build is ready to write
-      ],
-      catering_checklist_items: [{ data: [], error: null }],
-      catering_order_items: [{ data: [], error: null }],
+      catering_orders: [eventDayOrder()],
+      catering_order_items: [{ data: [{ menu_item_id: "menu-1", qty: 2 }], error: null }],
+      catering_menu_items: [{ data: [{ id: "menu-1", name: "Large Hot Chick-fil-A Nuggets Tray" }], error: null }],
+      "rpc:catering_replace_setup": [built()],
     });
 
     expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: true, data: undefined });
-    expect(opArgs(client, "catering_checklist_items", "delete")).toBeUndefined();
-    expect(opArgs(client, "catering_checklist_items", "insert")).toBeUndefined();
+    expect(buildArgs()?.p_planned_from).toEqual({
+      headcount: 10,
+      paper_goods: true,
+      fulfillment: "pickup",
+      notes: null,
+      selected_condiments: [],
+      items: [{ menu_item_id: "menu-1", qty: 2 }],
+    });
+  });
+
+  it("asks the leader to try again when the order changed or moved during the build", async () => {
+    for (const outcome of ["order_changed", "wrong_stage"]) {
+      client = createFakeClient({
+        catering_orders: [eventDayOrder()],
+        catering_order_items: [{ data: [], error: null }],
+        "rpc:catering_replace_setup": [built({ generated: false, outcome, setup_rows: 0, preorder_rows: 0 })],
+      });
+
+      expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({
+        ok: false,
+        error: "This order changed while its packing list was building. Refresh the page and try again.",
+      });
+    }
+  });
+
+  it("reports a failed build and a failed line-item read instead of building from partial data", async () => {
+    client = createFakeClient({
+      catering_orders: [eventDayOrder()],
+      catering_order_items: [{ data: [], error: null }],
+      "rpc:catering_replace_setup": [{ data: null, error: { message: "check_violation" } }],
+    });
+    expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: false, error: "check_violation" });
+
+    client = createFakeClient({
+      catering_orders: [eventDayOrder()],
+      catering_order_items: [{ data: null, error: { message: "items read failed" } }],
+    });
+    expect(await rescaleOrderSetup({ orderId: ORDER_ID })).toEqual({ ok: false, error: "items read failed" });
+    expect(buildArgs()).toBeUndefined();
   });
 
   it("refuses to rebuild the list on a Follow-up or Closed order", async () => {
@@ -603,7 +635,6 @@ describe("bulkCloseStaleOrders (manager cleanup)", () => {
 
     expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
     expect(requirePermissionMock).toHaveBeenCalledWith("catering.override");
-    expect(client.rpcCalls).toHaveLength(0);
     expect(client.calls).toHaveLength(0);
   });
 
@@ -615,7 +646,7 @@ describe("bulkCloseStaleOrders (manager cleanup)", () => {
 
     expect(result).toEqual({ ok: false, error: "You don't have permission to do this." });
     expect(requirePermissionMock.mock.calls.map(([key]) => key)).toEqual(["catering.override", "catering.manage"]);
-    expect(client.rpcCalls).toHaveLength(0);
+    expect(client.calls).toHaveLength(0);
   });
 
   it("is refused without a reason or without any order", async () => {
@@ -629,22 +660,21 @@ describe("bulkCloseStaleOrders (manager cleanup)", () => {
       ok: false,
       error: "Pick at least one order.",
     });
-    expect(client.rpcCalls).toHaveLength(0);
+    expect(client.calls).toHaveLength(0);
   });
 
   it("closes through the database function with the batch and the reason, and sums the outcomes", async () => {
-    client = createFakeClient(
-      {},
-      {
-        catering_bulk_close: {
+    client = createFakeClient({
+      "rpc:catering_bulk_close": [
+        {
           data: [
             { order_id: ORDER_ID, outcome: "closed" },
             { order_id: OTHER_ID, outcome: "already_closed" },
           ],
           error: null,
         },
-      },
-    );
+      ],
+    });
 
     const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID, OTHER_ID], reason });
 
@@ -652,26 +682,24 @@ describe("bulkCloseStaleOrders (manager cleanup)", () => {
       ok: true,
       data: { closed: 1, alreadyClosed: 1, cancelled: 0, notPast: 0, notFound: 0 },
     });
-    expect(client.rpcCalls).toEqual([
-      { name: "catering_bulk_close", args: { p_order_ids: [ORDER_ID, OTHER_ID], p_reason: reason } },
+    expect(client.calls).toEqual([
+      {
+        table: "rpc:catering_bulk_close",
+        ops: [["rpc", [{ p_order_ids: [ORDER_ID, OTHER_ID], p_reason: reason }]]],
+      },
     ]);
     // The function writes the audit rows itself; the action must not emit a
-    // second event per order (that would also reach Discord).
+    // second event per order (that would also reach Discord), and it never
+    // touches the orders or follow-ups tables directly.
     expect(emitEventMock).not.toHaveBeenCalled();
-    // And it never touches the orders or follow-ups tables directly.
-    expect(client.calls).toHaveLength(0);
   });
 
   it("reports the database function's refusal as the action error", async () => {
-    client = createFakeClient(
-      {},
-      {
-        catering_bulk_close: {
-          data: null,
-          error: { message: "Closing stale orders needs catering.override and catering.manage." },
-        },
-      },
-    );
+    client = createFakeClient({
+      "rpc:catering_bulk_close": [
+        { data: null, error: { message: "Closing stale orders needs catering.override and catering.manage." } },
+      ],
+    });
 
     const result = await bulkCloseStaleOrders({ orderIds: [ORDER_ID], reason });
 

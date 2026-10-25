@@ -368,6 +368,13 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "S9",
       },
       {
+        href: "/catering/cancelled",
+        permission: "catering.view",
+        label: "Cancelled",
+        description: "Cancelled orders, newest first, each linking to its order page.",
+        owner: "S9",
+      },
+      {
         href: "/catering/analytics",
         permission: "catering.view",
         label: "Analytics",
