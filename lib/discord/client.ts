@@ -13,9 +13,15 @@ export type DiscordAllowedMentions = {
 // `type` aliases, not interfaces: the outbox stores the whole message in a
 // jsonb column, and only type aliases are assignable to the generated `Json`
 // type (interfaces have no implicit index signature).
+export type DiscordEmbed = {
+  image?: { url: string };
+};
+
 export type DiscordWebhookMessage = {
   content: string;
   allowed_mentions?: DiscordAllowedMentions;
+  /** Optional embeds; used to show a photo under the post. */
+  embeds?: DiscordEmbed[];
 };
 
 /**

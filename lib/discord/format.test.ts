@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DISCORD_CONTENT_MAX_CHARS, DISCORD_ROUTABLE_EVENT_KEYS, buildDiscordMessage } from "./format";
 
@@ -177,5 +177,44 @@ describe("buildDiscordMessage", () => {
       const msg = buildDiscordMessage("infraction_issued", {});
       expect(msg.content).toBe("⚠️ A private accountability event was recorded in FarmingdaleIQ.");
     });
+  });
+});
+
+describe("buildDiscordMessage photo", () => {
+  const PHOTO = "https://example.supabase.co/storage/v1/object/sign/cleaning-photos/finds/11111111-1111-4111-8111-111111111111.jpg?token=t";
+
+  it("shows a found-and-fixed photo under the post", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    const msg = buildDiscordMessage("cleaning_atd_find", {
+      title: "Found and fixed",
+      message: "Machines: grease behind the fryer",
+      image_url: PHOTO,
+    });
+    expect(msg.content).toBe("✨ **Found and fixed**: Machines: grease behind the fryer");
+    expect(msg.embeds).toEqual([{ image: { url: PHOTO } }]);
+    expect(msg.allowed_mentions).toEqual({ parse: [] });
+    vi.unstubAllEnvs();
+  });
+
+  it("drops any photo that is not a signed finds link from our own project", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    expect(buildDiscordMessage("cleaning_atd_find", { image_url: "javascript:alert(1)" }).embeds).toBeUndefined();
+    expect(buildDiscordMessage("cleaning_atd_find", { image_url: 42 }).embeds).toBeUndefined();
+    expect(buildDiscordMessage("cleaning_atd_find", { image_url: "https://evil.example/x.jpg" }).embeds).toBeUndefined();
+    expect(
+      buildDiscordMessage("cleaning_atd_find", { image_url: PHOTO.replace("example.supabase.co", "other.supabase.co") }).embeds,
+    ).toBeUndefined();
+    expect(
+      buildDiscordMessage("cleaning_atd_find", { image_url: PHOTO.replace("/finds/", "/done/") }).embeds,
+    ).toBeUndefined();
+    vi.unstubAllEnvs();
+  });
+
+  it("never attaches a photo to any other event", () => {
+    expect(buildDiscordMessage("broadcast", { message: "hi", image_url: PHOTO }).embeds).toBeUndefined();
+  });
+
+  it("routes found-and-fixed posts to Discord", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("cleaning_atd_find");
   });
 });

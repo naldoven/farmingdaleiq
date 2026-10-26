@@ -44,6 +44,9 @@ const PUBLIC_PATHS = [
   // the login redirect and read a 200 page as a saved clean. The route answers
   // 401 JSON itself.
   "/api/cleaning/complete",
+  // And for the found-and-fixed photo post: a redirected fetch() would read the
+  // login page as a saved find. The route answers 401 JSON itself.
+  "/api/cleaning/finds",
 ];
 
 export function isPublicPath(pathname: string) {

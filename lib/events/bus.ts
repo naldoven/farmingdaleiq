@@ -72,6 +72,7 @@ export const EVENT_KEYS = [
   "cleaning_week_published",
   "cleaning_misses",
   "cleaning_plan_reminder",
+  "cleaning_atd_find",
 
   // Waste
   //

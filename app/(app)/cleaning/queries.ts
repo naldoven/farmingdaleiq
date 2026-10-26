@@ -4,7 +4,7 @@ import { PermissionError } from "@/lib/auth/permissions";
 import type { Database } from "@/lib/db/types";
 import { storeLocalNow } from "@/app/(app)/checklists/logic";
 import { PHOTO_BUCKET } from "@/app/(app)/cleaning/constants";
-import { lastDoneDates } from "@/app/(app)/cleaning/week-logic";
+import { addDays, lastDoneDates } from "@/app/(app)/cleaning/week-logic";
 
 type Client = SupabaseClient<Database>;
 
@@ -152,5 +152,80 @@ export async function loadPlannedBefore(
     .eq("status", "planned")
     .lt("week_start", weekStart);
   if (error) throw new Error(`Could not load open cleans: ${error.message}`);
+  return data ?? [];
+}
+
+const PAGE = 1000;
+
+/**
+ * Every clean dated between `from` and `to`, inclusive. Paged: Supabase
+ * silently stops at 1000 rows, and a month of BOH plus FOH cleans can pass
+ * that.
+ */
+export async function loadAssignmentsBetween(supabase: Client, from: string, to: string): Promise<AssignmentRow[]> {
+  const rows: AssignmentRow[] = [];
+  for (let start = 0; ; start += PAGE) {
+    const { data, error } = await supabase
+      .from("cleaning_assignments")
+      .select("*")
+      .gte("date", from)
+      .lte("date", to)
+      .order("date")
+      .order("id")
+      .range(start, start + PAGE - 1);
+    if (error) throw new Error(`Could not load cleans: ${error.message}`);
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) return rows;
+  }
+}
+
+/**
+ * Who led each half-day: the leader on that date's posted Morning (AM) or
+ * Closing (PM) Setup, the same rule close_cleaning_days uses for misses.
+ * Keyed "date|half". When a day part was posted twice, the latest post wins,
+ * even when it has no leader set (null), again like the close.
+ */
+export async function loadSetupOwners(
+  supabase: Client,
+  from: string,
+  to: string,
+): Promise<Map<string, string | null>> {
+  const [{ data: parts, error: partError }, { data: setups, error: setupError }] = await Promise.all([
+    supabase.from("day_parts").select("id, name").in("name", ["Morning", "Closing"]),
+    supabase
+      .from("setups")
+      .select("date, day_part_id, shift_leader_id, posted_at")
+      .gte("date", from)
+      .lte("date", to)
+      .not("posted_at", "is", null)
+      .order("posted_at"),
+  ]);
+  if (partError) throw new Error(`Could not load day parts: ${partError.message}`);
+  if (setupError) throw new Error(`Could not load Setups: ${setupError.message}`);
+  const halfByPart = new Map((parts ?? []).map((p) => [p.id, p.name === "Morning" ? "am" : "pm"]));
+  const owners = new Map<string, string | null>();
+  for (const setup of setups ?? []) {
+    const half = setup.day_part_id ? halfByPart.get(setup.day_part_id) : undefined;
+    if (half) owners.set(`${setup.date}|${half}`, setup.shift_leader_id);
+  }
+  return owners;
+}
+
+/**
+ * Carry-overs dated in a window after a period, for leaderStats: a miss on
+ * the period's last day carries into the next one. A week covers a late
+ * close and a weekend.
+ */
+export async function loadCarriesAfter(
+  supabase: Client,
+  periodEnd: string,
+): Promise<{ carried_from_id: string | null }[]> {
+  const { data, error } = await supabase
+    .from("cleaning_assignments")
+    .select("carried_from_id")
+    .eq("origin", "carry_over")
+    .gt("date", periodEnd)
+    .lte("date", addDays(periodEnd, 7));
+  if (error) throw new Error(`Could not load carry-overs: ${error.message}`);
   return data ?? [];
 }

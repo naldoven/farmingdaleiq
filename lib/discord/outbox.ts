@@ -124,11 +124,13 @@ export async function deliverPendingOutbox(
       // Forward allowed_mentions from the stored payload: it is what lets the
       // recipient's <@id> ping while everything else stays inert. Rows queued
       // before the field existed have none, and sendDiscordWebhook defaults
-      // those to no pings.
+      // those to no pings. Embeds carry a found-and-fixed photo; without them
+      // the post goes out as text only (PR #95 review).
       const payload = row.payload as Partial<DiscordWebhookMessage>;
       await sendDiscordWebhook(channel.webhook_url, {
         content: payload.content ?? "",
         allowed_mentions: payload.allowed_mentions,
+        ...(payload.embeds ? { embeds: payload.embeds } : {}),
       });
       await client
         .from("discord_outbox")

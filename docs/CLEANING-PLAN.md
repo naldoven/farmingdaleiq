@@ -201,7 +201,32 @@ walkthrough day on; variables join as drafts are approved.
   in `/settings/discord`, and point "Cleaning: yesterday's done and missed (6 AM)" and
   "Cleaning: week is live (Monday 6 AM)" at it. Until then the in-app notices work and the posts are
   skipped.
-- **Not in this slice**: ATD log (and its `cleaning_atd_find` post), metrics.
+- **Not in this slice**: ATD log (and its `cleaning_atd_find` post), metrics. Both are
+  Phase 2, below.
+
+## Phase 2 (built 2026-10-26)
+
+- **Migration** `20261026070000_cleaning_finds_and_trend.sql`: `cleaning_atd_finds`
+  (the phone's photo id is the row id; the photo must be the poster's own upload; a
+  planner can only link a find to an item or delete it, never rewrite it) and
+  `cleaning_store_trend`, counts only, for Home.
+- **Found and fixed** (`/cleaning/finds`): photo, area, one-line note. Each new find
+  queues `cleaning_atd_find` for #cleaning with the photo (a signed link valid a year,
+  since Discord shows the photo from it). A planner's "Add to master list" creates an
+  active item with the find's photo as its reference photo.
+- **Metrics** (`/cleaning/stats`): skipped cleans are not owed; on time is done on or
+  before its day, store-local; an open clean is not scored yet. A clean a planner sent
+  back counts as owed and not on time ("the first completion does not count as on
+  time"), and its redo is scored on its own shift; the Today screen and the morning
+  summary leave it out instead, since they count work still to do. Done cleans are
+  credited to the posted Morning or Closing Setup leader; a miss belongs only to whoever
+  the close stamped, "no owner" included. Leaders are listed by name, not ranked. Home
+  shows every team member the store's on-time %.
+- **Who can raise cleaning events**: only the hourly job may queue the summaries, the
+  week post and the coordinator notices; a found-and-fixed post must name a find the
+  poster made, with no channel override or recipient.
+- **To post finds to Discord**: point "Cleaning: found and fixed (with photo)" at
+  #cleaning in `/settings/discord`, next to the other two Cleaning rows.
 
 ## Build phases
 

@@ -11,11 +11,16 @@ import {
 } from "@/components/mobile";
 import { FirstRunGuideCard } from "@/components/home/first-run-guide-card";
 import { MyDeliveriesCard } from "@/components/home/my-deliveries-card";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { BoardOrder } from "@/app/(app)/catering/drivers/logic";
 import { loadMyDeliveries } from "@/app/(app)/catering/drivers/queries";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { canPlanCleaning } from "@/app/(app)/cleaning/queries";
+import { trendPoints } from "@/app/(app)/cleaning/stats";
+import { addDays } from "@/app/(app)/cleaning/week-logic";
 import { hasPermission } from "@/lib/auth/permissions";
+import type { Database } from "@/lib/db/types";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
 import { APP_FEATURES, isEventFeatureEnabled } from "@/lib/features";
@@ -148,6 +153,48 @@ function cleaningTone(summary: CleaningHalfSummary): "success" | "warning" | "ne
   return summary.done >= summary.total ? "success" : "warning";
 }
 
+export interface StoreTrendSummary {
+  pct: number;
+  /** "Oct 26", the Monday the week starts. */
+  weekLabel: string;
+  /** The week is still running, so the percent covers only the days closed so far. */
+  partial: boolean;
+}
+
+/**
+ * The store's cleaning on-time % for the Home card, from cleaning_store_trend
+ * (docs/CLEANING-PLAN.md "Decisions": Metrics, "Team members see only the
+ * store trend on Home"). Shows the latest week that has ended with cleans
+ * owed; before one exists (the first week the module runs) it shows the
+ * current week so far and says so. A week has ended once Saturday, the last
+ * open day, is behind us, so on Sunday the week just worked already counts.
+ * Null hides the card: no history yet, or nothing owed.
+ */
+export function summarizeStoreTrend(
+  rows: { week_start: string; owed: number; on_time: number; missed: number }[],
+  today: string,
+): StoreTrendSummary | null {
+  const scored = trendPoints(rows)
+    .filter((point) => point.owed > 0 && point.pct !== null)
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  const ended = scored.filter((point) => addDays(point.weekStart, 5) < today);
+  const pick = ended.at(-1) ?? scored.at(-1);
+  if (!pick || pick.pct === null) return null;
+  return { pct: pick.pct, weekLabel: pick.label, partial: ended.length === 0 };
+}
+
+type Client = SupabaseClient<Database>;
+
+/**
+ * Counts only: the function returns no items and no names, which is why every
+ * signed-in user may call it while the assignments stay leaders-only.
+ */
+async function loadStoreTrend(supabase: Client) {
+  const { data, error } = await supabase.rpc("cleaning_store_trend", { p_weeks: 2 });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 /** Formats recent token_transactions for the home Tokens card's short list. */
 export function summarizeTokenActivity(
   transactions: { id: string; delta: number; kind: string; note: string | null }[],
@@ -184,6 +231,7 @@ export default async function HomePage() {
   let tokenActivity: HomeTokenActivityRow[] = [];
   let myDeliveries: BoardOrder[] = [];
   let cleaning: { am: CleaningHalfSummary; pm: CleaningHalfSummary } | null = null;
+  let storeTrend: StoreTrendSummary | null = null;
 
   if (user) {
     const today = todayIso();
@@ -199,6 +247,7 @@ export default async function HomePage() {
       { data: cleans },
       canComplete,
       canPlan,
+      trendRows,
     ] = await Promise.all([
       supabase.from("checklist_runs").select("status").eq("run_date", today),
       supabase.from("disciplinary_actions").select("status").eq("user_id", user.id),
@@ -226,6 +275,12 @@ export default async function HomePage() {
       supabase.from("cleaning_assignments").select("half, status, rejected_at").eq("date", today),
       hasPermission("cleaning.complete"),
       canPlanCleaning(supabase),
+      // For everyone, team members included. Like the deliveries card, a
+      // failed read hides the card instead of breaking Home.
+      loadStoreTrend(supabase).catch((error) => {
+        console.error("home: could not load the store cleaning trend", error);
+        return [] as Awaited<ReturnType<typeof loadStoreTrend>>;
+      }),
     ]);
 
     checklists = summarizeCompletion((checklistRuns ?? []).map((r) => r.status));
@@ -256,6 +311,8 @@ export default async function HomePage() {
       const summary = summarizeCleaningToday(cleans ?? []);
       if (summary.am.total + summary.pm.total > 0) cleaning = summary;
     }
+
+    storeTrend = summarizeStoreTrend(trendRows, today);
   }
 
   return (
@@ -284,6 +341,14 @@ export default async function HomePage() {
           value={`${tasksCompletion.completed}/${tasksCompletion.total}`}
           subline={`${tasksCompletion.pct}% Completed`}
         />
+        {storeTrend ? (
+          <MetricCard
+            className="w-40"
+            title="Cleaning on time"
+            value={`${storeTrend.pct}%`}
+            subline={`Week of ${storeTrend.weekLabel}${storeTrend.partial ? " so far" : ""}`}
+          />
+        ) : null}
       </HScroll>
 
       <SectionCard title="To-Dos Today" expandHref="/tasks" flush={todos.openCount > 0}>

@@ -189,6 +189,13 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "Cleaning",
       },
       {
+        href: "/cleaning/finds",
+        permission: "cleaning.complete",
+        label: "Found and fixed",
+        description: "Leaders' log of problems spotted and fixed on the spot, each with a photo.",
+        owner: "Cleaning",
+      },
+      {
         href: "/cleaning/items",
         permission: "cleaning.complete",
         label: "Master list",
@@ -200,6 +207,13 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "cleaning.complete",
         label: "Walkthrough",
         description: "Camera: photograph items and tag zone and cadence.",
+        owner: "Cleaning",
+      },
+      {
+        href: "/cleaning/stats",
+        permission: "cleaning.view_reports",
+        label: "Stats",
+        description: "Shift-leader on-time and misses by month, completion by area, the store trend and the most overdue cleans.",
         owner: "Cleaning",
       },
       {

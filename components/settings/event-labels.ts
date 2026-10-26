@@ -26,6 +26,7 @@ export const EVENT_LABELS: Record<string, string> = {
   catering_driver_escalation: "Delivery driver escalations",
   cleaning_daily_summary: "Cleaning: yesterday's done and missed (6 AM)",
   cleaning_week_published: "Cleaning: week is live (Monday 6 AM)",
+  cleaning_atd_find: "Cleaning: found and fixed (with photo)",
   infraction_issued: "Infraction issued (name only, no points)",
   disciplinary_triggered: "Disciplinary action (name only, no points)",
 };

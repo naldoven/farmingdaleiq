@@ -37,6 +37,7 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Cleaning -> #cleaning (item names only, never people)
   "cleaning_daily_summary",
   "cleaning_week_published",
+  "cleaning_atd_find",
 ]);
 
 /**
@@ -71,6 +72,7 @@ const EMOJI: Partial<Record<EventKey, string>> = {
   catering_driver_escalation: "🚨",
   cleaning_daily_summary: "🧽",
   cleaning_week_published: "🗓️",
+  cleaning_atd_find: "✨",
   infraction_issued: "⚠️",
   disciplinary_triggered: "⚠️",
 };
@@ -96,6 +98,7 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_driver_escalation: "Delivery still has no driver",
   cleaning_daily_summary: "Cleaning summary",
   cleaning_week_published: "Cleaning week is live",
+  cleaning_atd_find: "Found and fixed",
 };
 
 /**
@@ -121,6 +124,28 @@ function assembleContent(title: string, detail: string | undefined, mentionText:
 
 function mention(discordUserId: string): string {
   return `<@${discordUserId}>`;
+}
+
+const FOUND_PHOTO_PATH = /^\/storage\/v1\/object\/sign\/cleaning-photos\/finds\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
+
+function foundPhotoUrl(key: EventKey, value: unknown): string | undefined {
+  if (key !== "cleaning_atd_find" || typeof value !== "string") return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:" || !FOUND_PHOTO_PATH.test(url.pathname)) return undefined;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseUrl) {
+    try {
+      if (new URL(supabaseUrl).host !== url.host) return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return value;
 }
 
 export interface BuildDiscordMessageOptions {
@@ -176,6 +201,15 @@ export function buildDiscordMessage(
   const allowed_mentions: DiscordAllowedMentions = recipientId
     ? { parse: [], users: [recipientId] }
     : { parse: [] };
+
+  // A found-and-fixed post shows its photo. Only that event, and only a
+  // signed link to a finds/ photo in our own bucket: the event row is the
+  // input, and a photo from anywhere else would let one bad row put any
+  // image in the channel (PR #95 review). Anything else posts as text.
+  const imageUrl = foundPhotoUrl(key, payload.image_url);
+  if (imageUrl) {
+    return { content, allowed_mentions, embeds: [{ image: { url: imageUrl } }] };
+  }
 
   return { content, allowed_mentions };
 }

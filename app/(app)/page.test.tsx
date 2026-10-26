@@ -5,6 +5,7 @@ import {
   summarizeActivity,
   summarizeCleaningToday,
   summarizeCompletion,
+  summarizeStoreTrend,
   summarizeTaskScope,
   summarizeTasks,
   summarizeTokenActivity,
@@ -140,5 +141,54 @@ describe("summarizeCleaningToday", () => {
 
   it("is empty on a day with no cleans", () => {
     expect(summarizeCleaningToday([])).toEqual({ am: { done: 0, total: 0 }, pm: { done: 0, total: 0 } });
+  });
+});
+
+describe("summarizeStoreTrend", () => {
+  const week = (week_start: string, owed: number, on_time: number, missed = 0) => ({ week_start, owed, on_time, missed });
+
+  it("shows last week once it has ended, ignoring the week in progress", () => {
+    // Wednesday Oct 28: Oct 19 week is over, Oct 26 has two closed days.
+    const rows = [week("2026-10-19", 50, 46, 2), week("2026-10-26", 12, 6, 4)];
+    expect(summarizeStoreTrend(rows, "2026-10-28")).toEqual({ pct: 92, weekLabel: "Oct 19", partial: false });
+  });
+
+  it("shows the current week so far when no week has ended yet, and says so", () => {
+    // The module's first week: nothing older exists.
+    expect(summarizeStoreTrend([week("2026-10-26", 10, 8, 1)], "2026-10-28")).toEqual({
+      pct: 80,
+      weekLabel: "Oct 26",
+      partial: true,
+    });
+  });
+
+  it("counts the week as ended on Sunday, once Saturday night is behind us", () => {
+    expect(summarizeStoreTrend([week("2026-10-26", 36, 33, 3)], "2026-11-01")).toEqual({
+      pct: 92,
+      weekLabel: "Oct 26",
+      partial: false,
+    });
+    // Still Saturday: the week is not over.
+    expect(summarizeStoreTrend([week("2026-10-26", 30, 27, 3)], "2026-10-31")?.partial).toBe(true);
+  });
+
+  it("skips a finished week with nothing owed and falls back to the one before it", () => {
+    const rows = [week("2026-10-12", 40, 38, 1), week("2026-10-19", 0, 0, 0), week("2026-10-26", 5, 5, 0)];
+    expect(summarizeStoreTrend(rows, "2026-10-28")).toEqual({ pct: 95, weekLabel: "Oct 12", partial: false });
+  });
+
+  it("does not depend on the order the rows arrive in", () => {
+    const rows = [week("2026-10-26", 12, 6, 4), week("2026-10-19", 50, 46, 2)];
+    expect(summarizeStoreTrend(rows, "2026-10-28")?.weekLabel).toBe("Oct 19");
+  });
+
+  it("rounds like the stats page, and shows 0% as a real number", () => {
+    expect(summarizeStoreTrend([week("2026-10-19", 3, 2)], "2026-10-28")?.pct).toBe(67);
+    expect(summarizeStoreTrend([week("2026-10-19", 4, 0, 4)], "2026-10-28")?.pct).toBe(0);
+  });
+
+  it("hides the card when there is no history or nothing was owed", () => {
+    expect(summarizeStoreTrend([], "2026-10-28")).toBeNull();
+    expect(summarizeStoreTrend([week("2026-10-19", 0, 0)], "2026-10-28")).toBeNull();
   });
 });
