@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { loadStoreClock } from "@/app/(app)/cleaning/queries";
 import { buildCleaningWeek } from "@/app/(app)/cleaning/week-build";
+import { queueDailySummary, queuePlanReminder, queueWeekPublished } from "@/app/api/cron/cleaning/alerts";
 import { addDays, boardWeekStart, isoWeekday } from "@/app/(app)/cleaning/week-logic";
 
 /**
@@ -19,9 +20,13 @@ import { addDays, boardWeekStart, isoWeekday } from "@/app/(app)/cleaning/week-l
  * 3. From Thursday 8pm through Saturday, build next week so Mariana can edit
  *    it before it goes live.
  * 4. Stamp published_at on any week whose Monday has arrived; the week is
- *    live then, edited or not.
+ *    live then, edited or not, and #cleaning gets the "week is live" post.
+ * 5. Alerts (app/api/cron/cleaning/alerts.ts), each at most once a day: from
+ *    3am, yesterday's summary to #cleaning plus a misses notice to the
+ *    coordinators; Saturday from 10am, the "plan next week" reminder.
  *
- * Discord posts and in-app alerts are a later slice and are not sent here.
+ * An alert that fails is reported in the response and retried next hour; it
+ * never blocks the close or the builds.
  */
 
 /** Thursday-night build time, store-local. */
@@ -41,7 +46,8 @@ async function run(request: NextRequest) {
   }
 
   const supabase = createServiceRoleClient();
-  const { today, timeOfDay, timeZone } = await loadStoreClock(supabase);
+  const now = new Date();
+  const { today, timeOfDay, timeZone } = await loadStoreClock(supabase, now);
 
   let closed: unknown = null;
   if (timeOfDay >= CLOSE_FROM) {
@@ -62,14 +68,24 @@ async function run(request: NextRequest) {
       ? await buildCleaningWeek(supabase, { weekStart: addDays(currentWeek, 7), today, timeOfDay, timeZone })
       : null;
 
-    const { error: publishError } = await supabase
+    // Filtering on published_at is null and reading back what this update
+    // stamped is what makes each week's post go out exactly once.
+    const { data: published, error: publishError } = await supabase
       .from("cleaning_weeks")
-      .update({ published_at: new Date().toISOString() })
+      .update({ published_at: now.toISOString() })
       .lte("week_start", today)
-      .is("published_at", null);
+      .is("published_at", null)
+      .select("week_start");
     if (publishError) throw new Error(`publish: ${publishError.message}`);
+    const weekPosts = [];
+    for (const week of published ?? []) {
+      weekPosts.push(await queueWeekPublished(supabase, week.week_start));
+    }
 
-    return NextResponse.json({ ok: true, today, closed, current, next });
+    const summary = await queueDailySummary(supabase, { today, timeOfDay, now });
+    const reminder = await queuePlanReminder(supabase, { today, timeOfDay, timeZone, now });
+
+    return NextResponse.json({ ok: true, today, closed, current, next, weekPosts, summary, reminder });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });

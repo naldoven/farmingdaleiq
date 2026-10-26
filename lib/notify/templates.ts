@@ -42,6 +42,9 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   "top_performer",
   "maint_request",
   "work_order_status",
+  // Cleaning coordinators only (recipients set by app/api/cron/cleaning).
+  "cleaning_misses",
+  "cleaning_plan_reminder",
 ]);
 
 /**
@@ -75,6 +78,8 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   top_performer: "Top Performer!",
   maint_request: "Maintenance request update",
   work_order_status: "Work order update",
+  cleaning_misses: "Cleans were missed",
+  cleaning_plan_reminder: "Plan next week's cleaning",
 };
 
 const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
@@ -94,6 +99,8 @@ const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
   top_performer: "/team",
   maint_request: "/maintenance",
   work_order_status: "/maintenance",
+  cleaning_misses: "/cleaning/week",
+  cleaning_plan_reminder: "/cleaning/week",
 };
 
 /**

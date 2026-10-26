@@ -11,6 +11,7 @@ import {
 } from "@/components/mobile";
 import { FirstRunGuideCard } from "@/components/home/first-run-guide-card";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
+import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
 import { APP_FEATURES, isEventFeatureEnabled } from "@/lib/features";
@@ -114,6 +115,35 @@ export function summarizeActivity(
   };
 }
 
+export interface CleaningHalfSummary {
+  done: number;
+  total: number;
+}
+
+/**
+ * Today's AM and PM cleans for the home Cleaning card
+ * (docs/CLEANING-PLAN.md "How a week runs" step 3: the lists show "on the
+ * Cleaning screen and on Home"). Skipped cleans are not owed today, and a
+ * clean a planner sent back counts as not done until its redo is.
+ */
+export function summarizeCleaningToday(
+  rows: { half: string; status: string; rejected_at: string | null }[],
+): { am: CleaningHalfSummary; pm: CleaningHalfSummary } {
+  const half = (which: string): CleaningHalfSummary => {
+    const owed = rows.filter((r) => r.half === which && r.status !== "skipped");
+    const done = owed.filter(
+      (r) => (r.status === "done" || r.status === "not_needed") && r.rejected_at === null,
+    ).length;
+    return { done, total: owed.length };
+  };
+  return { am: half("am"), pm: half("pm") };
+}
+
+function cleaningTone(summary: CleaningHalfSummary): "success" | "warning" | "neutral" {
+  if (summary.total === 0) return "neutral";
+  return summary.done >= summary.total ? "success" : "warning";
+}
+
 /** Formats recent token_transactions for the home Tokens card's short list. */
 export function summarizeTokenActivity(
   transactions: { id: string; delta: number; kind: string; note: string | null }[],
@@ -148,6 +178,7 @@ export default async function HomePage() {
   let byYou: TaskScopeSummary = { assigned: 0, overdue: 0 };
   let balance = 0;
   let tokenActivity: HomeTokenActivityRow[] = [];
+  let cleaning: { am: CleaningHalfSummary; pm: CleaningHalfSummary } | null = null;
 
   if (user) {
     const today = todayIso();
@@ -196,6 +227,18 @@ export default async function HomePage() {
     );
     balance = balanceResult;
     tokenActivity = summarizeTokenActivity(recentTransactions ?? []);
+
+    // Leaders only, the same key the Cleaning screens use; RLS would return
+    // no rows to anyone else anyway. Hidden on a day with no cleans (Sunday,
+    // or before the first week is built) rather than showing 0 of 0.
+    if (await hasPermission("cleaning.complete")) {
+      const { data: cleans } = await supabase
+        .from("cleaning_assignments")
+        .select("half, status, rejected_at")
+        .eq("date", today);
+      const summary = summarizeCleaningToday(cleans ?? []);
+      if (summary.am.total + summary.pm.total > 0) cleaning = summary;
+    }
   }
 
   return (
@@ -243,6 +286,23 @@ export default async function HomePage() {
           </div>
         )}
       </SectionCard>
+
+      {cleaning ? (
+        <SectionCard title="Cleaning today" expandHref="/cleaning">
+          <div className="grid grid-cols-2 gap-3">
+            <StatTile
+              value={`${cleaning.am.done}/${cleaning.am.total}`}
+              label="AM done"
+              tone={cleaningTone(cleaning.am)}
+            />
+            <StatTile
+              value={`${cleaning.pm.done}/${cleaning.pm.total}`}
+              label="PM done"
+              tone={cleaningTone(cleaning.pm)}
+            />
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         title="Activity"
