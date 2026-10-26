@@ -105,9 +105,19 @@ below describes observed behavior we intend to reproduce.
   upload in the background with retries; the server dedupes by the phone's photo id.
 - **Planning rights**: the `cleaning.plan` key or a per-person coordinator tag, so the
   store's cleaning coordinator keeps her leader role.
-- Later phases (plan doc): a weekly board auto-placed Thursday and live Monday, photo
-  completion by the shift leader, carry-over of misses, a print sheet matching the
-  paper schedule, an ATD found-and-fixed log, metrics, and a #cleaning Discord channel.
+- **Weekly board** (Phase 1): an hourly job builds next week from Thursday 8pm
+  (constants on their days, due variables most overdue first into open AM/PM slots up
+  to each half-day's cap, the rest in a "due, not placed" tray). Planners move, skip
+  with a reason, remove, or pull in items through Saturday; the week is live Monday.
+- **Today**: leaders see the day's AM and PM cleans and complete each with one photo
+  (or "checked, not needed" for if-needed items). A planner can reject a photo with a
+  note, which reopens the clean as a redo on the next shift. Cleans still open after
+  their day become misses, owned by that day's Morning or Closing Setup leader when a
+  Setup was posted, and carry over once to the next open day (Saturday to Monday).
+- **Print**: the week in the paper sheet's layout, Mon to Sat by AM and PM, BOH and FOH
+  separately.
+- Later phases (plan doc): Discord posts and in-app alerts, an ATD found-and-fixed log,
+  and metrics.
 
 ### Waste
 - Admins maintain **waste items** organized into **categories**. Item setup, item costs, and deleting
@@ -456,6 +466,10 @@ Cleaning:
 - `cleaning_items` (id, zone_id, name, kind: constant|variable, days_of_week int[], half: am|pm|either, interval_weeks, start_on, if_needed, note, status: draft|active|retired, created_by, approved_by, approved_at, sort)
 - `cleaning_item_photos` (id = the phone's photo id, item_id, storage_path, markup jsonb, kind, capture_source: live|file, captured_at, created_at, taken_by)
 - `cleaning_coordinators` (user_id, added_by, added_at): the planning tag
+- `cleaning_slot_caps` (weekday 1-6, half: am|pm, max_variables, default 2)
+- `cleaning_weeks` (id, week_start unique Monday, build_started_at, built_at, published_at)
+- `cleaning_assignments` (id, week_start, item_id, date, half: am|pm, origin: constant|auto|manual|carry_over|redo, carried_from_id, status: planned|done|not_needed|skipped|missed, skip_reason, owner_user_id, completed_by, completed_at, photo_path, rejected_by, rejected_at, reject_note): unique (item_id, date, half)
+- View `cleaning_item_last_done` (item_id, last_done_at): last counted clean, never stored
 
 Waste:
 - `waste_categories` (id, name, sort)
@@ -524,7 +538,10 @@ Discord:
 | `/checklists` | Today's runs to complete; run player UI |
 | `/checklists/templates` | Build/edit templates, sections, questions, schedules (permission-gated) |
 | `/tasks` | My tasks + shift pool; create ad-hoc tasks |
-| `/cleaning/items` | Cleaning master list by zone; planners review walkthrough drafts |
+| `/cleaning` | Today's cleans by AM and PM; photo completion; planners reject for a redo |
+| `/cleaning/week` | Weekly cleaning board; planners move, skip, remove, pull in; print |
+| `/cleaning/settings` | Slot caps, zones on the board, coordinator tags (planners) |
+| `/cleaning/items` | Cleaning master list by zone with due dots; planners review walkthrough drafts |
 | `/cleaning/walkthrough` | Walkthrough camera: photograph items, tag zone and cadence |
 | `/setups` | Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes |
 | `/setups/templates` | Manage setup templates, groups, positions, and the store layout editor |

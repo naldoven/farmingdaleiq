@@ -4,12 +4,14 @@ import { Camera } from "lucide-react";
 import {
   canPlanCleaning,
   loadItems,
+  loadLastDone,
   loadLatestPhotos,
+  loadStoreClock,
   loadZones,
   signPhotoUrls,
   type PhotoRow,
 } from "@/app/(app)/cleaning/queries";
-import { chunk, toListRows } from "@/app/(app)/cleaning/items/view";
+import { chunk, dueContext, toListRows } from "@/app/(app)/cleaning/items/view";
 import { ItemList } from "@/components/cleaning/item-list";
 import { Button } from "@/components/ui/button";
 import { PermissionError, hasPermission } from "@/lib/auth/permissions";
@@ -19,7 +21,9 @@ import { createClient } from "@/lib/supabase/server";
  * /cleaning/items (docs/CLEANING-PLAN.md "Phase W" and the Screens table):
  * the master list by zone, drafts first. Leaders see it; planners also
  * approve, delete and edit. After the walkthrough this is where the owner
- * reviews every draft on his phone.
+ * reviews every draft on his phone. Active items also carry the audit view
+ * (plan "How a week runs" step 6): a due dot for variables and the last-cleaned
+ * date for everything, so the list answers "is anything overdue?" at a glance.
  *
  * Readers hold cleaning.complete or plan rights (the coordinator tag counts),
  * the same test the walkthrough route and the table RLS apply, so a plain
@@ -39,17 +43,23 @@ export default async function CleaningItemsPage() {
     throw new PermissionError("cleaning.complete");
   }
 
-  const [zones, items] = await Promise.all([
+  const [zones, items, clock] = await Promise.all([
     loadZones(supabase),
     loadItems(supabase, ["draft", "active"]),
+    loadStoreClock(supabase),
   ]);
 
-  const photoBatches = await Promise.all(
-    chunk(
-      items.map((item) => item.id),
-      100,
-    ).map((ids) => loadLatestPhotos(supabase, ids)),
-  );
+  // Last-cleaned dates come from completion records, never typed in, and
+  // "today" is the store's, not the server's (Vercel runs in UTC).
+  const [lastDone, photoBatches] = await Promise.all([
+    loadLastDone(supabase, clock.timeZone),
+    Promise.all(
+      chunk(
+        items.map((item) => item.id),
+        100,
+      ).map((ids) => loadLatestPhotos(supabase, ids)),
+    ),
+  ]);
   const photos = new Map<string, PhotoRow>();
   for (const batch of photoBatches) for (const [itemId, photo] of batch) photos.set(itemId, photo);
 
@@ -60,7 +70,7 @@ export default async function CleaningItemsPage() {
     [...photos.values()].map((photo) => photo.storage_path),
   );
 
-  const rows = toListRows(items, photos, signedUrls);
+  const rows = toListRows(items, photos, signedUrls, dueContext(clock.today, lastDone));
   const draftCount = rows.filter((row) => row.status === "draft").length;
 
   const summary =

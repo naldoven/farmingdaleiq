@@ -115,6 +115,8 @@ describe("menu data", () => {
       "ratings",
       "training",
       "waste",
+      "cleaning-today",
+      "cleaning-week",
       "cleaning",
       "cleaning-walkthrough",
       "accountability",
@@ -141,6 +143,26 @@ describe("menu data", () => {
     expect(VIEW_ITEMS.find((item) => item.key === "catering")?.section).toBe(
       "Daily Ops",
     );
+  });
+
+  it("puts every Cleaning screen under Daily Ops with the same icon, gated by cleaning.complete", () => {
+    const cleaning = VIEW_ITEMS.filter((item) => item.key.startsWith("cleaning"));
+    expect(cleaning.map((item) => [item.key, item.href])).toEqual([
+      ["cleaning-today", "/cleaning"],
+      ["cleaning-week", "/cleaning/week"],
+      ["cleaning", "/cleaning/items"],
+      ["cleaning-walkthrough", "/cleaning/walkthrough"],
+    ]);
+    for (const item of cleaning) {
+      expect(item.section, item.key).toBe("Daily Ops");
+      expect(item.icon, item.key).toBe("cleaning");
+    }
+    const without = visibleViewItems(VIEW_ITEMS, {}).map((item) => item.key);
+    const withKey = visibleViewItems(VIEW_ITEMS, { "cleaning.complete": true }).map((item) => item.key);
+    for (const item of cleaning) {
+      expect(without, item.key).not.toContain(item.key);
+      expect(withKey, item.key).toContain(item.key);
+    }
   });
 
   it("keeps Equipment reachable from the mobile Menu hub", () => {

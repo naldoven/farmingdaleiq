@@ -175,10 +175,24 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: "cleaning",
     items: [
       {
+        href: "/cleaning",
+        permission: "cleaning.complete",
+        label: "Today",
+        description: "Today's AM and PM cleans; photograph each one done.",
+        owner: "Cleaning",
+      },
+      {
+        href: "/cleaning/week",
+        permission: "cleaning.complete",
+        label: "Week board",
+        description: "The week's cleans by day: move, skip or pull in; print the paper sheet.",
+        owner: "Cleaning",
+      },
+      {
         href: "/cleaning/items",
         permission: "cleaning.complete",
         label: "Master list",
-        description: "Every cleanable item by zone; review walkthrough drafts.",
+        description: "Every cleanable item by zone with last and next clean; review walkthrough drafts.",
         owner: "Cleaning",
       },
       {
@@ -187,6 +201,17 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Walkthrough",
         description: "Camera: photograph items and tag zone and cadence.",
         owner: "Cleaning",
+      },
+      {
+        // Planners reach it from the week board, so it has a title for the
+        // header but no sidebar row. Without this entry the header would fall
+        // back to the "Today" label via the /cleaning prefix.
+        href: "/cleaning/settings",
+        permission: "cleaning.complete",
+        label: "Cleaning settings",
+        description: "Slot caps, which zones are on the board, and cleaning coordinators.",
+        owner: "Cleaning",
+        hidden: true,
       },
     ],
   },

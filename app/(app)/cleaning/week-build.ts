@@ -78,7 +78,8 @@ export async function buildCleaningWeek(
     .update({ build_started_at: new Date().toISOString() })
     .eq("week_start", weekStart)
     .is("built_at", null)
-    .or(`build_started_at.is.null,build_started_at.lt.${staleBefore}`)
+    // Quoted so PostgREST reads the timestamp's dots and colons as one value.
+    .or(`build_started_at.is.null,build_started_at.lt."${staleBefore}"`)
     .select("id");
   if (claimError) throw new Error(`Could not claim the week: ${claimError.message}`);
   if (!claimed || claimed.length === 0) {

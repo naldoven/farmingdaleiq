@@ -1,8 +1,10 @@
 # Cleaning module plan (draft for approval)
 
-Status: draft, 2026-10-25. Source: Naldo's store recordings with Mariana and the BOH
-leaders, the current paper "Weekly Cleaning Schedule" PDF, the 2026 cleaning-zones
-message, and nine rounds of Q&A with Naldo. Nothing is built yet.
+Status: approved 2026-10-25. Phase W (walkthrough) shipped in PR #88; the Phase 1 core
+(board, today list, photo completion, carry-over, print, settings) is in the PR after
+it. Source: Naldo's store recordings with Mariana and the BOH leaders, the current
+paper "Weekly Cleaning Schedule" PDF, the 2026 cleaning-zones message, and nine rounds
+of Q&A with Naldo.
 
 ## The problem
 
@@ -157,6 +159,26 @@ nothing is redone later.
 - **Order:** Naldo paste-runs the migration in the Supabase SQL editor, then the PR
   merges and deploys. Naldo invites Mariana, Eric and Nathan as leaders before the walk.
 
+## Phase 1 core (built 2026-10-25, live from Monday Oct 26)
+
+Built ahead of the Thursday target so the 36 BOH constants run in the app from the
+walkthrough day on; variables join as drafts are approved.
+
+- **Migration** `20261026010000_cleaning_board.sql`: slot caps, weeks, assignments,
+  and three database functions for the steps that must land together (complete with a
+  stored photo, reject into a redo, close past days with miss, owner and carry-over).
+- **Hourly job** `/api/cron/cleaning`: closes past days, builds the current week if it
+  was never built (nothing lands before today), builds next week from Thursday 8pm,
+  stamps the week published on Monday.
+- **Screens**: `/cleaning` (today), `/cleaning/week` (board and print),
+  `/cleaning/settings` (caps, zones, coordinator tags), due dots on `/cleaning/items`.
+- **Owner attribution** reads the Morning and Closing Setup leaders as planned. Setups
+  is switched off today, so every miss records "no owner" until Setups is switched on
+  or another source is picked (open item 0 below). Completions always record who did
+  them.
+- **Not in this slice**: Discord posts, in-app alerts (misses summary, Saturday
+  reminder), the today list on Home, ATD log, metrics.
+
 ## Build phases
 
 **Phase 0, this week (no code):** add the Cleaning section and tables to
@@ -208,11 +230,11 @@ tokens, desktop board if wanted.
 
 ## Before Phase 1 starts (Naldo)
 
-0. Decide how the app knows the AM and PM owner. The plan reads the Morning and
-   Closing Setup leaders, but the Setups module is switched off today
-   (`lib/features.ts`, `setups: false`). Either switch Setups on and have leaders post
-   them, or pick another source (for example the coordinator names the AM and PM
-   leader per day on the board).
+0. Decide how the app knows the AM and PM owner. The day-end close reads the Morning
+   and Closing Setup leaders, but the Setups module is switched off today
+   (`lib/features.ts`, `setups: false`), so misses record "no owner" for now. Either
+   switch Setups on and have leaders post them, or pick another source (for example
+   the coordinator names the AM and PM leader per day on the board).
 1. Create the #cleaning Discord channel and its webhook.
 2. Send the walkthrough's variables (photos and notes are fine) when ready.
 3. Have Mariana check the BOH appendix below.

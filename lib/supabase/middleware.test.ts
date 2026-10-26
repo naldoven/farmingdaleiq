@@ -13,10 +13,15 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/cleaning/walkthrough")).toBe(true);
   });
 
+  it("lets the clean-completion photo route answer 401 JSON itself instead of redirecting", () => {
+    expect(isPublicPath("/api/cleaning/complete")).toBe(true);
+  });
+
   it("keeps private app routes behind authentication", () => {
     expect(isPublicPath("/maintenance")).toBe(false);
     expect(isPublicPath("/cleaning/walkthrough")).toBe(false);
     expect(isPublicPath("/cleaning/items")).toBe(false);
+    expect(isPublicPath("/cleaning")).toBe(false);
     expect(isPublicPath("/api/cleaning/other")).toBe(false);
   });
 });
