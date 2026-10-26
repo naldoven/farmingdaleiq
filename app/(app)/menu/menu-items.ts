@@ -25,14 +25,17 @@ export interface MenuActionItem {
 
 /**
  * The View list is grouped into these sections so the Menu tab is a short
- * index of five collapsible headings instead of one long scroll. Order here
- * is the order they render in.
+ * index of collapsible headings instead of one long scroll. Order here is
+ * the order they render in. Cleaning has its own heading and the vendor and
+ * equipment screens sit under Maintenance, since that is how the store
+ * thinks of them (Naldo, 2026-10-26).
  */
 export const MENU_SECTIONS = [
   "Daily Ops",
+  "Cleaning",
   "People & Training",
   "Recognition",
-  "Operations",
+  "Maintenance",
   "Admin",
 ] as const;
 
@@ -153,18 +156,18 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "ratings", label: "Ratings", href: "/ratings", icon: "ratings", iconTone: "neutral", section: "People & Training" },
   { key: "training", label: "Training", href: "/training", icon: "training", iconTone: "neutral", section: "People & Training" },
   { key: "waste", label: "Waste", href: "/waste", icon: "waste", iconTone: "neutral", section: "Daily Ops" },
-  { key: "cleaning-today", label: "Today's cleans", href: "/cleaning", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
-  { key: "cleaning-week", label: "Cleaning week board", href: "/cleaning/week", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
-  { key: "cleaning", label: "Cleaning list", href: "/cleaning/items", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
-  { key: "cleaning-walkthrough", label: "Cleaning walkthrough", href: "/cleaning/walkthrough", icon: "cleaning", iconTone: "neutral", section: "Daily Ops" },
+  { key: "cleaning-today", label: "Today", href: "/cleaning", icon: "cleaning", iconTone: "neutral", section: "Cleaning" },
+  { key: "cleaning-week", label: "Week board", href: "/cleaning/week", icon: "cleaning", iconTone: "neutral", section: "Cleaning" },
+  { key: "cleaning", label: "Master list", href: "/cleaning/items", icon: "cleaning", iconTone: "neutral", section: "Cleaning" },
+  { key: "cleaning-walkthrough", label: "Walkthrough", href: "/cleaning/walkthrough", icon: "cleaning", iconTone: "neutral", section: "Cleaning" },
   { key: "accountability", label: "Accountability", href: "/accountability", icon: "accountability", iconTone: "danger", section: "People & Training" },
   { key: "rewards", label: "Rewards", href: "/rewards", icon: "rewards", iconTone: "neutral", section: "Recognition" },
   { key: "tokens", label: "Tokens", href: "/tokens", icon: "tokens", iconTone: "warning", section: "Recognition" },
   { key: "team-feed", label: "Team Feed", href: "/team", icon: "team-feed", iconTone: "neutral", section: "Recognition" },
   { key: "people", label: "People", href: "/people", icon: "people", iconTone: "neutral", section: "People & Training" },
-  { key: "vendors", label: "Vendors", href: "/vendors", icon: "vendors", iconTone: "neutral", section: "Operations" },
-  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Operations" },
-  { key: "equipment", label: "Equipment", href: "/maintenance/equipment", icon: "maintenance", iconTone: "neutral", section: "Operations" },
+  { key: "vendors", label: "Vendors", href: "/vendors", icon: "vendors", iconTone: "neutral", section: "Maintenance" },
+  { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
+  { key: "equipment", label: "Equipment", href: "/maintenance/equipment", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
   { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Daily Ops" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },

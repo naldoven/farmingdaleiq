@@ -93,9 +93,12 @@ below describes observed behavior we intend to reproduce.
   shift end to pick a **Top Performer** (who gets tokens + a public feed shoutout).
 
 ### Cleaning (added 2026-10-25, full spec in docs/CLEANING-PLAN.md)
-- One **master list** of every deep clean in the building, each item tagged with one
-  of six color **zones** (BOH Green, Yellow, Blue; FOH Red, Purple, Orange) and a
-  reference photo with an optional drawing that marks the exact spot.
+- One **master list** of every deep clean in the building, each item tagged with an
+  area **zone** (BOH: Boards, Prep, Breading, Machines, Dish to door, Dumpster; FOH:
+  Front counter, Vestibule, DT cockpit, Dining room, Patio, Restrooms, Playground) and
+  a reference photo with an optional drawing that marks the exact spot. Each area keeps
+  the color of its group on the store's zones message (Green, Yellow, Blue, Red,
+  Purple, Orange), so printouts stay color-coded.
 - **Constants** run on fixed weekdays (Mon to Sat, the store is closed Sunday) in the
   AM or PM half. **Variables** repeat every 1, 2, 3, 4, 6, 8 or 13 weeks, in AM, PM or
   either half. "If needed" items can be marked checked but not needed.
@@ -462,7 +465,7 @@ Tasks:
 - `tasks` (id, template_id?, kind: adhoc|recurring|reward_fulfillment|follow_up|lead_duty, title, description, date, day_part_id, start_time, due_at, assigned_user_id, assigned_position_id, setup_id, status, completed_by, completed_at, token_value, created_by, ref jsonb)
 
 Cleaning:
-- `cleaning_zones` (id, name, color, side: foh|boh, areas, sort, active): active = on the weekly board
+- `cleaning_zones` (id, name, color, side: foh|boh, areas, sort, active): one row per area; areas = its color group; active = on the weekly board
 - `cleaning_items` (id, zone_id, name, kind: constant|variable, days_of_week int[], half: am|pm|either, interval_weeks, start_on, if_needed, note, status: draft|active|retired, created_by, approved_by, approved_at, sort)
 - `cleaning_item_photos` (id = the phone's photo id, item_id, storage_path, markup jsonb, kind, capture_source: live|file, captured_at, created_at, taken_by)
 - `cleaning_coordinators` (user_id, added_by, added_at): the planning tag

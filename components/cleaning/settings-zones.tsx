@@ -63,9 +63,9 @@ function ZoneSwitch({
 }
 
 /**
- * The six zones with an On/Off switch each. "On" means the zone's items join
- * the weekly board; FOH ships Off until the BOH beta is stable (plan "Build
- * phases"). The switch shows the saved state, so a failed save never looks
+ * Every area zone with an On/Off switch. "On" means the zone's items join
+ * the weekly board; the line under each name is the color group the area
+ * came from. The switch shows the saved state, so a failed save never looks
  * like it worked.
  */
 export function SettingsZones({ zones }: { zones: SettingsZone[] }) {

@@ -30,7 +30,7 @@ BOH goes first. FOH is loaded at the same time but stays hidden until BOH is sta
 | Scope | One master list for all deep cleans, constants and variables. Daily closing checklists stay in Checklists, untouched. |
 | Constants | Same clean, same weekday(s), every week, AM or PM. Seeded from the paper PDF. |
 | Variables | Repeat every 1, 2, 3, 4, 6, 8 or 13 weeks. Each item says AM, PM or Either. Each section (rack, shelf) is its own item. |
-| Zones | Six colors. FOH: Red (FC, vestibule), Purple (DT cockpit), Orange (dining room, patio, restrooms, playground). BOH: Green (boards, prep), Yellow (breading, machines), Blue (dish to door, dumpster). No cleaning teams. |
+| Zones | One zone per area, named the way the store talks (changed 2026-10-26 after the first phone walkthrough; colors were the first draft). BOH: Boards, Prep (Green), Breading, Machines (Yellow), Dish to door, Dumpster (Blue). FOH: Front counter, Vestibule (Red), DT cockpit (Purple), Dining room, Patio, Restrooms, Playground (Orange). The color stays on each area as a tag for the print sheet. No cleaning teams. |
 | Weekly plan | App auto-places next week Thursday night. Mariana moves, skips, or pulls extra items in through Saturday. The week goes live Monday automatically, edited or not. |
 | Load cap | Max variable cleans per half-day, set per day (Mon AM through Sat PM). Default 2. A slot can be 0. |
 | Skip | Planner-only deferral before the day, reason required. Not a miss, tracked as "skipped". The item stays overdue so it is placed first next week. |
@@ -231,6 +231,11 @@ tokens, desktop board if wanted.
 ## Settled after the first draft
 
 - Only Sunday counts as closed. Around any other closure Mariana moves cleans by hand.
+- Zones are areas, not colors (2026-10-26, migration `20261026050000_cleaning_area_zones.sql`).
+  The 36 BOH constants were moved to areas by best guess from their names; the less
+  certain ones are Air vents, Rethermalizer (Machines), Lowboy gaskets (Boards) and Spray
+  the whale (Dumpster). Mariana corrects any on the master list. FOH is on the board
+  from the same date; it has no cleans until walkthrough items are approved.
 - Vestibule cleans go in the Red zone (the zones message wins over the PDF's orange
   text; Naldo: either is fine).
 - "Spray?Brush the whale" is "Spray the whale".
@@ -248,7 +253,8 @@ tokens, desktop board if wanted.
 
 ## Appendix: BOH constants seed (from the paper sheet, Mariana to verify)
 
-Zones by text color on the PDF: blue = Blue, green = Green, yellow = Yellow.
+Zones by text color on the PDF: blue = Blue, green = Green, yellow = Yellow. Since
+2026-10-26 each color is split into its areas (see "Settled after the first draft").
 
 | Day | AM | PM |
 |---|---|---|
