@@ -5,9 +5,11 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { groupByZone, type MarkupData } from "@/app/(app)/cleaning/logic";
+import type { DueState } from "@/app/(app)/cleaning/week-logic";
 import { ItemActions } from "@/components/cleaning/item-actions";
 import { PhotoWithMarkup } from "@/components/cleaning/photo-with-markup";
 import { ChipRow, FilterChip, SectionCard, StatusBadge } from "@/components/mobile";
+import { cn } from "@/lib/utils";
 
 export interface ItemListZone {
   id: string;
@@ -30,7 +32,23 @@ export interface ItemListRow {
   /** A photo row exists but its signed URL did not come back. */
   photoMissing: boolean;
   markup: MarkupData | null;
+  /**
+   * Master-list audit view (plan "How a week runs" step 6). The dot is for
+   * active variables only; dueLabel is "Next due <date>" or "Due now".
+   */
+  dueState: DueState | null;
+  /** The dot in words ("Overdue"), so its meaning is not carried by color alone. */
+  dueStateText: string | null;
+  dueLabel: string | null;
+  /** "Last cleaned <date>" or "Never cleaned yet"; null for a draft. */
+  lastCleanedLabel: string | null;
 }
+
+const DUE_DOT: Record<DueState, string> = {
+  not_due: "bg-success",
+  due_this_week: "bg-warning",
+  overdue: "bg-danger",
+};
 
 function ZoneDot({ color }: { color: string }) {
   return (
@@ -56,6 +74,19 @@ function Row({ row, canPlan }: { row: ItemListRow; canPlan: boolean }) {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="break-words text-[15px] font-semibold text-ink">{row.name}</span>
           <span className="text-[13px] text-muted-ink">{row.cadence}</span>
+          {row.dueState && row.dueLabel ? (
+            <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+              <span
+                role="img"
+                aria-label={row.dueStateText ?? row.dueState}
+                title={row.dueStateText ?? undefined}
+                data-due-state={row.dueState}
+                className={cn("h-3 w-3 shrink-0 rounded-full", DUE_DOT[row.dueState])}
+              />
+              {row.dueLabel}
+            </span>
+          ) : null}
+          {row.lastCleanedLabel ? <span className="text-[13px] text-muted-ink">{row.lastCleanedLabel}</span> : null}
           <span className="flex flex-wrap gap-1.5">
             <StatusBadge tone={row.status === "draft" ? "warning" : "success"} dot>
               {row.status === "draft" ? "Draft" : "Active"}

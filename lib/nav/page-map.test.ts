@@ -162,6 +162,68 @@ describe("catering cancelled list", () => {
   });
 });
 
+describe("cleaning group", () => {
+  const cleaning = () => NAV_GROUPS.find((g) => g.label === "Cleaning");
+
+  it("lists Today, Week board, Master list, Walkthrough in that order behind cleaning.complete", () => {
+    const rows = cleaning()?.items.filter((i) => !i.hidden);
+    expect(rows?.map((i) => [i.label, i.href])).toEqual([
+      ["Today", "/cleaning"],
+      ["Week board", "/cleaning/week"],
+      ["Master list", "/cleaning/items"],
+      ["Walkthrough", "/cleaning/walkthrough"],
+    ]);
+    for (const row of rows ?? []) expect(row.permission, row.href).toBe("cleaning.complete");
+  });
+
+  it("gives Today and Week board their own header titles", () => {
+    expect(resolveHeader("/cleaning")).toMatchObject({ variant: "subpage", title: "Today", backHref: "/", showBack: true });
+    expect(resolveHeader("/cleaning/week")).toMatchObject({
+      variant: "subpage",
+      title: "Week board",
+      backHref: "/cleaning",
+      showBack: true,
+    });
+  });
+
+  it("titles the print view as part of the week board and backs out to it", () => {
+    expect(resolveHeader("/cleaning/week/print")).toMatchObject({ title: "Week board", backHref: "/cleaning/week" });
+    expect(activeNavHref("/cleaning/week/print")).toBe("/cleaning/week");
+  });
+
+  it("titles settings as Cleaning settings, not Today, though it has no sidebar row", () => {
+    // Without its own entry the /cleaning prefix would title the page "Today".
+    expect(resolveHeader("/cleaning/settings")).toMatchObject({
+      variant: "subpage",
+      title: "Cleaning settings",
+      showBack: true,
+    });
+    expect(findNavItem("/cleaning/settings")).toMatchObject({ hidden: true });
+    expect(allItems(visibleNavGroups(null))).not.toContain("/cleaning/settings");
+    expect(allItems(visibleNavGroups(new Set(navPermissionKeys())))).not.toContain("/cleaning/settings");
+    expect(activeNavGroupLabel("/cleaning/settings")).toBe("Cleaning");
+  });
+
+  it("highlights Today only on /cleaning and Week board on the week board", () => {
+    // /cleaning/week matches "/cleaning" by prefix too; only the deeper page
+    // may be current, or Today and Week board both read as selected.
+    expect(activeNavHref("/cleaning")).toBe("/cleaning");
+    expect(activeNavHref("/cleaning/week")).toBe("/cleaning/week");
+    expect(activeNavHref("/cleaning/items")).toBe("/cleaning/items");
+    expect(activeNavHref("/cleaning/items/abc-123")).toBe("/cleaning/items");
+    expect(activeNavHref("/cleaning/walkthrough")).toBe("/cleaning/walkthrough");
+    expect(activeNavGroupLabel("/cleaning/week")).toBe("Cleaning");
+  });
+
+  it("shows to a viewer with cleaning.complete and hides without it", () => {
+    const visible = allItems(visibleNavGroups(new Set(["cleaning.complete"])));
+    for (const href of ["/cleaning", "/cleaning/week", "/cleaning/items", "/cleaning/walkthrough"]) {
+      expect(visible).toContain(href);
+    }
+    expect(visibleNavGroups(new Set<string>()).some((g) => g.label === "Cleaning")).toBe(false);
+  });
+});
+
 describe("initialsFromName", () => {
   it("takes up to two initials, uppercased", () => {
     expect(initialsFromName("dana cruz reyes")).toBe("DC");

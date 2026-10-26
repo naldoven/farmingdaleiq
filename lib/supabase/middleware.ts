@@ -40,6 +40,10 @@ const PUBLIC_PATHS = [
   // save, and the phone would drop the shot from its queue. The route checks
   // the session and permission itself and answers 401/403 JSON instead.
   "/api/cleaning/walkthrough",
+  // Same reason for the Today screen's photo completion: fetch() would follow
+  // the login redirect and read a 200 page as a saved clean. The route answers
+  // 401 JSON itself.
+  "/api/cleaning/complete",
 ];
 
 export function isPublicPath(pathname: string) {

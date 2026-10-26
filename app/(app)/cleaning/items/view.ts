@@ -6,8 +6,16 @@ import {
 } from "@/app/(app)/cleaning/constants";
 import { cadenceLabel, type MarkupData } from "@/app/(app)/cleaning/logic";
 import type { ItemRow, PhotoRow } from "@/app/(app)/cleaning/queries";
+import {
+  addDays,
+  boardWeekStart,
+  dueState as computeDueState,
+  nextDueDate,
+  type DueState,
+} from "@/app/(app)/cleaning/week-logic";
 import type { ItemDetailsValue } from "@/components/cleaning/item-details-fields";
 import type { ItemListRow } from "@/components/cleaning/item-list";
+import { formatStoreDate } from "@/lib/time";
 
 /**
  * Pure view helpers for the master-list pages. Kept apart from the pages so
@@ -77,11 +85,66 @@ export function itemCadence(item: ItemRow): string {
   return cadenceLabel({ ...item, days_of_week: item.days_of_week ? [...item.days_of_week].sort((a, b) => a - b) : null });
 }
 
-/** Rows for the list: draft and active items only, with their photo resolved. */
+/**
+ * What the due dots are measured against: store-local today (never the server
+ * clock, which is already tomorrow after 8pm Eastern), the Saturday that ends
+ * the board's week, and each item's last counted clean.
+ */
+export interface DueContext {
+  today: string;
+  weekEnd: string;
+  lastDone: ReadonlyMap<string, string>;
+}
+
+/** The week the board shows today ends on its Saturday; Sunday looks ahead to next week. */
+export function dueContext(today: string, lastDone: ReadonlyMap<string, string>): DueContext {
+  return { today, weekEnd: addDays(boardWeekStart(today), 5), lastDone };
+}
+
+/** The dot's meaning in words, so color is never the only carrier. */
+const DUE_STATE_TEXT: Record<DueState, string> = {
+  not_due: "Not due yet",
+  due_this_week: "Due this week",
+  overdue: "Overdue",
+};
+
+type DueFields = Pick<ItemListRow, "dueState" | "dueStateText" | "dueLabel" | "lastCleanedLabel">;
+
+/**
+ * Plan "How a week runs" step 6. Only active items are audited: a draft has
+ * never been on a board and a retired item is off it. Variables get the dot
+ * and a next-due date ("Due now" when they have neither a clean nor a start
+ * date); constants run on fixed weekdays, so they show when they were last
+ * cleaned and no dot.
+ */
+export function itemDueFields(item: ItemRow, ctx: DueContext): DueFields {
+  if (item.status !== "active") {
+    return { dueState: null, dueStateText: null, dueLabel: null, lastCleanedLabel: null };
+  }
+
+  const lastDone = ctx.lastDone.get(item.id) ?? null;
+  const lastCleanedLabel = lastDone ? `Last cleaned ${formatStoreDate(lastDone)}` : "Never cleaned yet";
+
+  if (item.kind !== "variable" || item.interval_weeks === null) {
+    return { dueState: null, dueStateText: null, dueLabel: null, lastCleanedLabel };
+  }
+
+  const nextDue = nextDueDate(item.interval_weeks, lastDone, item.start_on);
+  const state = computeDueState(nextDue, ctx.today, ctx.weekEnd);
+  return {
+    dueState: state,
+    dueStateText: DUE_STATE_TEXT[state],
+    dueLabel: nextDue ? `Next due ${formatStoreDate(nextDue)}` : "Due now",
+    lastCleanedLabel,
+  };
+}
+
+/** Rows for the list: draft and active items only, with their photo and due dot resolved. */
 export function toListRows(
   items: ItemRow[],
   photos: Map<string, PhotoRow>,
   signedUrls: Map<string, string>,
+  due: DueContext,
 ): ItemListRow[] {
   const rows: ItemListRow[] = [];
   for (const item of items) {
@@ -98,6 +161,7 @@ export function toListRows(
       photoUrl,
       photoMissing: Boolean(photo) && !photoUrl,
       markup: photo ? parseMarkup(photo.markup) : null,
+      ...itemDueFields(item, due),
     });
   }
   return rows;

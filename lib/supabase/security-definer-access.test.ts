@@ -49,6 +49,17 @@ const AUTHENTICATED_RLS_HELPERS: Record<string, string> = {
   current_store_id: "store-scoping helper used by RLS policies",
 };
 
+/**
+ * RPCs the app calls only through the service-role client from a cron job.
+ * They are deliberately NOT granted to authenticated, so a signed-in user
+ * cannot run them from the browser.
+ */
+const SERVICE_ROLE_ONLY_RPCS: Record<string, string> = {
+  // Marks every open clean on a past day missed and carries it over; only the
+  // hourly job in app/api/cron/cleaning may decide a day is over.
+  close_cleaning_days: "cleaning day-end close, granted to service_role only",
+};
+
 function readMigrations(): MigrationFile[] {
   const dir = path.join(REPO_ROOT, "supabase", "migrations");
   return readdirSync(dir)
@@ -100,7 +111,7 @@ describe("privileged objects in the real migrations", () => {
   });
 
   it("keeps grant execute to authenticated on every RPC the app calls", () => {
-    const rpcNames = discoverRpcNames();
+    const rpcNames = discoverRpcNames().filter((name) => !(name in SERVICE_ROLE_ONLY_RPCS));
     // A refactor that hides the names from this scan must fail loudly rather
     // than leave the check passing on an empty list.
     expect(rpcNames.length).toBeGreaterThan(0);
