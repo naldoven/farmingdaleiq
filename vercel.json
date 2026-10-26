@@ -12,6 +12,7 @@
     { "path": "/api/cron/maintenance", "schedule": "0 5 * * *" },
     { "path": "/api/cron/accountability", "schedule": "0 5 * * *" },
     { "path": "/api/cron/catering", "schedule": "* * * * *" },
+    { "path": "/api/cron/catering-drivers", "schedule": "* * * * *" },
     { "path": "/api/cron/cleaning", "schedule": "5 * * * *" }
   ]
 }

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { CancelOrderButton } from "@/components/catering/cancel-order-button";
 import { ChecklistSection } from "@/components/catering/checklist-section";
 import { OrderDetailsForm } from "@/components/catering/order-details-form";
+import type { DriverRef } from "@/components/catering/driver-status";
+import { OrderDriverSection } from "@/components/catering/order-driver-section";
 import { OrderItemEditor } from "@/components/catering/order-item-editor";
 import { OrderSetupSection } from "@/components/catering/order-setup-section";
 import { RescaleButton } from "@/components/catering/rescale-button";
@@ -12,6 +14,7 @@ import { StageSelect } from "@/components/catering/stage-select";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { storeLocalDate } from "@/lib/time";
 import {
   CANCELLED_STAGE,
   CHECKLIST_STAGES,
@@ -22,6 +25,8 @@ import {
   type ChecklistStage,
   type OrderStage,
 } from "@/app/(app)/catering/logic";
+import { DELIVERY_PLATFORMS, reservationBlockedReason, type DeliveryPlatform } from "@/app/(app)/catering/drivers/logic";
+import { loadOrderDrivers } from "@/app/(app)/catering/drivers/queries";
 
 /**
  * /catering/orders/[id] — ARCHITECTURE.md page map: "Order detail: items,
@@ -35,9 +40,10 @@ export default async function CateringOrderPage({
   params: Promise<{ id: string }>;
 }) {
   await requirePermission("catering.view");
-  const [canManage, canOverride] = await Promise.all([
+  const [canManage, canOverride, canReserveDrivers] = await Promise.all([
     hasPermission("catering.manage"),
     hasPermission("catering.override"),
+    hasPermission("catering.drivers"),
   ]);
   const { id } = await params;
 
@@ -53,7 +59,7 @@ export default async function CateringOrderPage({
     supabase
       .from("catering_orders")
       .select(
-        "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, paper_goods, notes, contact_id, setup_generated_at",
+        "id, guest_name, phone, email, event_date, event_time, headcount, amount, stage, fulfillment, delivery_address, delivery_platform, paper_goods, notes, contact_id, setup_generated_at",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -105,6 +111,21 @@ export default async function CateringOrderPage({
       lifetimeSpend: countable.reduce((sum, o) => sum + (o.amount ?? 0), 0),
     };
   }
+
+  // Only delivery orders carry a driver. A failed read shows "could not load"
+  // rather than "Needs driver", which would read as a real gap.
+  const isDelivery = order.fulfillment === "delivery";
+  let orderDrivers: DriverRef[] | null = null;
+  if (isDelivery) {
+    try {
+      orderDrivers = (await loadOrderDrivers(supabase, [order.id])).get(order.id) ?? [];
+    } catch (error) {
+      console.error("catering: could not load the order's drivers", error);
+    }
+  }
+  const deliveryPlatform: DeliveryPlatform = (DELIVERY_PLATFORMS as readonly string[]).includes(order.delivery_platform)
+    ? (order.delivery_platform as DeliveryPlatform)
+    : "roadway";
 
   const itemsByStage = (stage: ChecklistStage) =>
     (checklistItems ?? [])
@@ -185,6 +206,19 @@ export default async function CateringOrderPage({
           canManage={canManage}
         />
       </SectionCard>
+
+      {isDelivery && (
+        <OrderDriverSection
+          orderId={order.id}
+          eventDate={order.event_date}
+          today={storeLocalDate()}
+          platform={deliveryPlatform}
+          drivers={orderDrivers}
+          open={reservationBlockedReason(order) === null}
+          canEditPlatform={canManage}
+          canReserve={canReserveDrivers}
+        />
+      )}
 
       <SectionCard title="Menu items">
         <OrderItemEditor

@@ -31,6 +31,9 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   "catering_order_new",
   "catering_stage_change",
   "catering_tomorrow_digest",
+  "catering_driver_reminder",
+  // -> leaders channel
+  "catering_driver_escalation",
   // Cleaning -> #cleaning (item names only, never people)
   "cleaning_daily_summary",
   "cleaning_week_published",
@@ -64,6 +67,8 @@ const EMOJI: Partial<Record<EventKey, string>> = {
   catering_order_new: "🍽️",
   catering_stage_change: "🍽️",
   catering_tomorrow_digest: "🍽️",
+  catering_driver_reminder: "🚗",
+  catering_driver_escalation: "🚨",
   cleaning_daily_summary: "🧽",
   cleaning_week_published: "🗓️",
   infraction_issued: "⚠️",
@@ -87,6 +92,8 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_order_new: "New catering order",
   catering_stage_change: "Catering order stage change",
   catering_tomorrow_digest: "Tomorrow's catering",
+  catering_driver_reminder: "Deliveries need a driver",
+  catering_driver_escalation: "Delivery still has no driver",
   cleaning_daily_summary: "Cleaning summary",
   cleaning_week_published: "Cleaning week is live",
 };

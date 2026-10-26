@@ -79,6 +79,10 @@ export const ALL_PERMISSION_KEYS = [
   "catering.manage",
   "catering.view",
   "catering.override",
+  // Marking delivery drivers reserved and keeping the driver roster. Shift
+  // Supervisor and above, a narrower group than `manage` (which Team Leaders
+  // hold), per the store's ask.
+  "catering.drivers",
 
   // Cleaning (docs/CLEANING-PLAN.md). `plan` is the board and master list;
   // the store's cleaning coordinator gets planning rights through the

@@ -1296,7 +1296,7 @@ export const DIGEST_MAX_ORDER_LINES = 20;
 export const DIGEST_MAX_CHARS = 1900;
 
 /** "14:30:00" -> "2:30 PM". Null for a missing or malformed stored time. */
-function formatDigestClock(eventTime: string | null): string | null {
+export function formatDigestClock(eventTime: string | null): string | null {
   const match = /^(\d{2}):(\d{2})/.exec((eventTime ?? "").slice(0, 5));
   if (!match) return null;
   const hour = Number(match[1]);

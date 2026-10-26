@@ -162,6 +162,28 @@ describe("catering cancelled list", () => {
   });
 });
 
+describe("catering drivers page", () => {
+  it("sits right after Dispatch in the Catering group behind catering.view", () => {
+    const hrefs = NAV_GROUPS.find((g) => g.label === "Catering")?.items.map((i) => i.href) ?? [];
+    expect(hrefs.indexOf("/catering/drivers")).toBe(hrefs.indexOf("/catering/dispatch") + 1);
+    expect(findNavItem("/catering/drivers")?.permission).toBe("catering.view");
+  });
+
+  it("resolves a titled header that backs out to the Catering pipeline", () => {
+    expect(resolveHeader("/catering/drivers")).toMatchObject({
+      variant: "subpage",
+      title: "Drivers",
+      backHref: "/catering",
+      showBack: true,
+    });
+  });
+
+  it("is the one current item on its own page, not the Pipeline landing page", () => {
+    expect(activeNavHref("/catering/drivers")).toBe("/catering/drivers");
+    expect(activeNavGroupLabel("/catering/drivers")).toBe("Catering");
+  });
+});
+
 describe("cleaning group", () => {
   const cleaning = () => NAV_GROUPS.find((g) => g.label === "Cleaning");
 

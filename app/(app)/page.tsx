@@ -10,6 +10,9 @@ import {
   StatusBadge,
 } from "@/components/mobile";
 import { FirstRunGuideCard } from "@/components/home/first-run-guide-card";
+import { MyDeliveriesCard } from "@/components/home/my-deliveries-card";
+import type { BoardOrder } from "@/app/(app)/catering/drivers/logic";
+import { loadMyDeliveries } from "@/app/(app)/catering/drivers/queries";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
 import { canPlanCleaning } from "@/app/(app)/cleaning/queries";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -179,6 +182,7 @@ export default async function HomePage() {
   let byYou: TaskScopeSummary = { assigned: 0, overdue: 0 };
   let balance = 0;
   let tokenActivity: HomeTokenActivityRow[] = [];
+  let myDeliveries: BoardOrder[] = [];
   let cleaning: { am: CleaningHalfSummary; pm: CleaningHalfSummary } | null = null;
 
   if (user) {
@@ -191,6 +195,7 @@ export default async function HomePage() {
       { data: notifications },
       balanceResult,
       recentTransactions,
+      deliveriesToday,
       { data: cleans },
       canComplete,
       canPlan,
@@ -210,6 +215,12 @@ export default async function HomePage() {
       supabase.from("notifications").select("kind, read_at").eq("user_id", user.id),
       getBalance(user.id, supabase),
       getRecentTransactions(user.id, 5, supabase),
+      // An extra card on top of Home: a failed read (or a database that has
+      // not caught up yet) hides the card instead of breaking the page.
+      loadMyDeliveries(supabase, user.id, today).catch((error) => {
+        console.error("home: could not load today's deliveries", error);
+        return [] as BoardOrder[];
+      }),
       // RLS returns these only to leaders and planners; everyone else gets
       // an empty list and no card.
       supabase.from("cleaning_assignments").select("half, status, rejected_at").eq("date", today),
@@ -236,6 +247,7 @@ export default async function HomePage() {
     );
     balance = balanceResult;
     tokenActivity = summarizeTokenActivity(recentTransactions ?? []);
+    myDeliveries = deliveriesToday;
 
     // The same readers as the Cleaning screens: leaders, plus anyone the
     // coordinator tag lets plan. Hidden on a day with no cleans (Sunday, or
@@ -253,6 +265,7 @@ export default async function HomePage() {
           a page-level h1 without changing the visual layout. */}
       <h1 className="sr-only">Home</h1>
       <FirstRunGuideCard />
+      <MyDeliveriesCard orders={myDeliveries} />
       <HScroll>
         <MetricCard
           className="w-36"
