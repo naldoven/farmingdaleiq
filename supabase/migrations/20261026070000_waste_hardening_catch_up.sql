@@ -28,6 +28,10 @@
 -- Idempotent like the original (drop-if-exists before every add), so on a
 -- fresh database that already ran 20260801000000 this is a no-op in effect.
 
+-- Swapping the logged_by FK briefly locks profiles; fail fast instead of
+-- queuing behind a long transaction, and retry at a quiet moment if it does.
+set local lock_timeout = '5s';
+
 -- 1. Category delete must not destroy its items ------------------------------
 -- RESTRICT makes the database enforce what the category dialog always claimed.
 alter table public.waste_items
@@ -95,10 +99,12 @@ $$;
 
 revoke all on function public.is_active_profile() from public;
 -- anon as well as authenticated: the select policies below have no `to`
--- clause, so they are evaluated for anon too, and without the grant a
--- logged-out read would error instead of returning no rows. The function
--- returns false for anon, so it grants no data access (allowlisted in
--- lib/supabase/security-definer-access.test.ts).
+-- clause, so they are evaluated for anon too. The function returns false for
+-- anon, so it grants no data access (allowlisted in
+-- lib/supabase/security-definer-access.test.ts). A logged-out read of
+-- waste_entries returns no rows; one of waste_items or waste_categories still
+-- errors, as it does today, because their write policies call has_permission(),
+-- which anon cannot execute. No app path reads waste logged out.
 grant execute on function public.is_active_profile() to anon, authenticated;
 
 drop policy if exists waste_categories_select_authenticated on public.waste_categories;
