@@ -340,11 +340,13 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
 - **Discord**: catering events route like every other event (a new order or a
   stage change can post to a catering channel).
 - **Driver reservations** (asked for by the store's boss, 2026-10-25): every
-  delivery order needs a driver reserved in Chick-fil-A's Roadway site, or in
-  the ezCater app for ezCater orders (which the store re-keys into CFA online,
-  so they arrive like any other order). Neither connects to this app, so a
-  leader reserves there and then marks the order reserved here, picking one or
-  more drivers. Each delivery order carries a platform, Roadway by default;
+  delivery order needs a driver reserved in Chick-fil-A's Roadway site, and an
+  ezCater order in the ezCater app as well as Roadway (the store re-keys
+  ezCater orders into CFA online, so they arrive like any other order and
+  reach Roadway too). Neither app connects to this one, so a leader reserves
+  there and then marks the order reserved here, picking one or more drivers.
+  Every reminder, the picker, and the driver's notice name the apps the order
+  needs ("ezCater + Roadway"). Each delivery order carries a platform, Roadway by default;
   anyone who can edit orders flips it to ezCater. Marking, swapping, and
   clearing drivers, and keeping the driver roster, need `catering.drivers`
   (Shift Supervisor and above). The roster lists approved drivers with car size
@@ -568,7 +570,7 @@ Catering:
 - `catering_checklist_defaults` (id, stage: confirm|setup|kitchen_prep|out, label, sort, active): per-stage template items
 - `catering_checklist_items` (id, order_id, stage, label, done bool, done_by, done_at, sort): materialized per order, add/remove allowed
 - `catering_followups` (id, order_id, contact_id, due_on, done_at, outcome, note): queued when an order closes
-- `catering_orders.delivery_platform` (roadway|ezcater, default roadway): which app the driver is reserved in
+- `catering_orders.delivery_platform` (roadway|ezcater, default roadway): where the order came from; a Roadway order's driver is reserved in Roadway, an ezCater order's in ezCater and Roadway
 - `catering_drivers` (profile_id, car_size: small|large, has_roadway_app, has_ezcater_app, active, updated_by, updated_at): the driver roster
 - `catering_order_drivers` (order_id, profile_id, reserved_by, reserved_at): drivers marked reserved for an order
 - `catering_driver_reminders` (order_id, kind, slot, recipient_ids, folded, sent_at): one row per reminder sent, unique per (order, kind, slot), where slot is the delivery date and time so a rescheduled order is reminded again; the cron's once-only guard and the scorecard's source, readable by `catering.drivers` only

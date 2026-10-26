@@ -16,6 +16,26 @@ export const DELIVERY_PLATFORM_LABELS: Record<DeliveryPlatform, string> = {
   ezcater: "ezCater",
 };
 
+/**
+ * Where the driver gets reserved. An ezCater order goes in ezCater AND in
+ * Roadway (it is re-keyed into CFA online, which feeds Roadway); a Roadway
+ * order goes in Roadway only. Every message and screen that tells a leader or
+ * driver which app to use reads from here.
+ */
+export const RESERVE_APPS: Record<DeliveryPlatform, readonly string[]> = {
+  roadway: ["Roadway"],
+  ezcater: ["ezCater", "Roadway"],
+};
+export const RESERVE_LABELS: Record<DeliveryPlatform, string> = {
+  roadway: "Roadway",
+  ezcater: "ezCater + Roadway",
+};
+
+/** "Roadway", "ezCater and Roadway". */
+export function joinApps(apps: readonly string[]): string {
+  return apps.length <= 1 ? (apps[0] ?? "") : `${apps.slice(0, -1).join(", ")} and ${apps[apps.length - 1]}`;
+}
+
 export const CAR_SIZES = ["small", "large"] as const;
 export type CarSize = (typeof CAR_SIZES)[number];
 export const CAR_SIZE_LABELS: Record<CarSize, string> = { small: "Small car", large: "Large car" };
@@ -312,7 +332,7 @@ function dayWords(eventDate: string, today: string): { possessive: string; phras
 
 function orderLine(order: ReminderOrder): string {
   const clock = formatDigestClock(order.eventTime) ?? "time TBD";
-  return `${neutralizeDiscordMentions(order.guestName)} ${clock} (${DELIVERY_PLATFORM_LABELS[order.platform]})`;
+  return `${neutralizeDiscordMentions(order.guestName)} ${clock} (${RESERVE_LABELS[order.platform]})`;
 }
 
 function byDeliveryTime(a: ReminderOrder, b: ReminderOrder): number {
@@ -388,13 +408,19 @@ export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[],
         : daypart === NO_DAYPART
           ? "No shift leader is on right now, so this came to you."
           : `No ${daypart} shift leader is posted, so this came to you.`;
+    // Name the apps outright whenever the orders agree, so a single ezCater
+    // order says "ezCater and Roadway" rather than "the app shown".
+    const samePlatform = listed.every((order) => order.platform === listed[0].platform);
+    const apps = joinApps(RESERVE_APPS[listed[0].platform]);
     const tail = escalation
       ? group.kind === "night_escalation"
         ? "Still open after the 10 PM last call."
         : null
       : count === 1
-        ? "Reserve it in Roadway or ezCater, then mark it in FIQ."
-        : "Reserve them in Roadway or ezCater, then mark them in FIQ.";
+        ? `Reserve it in ${apps}, then mark it in FIQ.`
+        : samePlatform
+          ? `Reserve them in ${apps}, then mark them in FIQ.`
+          : "Reserve each in the apps shown, then mark them in FIQ.";
 
     return {
       eventKey: escalation ? "catering_driver_escalation" : "catering_driver_reminder",
@@ -629,10 +655,10 @@ export function driverAssignedMessage(order: {
 }): { title: string; message: string } {
   const date = ASSIGNED_DATE.format(new Date(`${order.eventDate}T12:00:00.000Z`));
   const clock = formatDigestClock(order.eventTime);
-  const app = DELIVERY_PLATFORM_LABELS[order.platform];
+  const apps = RESERVE_APPS[order.platform];
   return {
     title: `You're delivering for ${order.guestName}`,
-    message: `${date}${clock ? ` at ${clock}` : ""} (${app}). Make sure you're signed in to the ${app} app before you leave.`,
+    message: `${date}${clock ? ` at ${clock}` : ""} (${RESERVE_LABELS[order.platform]}). Make sure you're signed in to the ${joinApps(apps)} ${apps.length === 1 ? "app" : "apps"} before you leave.`,
   };
 }
 

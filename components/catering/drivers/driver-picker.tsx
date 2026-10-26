@@ -23,6 +23,8 @@ import {
   CAR_SIZE_LABELS,
   DELIVERY_PLATFORM_LABELS,
   MAX_DRIVERS_PER_ORDER,
+  RESERVE_APPS,
+  joinApps,
   dayLabel,
   largeOrderWarning,
   sortDriversForPicker,
@@ -263,7 +265,9 @@ function DriverPicker({
   const atCap = selected.length >= MAX_DRIVERS_PER_ORDER;
   const hadDrivers = order.drivers.length > 0;
   const clearing = selected.length === 0 && hadDrivers;
-  const platformName = DELIVERY_PLATFORM_LABELS[order.platform];
+  // ezCater orders are reserved in ezCater and in Roadway (RESERVE_APPS).
+  const reserveApps = RESERVE_APPS[order.platform];
+  const appNames = joinApps(reserveApps);
 
   function toggle(profileId: string) {
     setError(null);
@@ -422,8 +426,8 @@ function DriverPicker({
           </Button>
           <p className="mt-2 text-center text-[13px] text-muted-ink">
             {clearing
-              ? `This clears it here only. ${platformName} is not updated.`
-              : `Reserve in ${platformName} first, then tap here.`}
+              ? `This clears it here only. ${appNames} ${reserveApps.length === 1 ? "is" : "are"} not updated.`
+              : `Reserve in ${appNames} first, then tap here.`}
           </p>
         </div>
       </div>
