@@ -56,6 +56,7 @@ describe("OrderDriverSection", () => {
     render(<OrderDriverSection {...props} />);
 
     expect(screen.getByText("toggle:roadway:edit")).toBeInTheDocument();
+    expect(screen.getByText("Reserve the driver in Roadway.")).toBeInTheDocument();
     expect(screen.getByText("Needs driver")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reserve on the Drivers page" })).toHaveAttribute(
       "href",
@@ -76,6 +77,7 @@ describe("OrderDriverSection", () => {
     );
 
     expect(screen.getByText("Messiah Cole, Jordan Ames")).toBeInTheDocument();
+    expect(screen.getByText("Reserve the driver in ezCater and Roadway.")).toBeInTheDocument();
     expect(screen.getByText("Drivers")).toBeInTheDocument();
     expect(screen.queryByText("Needs driver")).not.toBeInTheDocument();
   });

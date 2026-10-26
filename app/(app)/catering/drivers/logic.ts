@@ -408,13 +408,19 @@ export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[],
         : daypart === NO_DAYPART
           ? "No shift leader is on right now, so this came to you."
           : `No ${daypart} shift leader is posted, so this came to you.`;
+    // Name the apps outright whenever the orders agree, so a single ezCater
+    // order says "ezCater and Roadway" rather than "the app shown".
+    const samePlatform = listed.every((order) => order.platform === listed[0].platform);
+    const apps = joinApps(RESERVE_APPS[listed[0].platform]);
     const tail = escalation
       ? group.kind === "night_escalation"
         ? "Still open after the 10 PM last call."
         : null
       : count === 1
-        ? "Reserve it in the app shown, then mark it in FIQ."
-        : "Reserve them in the apps shown, then mark them in FIQ.";
+        ? `Reserve it in ${apps}, then mark it in FIQ.`
+        : samePlatform
+          ? `Reserve them in ${apps}, then mark them in FIQ.`
+          : "Reserve each in the apps shown, then mark them in FIQ.";
 
     return {
       eventKey: escalation ? "catering_driver_escalation" : "catering_driver_reminder",

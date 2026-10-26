@@ -55,7 +55,7 @@ function asPlatform(value: string): DeliveryPlatform {
 
 /**
  * Makes the order's reserved drivers exactly `profileIds` (empty clears it).
- * Leaders do the real reservation in Roadway or ezCater first; this records it
+ * Leaders do the real reservation first (Roadway, plus ezCater for ezCater orders); this records it
  * so the reminders stop and the driver hears about it.
  */
 export async function setOrderDrivers(

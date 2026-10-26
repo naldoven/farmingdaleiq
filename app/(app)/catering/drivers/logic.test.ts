@@ -346,7 +346,31 @@ describe("buildReminderEvents", () => {
       order_ids: ["lisa", "george"],
     });
     expect(events[0].payload.message).toBe(
-      "Lisa 11:00 AM (Roadway) · George 12:15 PM (ezCater + Roadway). Reserve them in the apps shown, then mark them in FIQ.",
+      "Lisa 11:00 AM (Roadway) · George 12:15 PM (ezCater + Roadway). Reserve each in the apps shown, then mark them in FIQ.",
+    );
+  });
+
+  it("names both apps outright for a single ezCater order", () => {
+    const due: DueReminder[] = [
+      { orderId: "george", kind: "arrival", folded: false, recipientIds: ["lunch-lead"], noLeaderDaypart: null },
+    ];
+    const george = order({ id: "george", guestName: "George", eventTime: "12:15:00", platform: "ezcater" });
+    expect(buildReminderEvents(due, [george], TUE)[0].payload.message).toBe(
+      "George 12:15 PM (ezCater + Roadway). Reserve it in ezCater and Roadway, then mark it in FIQ.",
+    );
+  });
+
+  it("names Roadway outright when every order in the group is a Roadway order", () => {
+    const orders = [order({ id: "a", guestName: "Ann" }), order({ id: "b", guestName: "Bo", eventTime: "12:00:00" })];
+    const due: DueReminder[] = orders.map((o) => ({
+      orderId: o.id,
+      kind: "night_ping",
+      folded: false,
+      recipientIds: ["night-lead"],
+      noLeaderDaypart: null,
+    }));
+    expect(buildReminderEvents(due, orders, MON)[0].payload.message).toBe(
+      "Ann 11:00 AM (Roadway) · Bo 12:00 PM (Roadway). Reserve them in Roadway, then mark them in FIQ.",
     );
   });
 
