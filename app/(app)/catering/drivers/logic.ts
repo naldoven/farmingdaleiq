@@ -185,8 +185,8 @@ function daypartAt(now: Date, dayparts: DaypartWindow[]): string | null {
 
 /**
  * Every reminder due right now. The cron claims each row in
- * catering_driver_reminders (unique per order and kind) and only sends what
- * its own insert claimed, so this may safely be recomputed every minute.
+ * catering_driver_reminders (unique per order, kind, and slot) and only sends
+ * what its own insert claimed, so this may safely be recomputed every minute.
  */
 export function planDueReminders(ctx: ReminderContext): DueReminder[] {
   const now = ctx.now.getTime();
@@ -247,8 +247,18 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
 
     const history = logByOrder.get(order.id) ?? [];
     const slot = reminderSlot(order);
-    const already = new Set(history.filter((row) => row.slot === slot).map((row) => row.kind));
-    const due = REMINDER_KINDS.filter((kind) => isDue[kind] && !already.has(kind));
+    // The 60- and 30-minute reminders follow the exact time, so moving a
+    // delivery from 11 to 2 earns them again. The passes and the arrival ping
+    // are about the day, so a small time edit inside a window does not repeat
+    // them; a move to another day does.
+    const spent = (kind: ReminderKind) =>
+      history.some((row) =>
+        row.kind === kind &&
+        (kind === "before_60" || kind === "before_30_escalation"
+          ? row.slot === slot
+          : row.slot.slice(0, 10) === order.eventDate),
+      );
+    const due = REMINDER_KINDS.filter((kind) => isDue[kind] && !spent(kind));
     if (due.length === 0) continue;
 
     const recentSince = now - FOLD_MINUTES * MINUTE_MS;

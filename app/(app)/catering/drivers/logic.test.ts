@@ -194,15 +194,19 @@ describe("planDueReminders: rescheduled orders", () => {
     const eleven = order({ id: "moved", eventTime: "11:00:00", createdAt: at(TUE, "09:00").toISOString() });
     const log = [sent(eleven, "arrival", at(TUE, "09:00")), sent(eleven, "before_60", at(TUE, "10:00"))];
     const two = { ...eleven, eventTime: "14:00:00" };
-    // The leader hears about the new time once: the arrival ping re-fires for
-    // the new slot and the 60-minute ping folds into it.
-    expect(kinds(planDueReminders(ctx(at(TUE, "13:00"), [two], { log })))).toEqual([
-      "moved:arrival",
-      "moved:before_60:folded",
-    ]);
-    expect(kinds(planDueReminders(ctx(at(TUE, "13:30"), [two], { log: [...log, sent(two, "arrival", at(TUE, "13:00")), sent(two, "before_60", at(TUE, "13:00"))] })))).toEqual([
+    // Same day, so the arrival ping is not repeated; the 60- and 30-minute
+    // reminders follow the new time.
+    expect(kinds(planDueReminders(ctx(at(TUE, "13:00"), [two], { log })))).toEqual(["moved:before_60"]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "13:30"), [two], { log: [...log, sent(two, "before_60", at(TUE, "13:00"))] })))).toEqual([
       "moved:before_30_escalation",
     ]);
+  });
+
+  it("does not repeat a pass ping when the time changes a little inside its window", () => {
+    const eleven = order({ id: "nudged", eventTime: "11:00:00", createdAt: at(TUE, "01:00").toISOString() });
+    const log = [sent(eleven, "morning_ping", at(TUE, "07:00")), sent(eleven, "morning_last_call", at(TUE, "08:00"))];
+    const nudged = { ...eleven, eventTime: "11:05:00" };
+    expect(planDueReminders(ctx(at(TUE, "08:30"), [nudged], { log }))).toEqual([]);
   });
 });
 

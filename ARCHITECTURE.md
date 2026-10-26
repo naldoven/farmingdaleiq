@@ -363,7 +363,11 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
     contact and says so. Leader pings also post to the catering channel.
   - Each reminder goes out once per order, even across overlapping cron runs,
     and one missed during downtime still goes out while its window is open.
-- **Driver scorecard**: on the analytics page, week by week: delivery orders,
+    An open order moved to another day gets its reminders again; one moved
+    to another time on the same day gets its 60 and 30 minute reminders
+    again. On go-live day, deliveries that were already in the app are left
+    alone, since some were reserved in Roadway before the app knew.
+- **Driver scorecard**: on the analytics page, for `catering.drivers` holders only (it names leaders), week by week: delivery orders,
   the share reserved with no escalation, escalations by pass and by the leader
   who got the last ping before each, and the list of escalations. It is for
   review with leaders; nothing is penalized automatically.
@@ -557,8 +561,8 @@ Catering:
 - `catering_orders.delivery_platform` (roadway|ezcater, default roadway): which app the driver is reserved in
 - `catering_drivers` (profile_id, car_size: small|large, has_roadway_app, has_ezcater_app, active, updated_by, updated_at): the driver roster
 - `catering_order_drivers` (order_id, profile_id, reserved_by, reserved_at): drivers marked reserved for an order
-- `catering_driver_reminders` (order_id, kind, recipient_ids, folded, sent_at): one row per reminder sent, unique per (order, kind); the cron's once-only guard and the scorecard's source
-- `catering_driver_settings` (single row: escalation_profile_id): who gets driver escalations
+- `catering_driver_reminders` (order_id, kind, slot, recipient_ids, folded, sent_at): one row per reminder sent, unique per (order, kind, slot), where slot is the delivery date and time so a rescheduled order is reminded again; the cron's once-only guard and the scorecard's source, readable by `catering.drivers` only
+- `catering_driver_settings` (single row: escalation_profile_id, reminders_live_from): who gets driver escalations, and when reminders went live (stamped by the cron's first run; that day's earlier deliveries are left alone)
 
 Notifications:
 - `notifications` (id, user_id, kind, title, body, link, read_at, created_at)
