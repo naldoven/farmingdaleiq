@@ -5,7 +5,9 @@ import Link from "next/link";
 import { GripVertical } from "lucide-react";
 
 import { ProgressBar, SectionCard, StatusBadge } from "@/components/mobile";
+import { DriverStatusBadge, type DriverRef } from "@/components/catering/driver-status";
 import { StageSelect } from "@/components/catering/stage-select";
+import { reservationBlockedReason } from "@/app/(app)/catering/drivers/logic";
 import type { OrderStage } from "@/app/(app)/catering/logic";
 
 export interface OrderCardData {
@@ -26,6 +28,9 @@ export interface OrderCardData {
    * confirmation call (logic.ts isConfirmationCallLate). The day-before job
    * does not move these to FOH Setup, so the card says why. */
   callNotDone?: boolean;
+  /** Reserved drivers, set only on delivery orders (empty means none yet).
+   * Left undefined for pickup, so the card shows no driver badge. */
+  drivers?: DriverRef[];
 }
 
 /**
@@ -79,6 +84,11 @@ export function OrderCard({
             <StatusBadge tone="neutral">{order.headcount} guests</StatusBadge>
           )}
           {order.fulfillment && <StatusBadge tone="info">{order.fulfillment}</StatusBadge>}
+          {/* Stage is re-checked here because a drag moves the card before the server
+              refresh; a delivery that just left Pickup/Delivery stops asking for a driver. */}
+          {order.drivers !== undefined && reservationBlockedReason(order) === null && (
+            <DriverStatusBadge drivers={order.drivers} />
+          )}
         </div>
         {order.amount != null && (
           <p className="text-[19px] font-bold text-ink">${order.amount.toFixed(2)}</p>

@@ -434,6 +434,14 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "S9",
       },
       {
+        href: "/catering/drivers",
+        permission: "catering.view",
+        label: "Drivers",
+        description:
+          "Delivery driver reservations: orders by day with open ones first, driver picker, roster, escalation contact.",
+        owner: "S9",
+      },
+      {
         href: "/catering/history",
         permission: "catering.view",
         label: "History",

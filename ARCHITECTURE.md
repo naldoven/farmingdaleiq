@@ -334,6 +334,46 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
   percentage, revenue by week, busiest days, top guests.
 - **Discord**: catering events route like every other event (a new order or a
   stage change can post to a catering channel).
+- **Driver reservations** (asked for by the store's boss, 2026-10-25): every
+  delivery order needs a driver reserved in Chick-fil-A's Roadway site, or in
+  the ezCater app for ezCater orders (which the store re-keys into CFA online,
+  so they arrive like any other order). Neither connects to this app, so a
+  leader reserves there and then marks the order reserved here, picking one or
+  more drivers. Each delivery order carries a platform, Roadway by default;
+  anyone who can edit orders flips it to ezCater. Marking, swapping, and
+  clearing drivers, and keeping the driver roster, need `catering.drivers`
+  (Shift Supervisor and above). The roster lists approved drivers with car size
+  (small or large) and which apps they have; the picker lists drivers on that
+  day's posted setups first and warns when a large order has no large car. A
+  reserved driver gets a notification, and on the delivery day a card on Home.
+  Order changes after a reservation (time, address, cancel) leave it alone.
+  `/catering/drivers` lists today's, tomorrow's, and this week's delivery
+  orders with open ones first.
+- **Driver reminders**: only orders with no driver are ever listed, in store
+  time, and Sunday is closed, so Saturday's night pass covers Monday.
+  - Night pass: a 7 PM ping and a 10 PM last call to the posted Night shift
+    leader, listing the next open day's open deliveries.
+  - Morning pass: a 7 AM ping and an 8 AM last call to the posted Morning
+    shift leader, listing today's.
+  - Same day: an order that arrives after 8 AM on its delivery day pings the
+    leader of the daypart in progress right away, and any open order pings
+    that leader 60 minutes before its delivery time (skipped when a leader was
+    pinged about it in the previous 10 minutes).
+  - Escalations go to one escalation contact (set by `settings.manage`) and the
+    leaders Discord channel: at 6 AM for orders still open since the 10 PM last
+    call, and 30 minutes before delivery for any order still open.
+  - With no posted leader for the daypart, the ping goes to the escalation
+    contact and says so. Leader pings also post to the catering channel.
+  - Each reminder goes out once per order, even across overlapping cron runs,
+    and one missed during downtime still goes out while its window is open.
+    An open order moved to another day gets its reminders again; one moved
+    to another time on the same day gets its 60 and 30 minute reminders
+    again. On go-live day, deliveries that were already in the app are left
+    alone, since some were reserved in Roadway before the app knew.
+- **Driver scorecard**: on the analytics page, for `catering.drivers` holders only (it names leaders), week by week: delivery orders,
+  the share reserved with no escalation, escalations by pass and by the leader
+  who got the last ping before each, and the list of escalations. It is for
+  review with leaders; nothing is penalized automatically.
 
 ### Reporting
 - **Store dashboard**: at-a-glance action items and insights (overdue to-dos, flagged
@@ -521,6 +561,11 @@ Catering:
 - `catering_checklist_defaults` (id, stage: confirm|setup|kitchen_prep|out, label, sort, active): per-stage template items
 - `catering_checklist_items` (id, order_id, stage, label, done bool, done_by, done_at, sort): materialized per order, add/remove allowed
 - `catering_followups` (id, order_id, contact_id, due_on, done_at, outcome, note): queued when an order closes
+- `catering_orders.delivery_platform` (roadway|ezcater, default roadway): which app the driver is reserved in
+- `catering_drivers` (profile_id, car_size: small|large, has_roadway_app, has_ezcater_app, active, updated_by, updated_at): the driver roster
+- `catering_order_drivers` (order_id, profile_id, reserved_by, reserved_at): drivers marked reserved for an order
+- `catering_driver_reminders` (order_id, kind, slot, recipient_ids, folded, sent_at): one row per reminder sent, unique per (order, kind, slot), where slot is the delivery date and time so a rescheduled order is reminded again; the cron's once-only guard and the scorecard's source, readable by `catering.drivers` only
+- `catering_driver_settings` (single row: escalation_profile_id, reminders_live_from): who gets driver escalations, and when reminders went live (stamped by the cron's first run; that day's earlier deliveries are left alone)
 
 Notifications:
 - `notifications` (id, user_id, kind, title, body, link, read_at, created_at)
@@ -529,7 +574,7 @@ Notifications:
 Discord:
 - `profiles.discord_user_id` (added to profiles) — for @mentions
 - `discord_channels` (id, name, webhook_url, purpose, active) — webhook_url server-side only, never exposed via RLS
-- `discord_event_routes` (event_key, channel_id, enabled) — e.g. task_overdue, checklist_missed, break_overdue, temp_failed, maint_request, work_order_status, equipment_down, pm_due, recognition, top_performer, broadcast, reward_claim, catering_order_new, catering_stage_change
+- `discord_event_routes` (event_key, channel_id, enabled) — e.g. task_overdue, checklist_missed, break_overdue, temp_failed, maint_request, work_order_status, equipment_down, pm_due, recognition, top_performer, broadcast, reward_claim, catering_order_new, catering_stage_change, catering_driver_reminder, catering_driver_escalation
 - `notify_discord` + `discord_channel_id` columns on: `tasks`, `task_templates`, `checklist_schedules`, `work_orders`, `pm_schedules`
 - `discord_outbox` (id, channel_id, payload jsonb, status: pending|sent|failed, attempts, next_retry_at, created_at, sent_at)
 
@@ -574,7 +619,8 @@ Discord:
 | `/catering/history` | Contacts, follow-ups due, order history with period filters |
 | `/catering/cancelled` | Cancelled orders, newest first, each linking to its order page |
 | `/catering/stale` | Stale orders: past-event orders still open, oldest first (200 at a time), closed by a manager with one logged reason |
-| `/catering/analytics` | Catering volume, revenue, busiest days, top guests |
+| `/catering/drivers` | Driver reservations: delivery orders by day with open ones first, driver picker, roster, escalation contact |
+| `/catering/analytics` | Catering volume, revenue, busiest days, top guests, weekly driver scorecard |
 | `/catering/menu` | Menu item catalog admin (components, scaling rules); prices are read-only in the app |
 | `/reports` | Store dashboard + per-module reports, CSV export |
 | `/notifications` | Notification center |

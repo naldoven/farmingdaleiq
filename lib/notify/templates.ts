@@ -42,6 +42,9 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   "top_performer",
   "maint_request",
   "work_order_status",
+  "catering_driver_reminder",
+  "catering_driver_escalation",
+  "catering_driver_assigned",
 ]);
 
 /**
@@ -75,6 +78,9 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   top_performer: "Top Performer!",
   maint_request: "Maintenance request update",
   work_order_status: "Work order update",
+  catering_driver_reminder: "Deliveries need a driver",
+  catering_driver_escalation: "Delivery still has no driver",
+  catering_driver_assigned: "You're delivering a catering order",
 };
 
 const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
@@ -94,6 +100,9 @@ const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
   top_performer: "/team",
   maint_request: "/maintenance",
   work_order_status: "/maintenance",
+  catering_driver_reminder: "/catering/drivers",
+  catering_driver_escalation: "/catering/drivers",
+  catering_driver_assigned: "/",
 };
 
 /**
