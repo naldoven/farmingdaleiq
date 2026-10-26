@@ -257,6 +257,7 @@ export type Database = {
           order_id: string
           recipient_ids: string[]
           sent_at: string
+          slot: string
         }
         Insert: {
           folded?: boolean
@@ -265,6 +266,7 @@ export type Database = {
           order_id: string
           recipient_ids?: string[]
           sent_at?: string
+          slot?: string
         }
         Update: {
           folded?: boolean
@@ -273,6 +275,7 @@ export type Database = {
           order_id?: string
           recipient_ids?: string[]
           sent_at?: string
+          slot?: string
         }
         Relationships: [
           {
@@ -288,21 +291,21 @@ export type Database = {
         Row: {
           escalation_profile_id: string | null
           id: boolean
-          reminders_live_from: string
+          reminders_live_from: string | null
           updated_at: string
           updated_by: string | null
         }
         Insert: {
           escalation_profile_id?: string | null
           id?: boolean
-          reminders_live_from?: string
+          reminders_live_from?: string | null
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
           escalation_profile_id?: string | null
           id?: boolean
-          reminders_live_from?: string
+          reminders_live_from?: string | null
           updated_at?: string
           updated_by?: string | null
         }

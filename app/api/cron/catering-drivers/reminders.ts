@@ -4,6 +4,7 @@ import {
   REMINDER_KINDS,
   buildReminderEvents,
   planDueReminders,
+  reminderSlot,
   type DeliveryPlatform,
   type ReminderKind,
   type ReminderOrder,
@@ -31,7 +32,7 @@ function asKind(value: string): ReminderKind | null {
 /**
  * One cron tick of the driver reminders (ARCHITECTURE.md "Catering" > "Driver
  * reminders"). Loads the delivery orders in play, asks planDueReminders what is
- * due, then claims each (order, kind) in catering_driver_reminders before
+ * due, then claims each (order, kind, slot) in catering_driver_reminders before
  * sending. The table's unique key means two overlapping runs cannot both claim
  * the same reminder: the insert ignores duplicates and returns only the rows
  * this run created, and only those are sent. If queuing the messages fails,
@@ -42,6 +43,30 @@ function asKind(value: string): ReminderKind | null {
  */
 export async function runDriverReminders(supabase: Admin, now: Date): Promise<DriverReminderResult> {
   const today = storeLocalDate(now);
+
+  // Read (and on the very first run, stamp) the go-live instant before
+  // anything else, so it marks when reminders actually started, not when the
+  // migration ran or when the first delivery order showed up.
+  const { data: settings, error: settingsError } = await supabase
+    .from("catering_driver_settings")
+    .select("escalation_profile_id, reminders_live_from")
+    .maybeSingle();
+  if (settingsError) return { status: "error", error: settingsError.message };
+  let liveFrom = settings?.reminders_live_from ?? null;
+  if (settings && !liveFrom) {
+    const { data: stamped, error: stampError } = await supabase
+      .from("catering_driver_settings")
+      .update({ reminders_live_from: now.toISOString() })
+      .eq("id", true)
+      .is("reminders_live_from", null)
+      .select("reminders_live_from")
+      .maybeSingle();
+    if (stampError) return { status: "error", error: stampError.message };
+    // An overlapping first run may have stamped a moment earlier; either
+    // instant marks the same go-live.
+    liveFrom = stamped?.reminders_live_from ?? now.toISOString();
+  }
+
   // Today, tomorrow, and the day after: Saturday's night pass covers Monday.
   const dates = [today, addStoreCalendarDays(today, 1), addStoreCalendarDays(today, 2)];
 
@@ -55,11 +80,11 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
   if (!orderRows || orderRows.length === 0) return { status: "idle" };
 
   const orderIds = orderRows.map((row) => row.id);
-  const [driversResult, logResult, daypartsResult, setupsResult, settingsResult] = await Promise.all([
+  const [driversResult, logResult, daypartsResult, setupsResult] = await Promise.all([
     supabase.from("catering_order_drivers").select("order_id").in("order_id", orderIds),
     supabase
       .from("catering_driver_reminders")
-      .select("order_id, kind, sent_at, folded, recipient_ids")
+      .select("order_id, kind, slot, sent_at, folded, recipient_ids")
       .in("order_id", orderIds),
     supabase.from("day_parts").select("id, name, start_time, end_time"),
     supabase
@@ -68,9 +93,8 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
       .eq("date", today)
       .not("posted_at", "is", null)
       .not("shift_leader_id", "is", null),
-    supabase.from("catering_driver_settings").select("escalation_profile_id, reminders_live_from").maybeSingle(),
   ]);
-  for (const result of [driversResult, logResult, daypartsResult, setupsResult, settingsResult]) {
+  for (const result of [driversResult, logResult, daypartsResult, setupsResult]) {
     if (result.error) return { status: "error", error: result.error.message };
   }
 
@@ -98,7 +122,16 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
   const log = (logResult.data ?? []).flatMap((row) => {
     const kind = asKind(row.kind);
     return kind
-      ? [{ orderId: row.order_id, kind, sentAt: row.sent_at, folded: row.folded, recipientIds: row.recipient_ids }]
+      ? [
+          {
+            orderId: row.order_id,
+            kind,
+            slot: row.slot,
+            sentAt: row.sent_at,
+            folded: row.folded,
+            recipientIds: row.recipient_ids,
+          },
+        ]
       : [];
   });
 
@@ -108,23 +141,26 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
     log,
     dayparts: dayparts.map((d) => ({ name: d.name, start: d.start_time, end: d.end_time })),
     leadersByDaypart,
-    escalationContactId: settingsResult.data?.escalation_profile_id ?? null,
-    liveFrom: settingsResult.data?.reminders_live_from ?? null,
+    escalationContactId: settings?.escalation_profile_id ?? null,
+    liveFrom,
   });
   if (due.length === 0) return { status: "idle" };
 
   const sentAt = now.toISOString();
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  // One slot per order in a run, so (order, kind) still identifies a claim below.
   const { data: claimedRows, error: claimError } = await supabase
     .from("catering_driver_reminders")
     .upsert(
       due.map((reminder) => ({
         order_id: reminder.orderId,
         kind: reminder.kind,
+        slot: reminderSlot(orderById.get(reminder.orderId)!),
         recipient_ids: reminder.recipientIds,
         folded: reminder.folded,
         sent_at: sentAt,
       })),
-      { onConflict: "order_id,kind", ignoreDuplicates: true },
+      { onConflict: "order_id,kind,slot", ignoreDuplicates: true },
     )
     .select("order_id, kind");
   if (claimError) return { status: "error", error: claimError.message };

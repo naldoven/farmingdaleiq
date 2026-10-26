@@ -185,37 +185,14 @@ export async function loadEscalationContact(supabase: Client): Promise<PersonOpt
   return { id, name: names.get(id) ?? "Unknown" };
 }
 
-/** The signed-in driver's open deliveries on one day, for the Home card. */
+/**
+ * The signed-in driver's open deliveries on one day, for the Home card. Starts
+ * from that day's delivery orders (a handful) rather than from the driver's
+ * reservations, which grow with every delivery they have ever made.
+ */
 export async function loadMyDeliveries(supabase: Client, profileId: string, date: string): Promise<BoardOrder[]> {
-  const { data: mine, error } = await supabase
-    .from("catering_order_drivers")
-    .select("order_id")
-    .eq("profile_id", profileId);
-  if (error) throw new Error(`Could not load your deliveries: ${error.message}`);
-  const orderIds = (mine ?? []).map((row) => row.order_id);
-  if (orderIds.length === 0) return [];
-  const { data: orders, error: orderError } = await supabase
-    .from("catering_orders")
-    .select("id, guest_name, event_date, event_time, headcount, delivery_platform")
-    .in("id", orderIds)
-    .eq("event_date", date)
-    .eq("fulfillment", "delivery")
-    .in("stage", [...ACTIVE_DELIVERY_STAGES])
-    .order("event_time", { nullsFirst: false });
-  if (orderError) throw new Error(`Could not load your deliveries: ${orderError.message}`);
-  const drivers = await loadOrderDrivers(
-    supabase,
-    (orders ?? []).map((row) => row.id),
-  );
-  return (orders ?? []).map((row) => ({
-    id: row.id,
-    guestName: row.guest_name,
-    eventDate: row.event_date,
-    eventTime: row.event_time,
-    headcount: row.headcount,
-    platform: asPlatform(row.delivery_platform),
-    drivers: drivers.get(row.id) ?? [],
-  }));
+  const day = await loadDeliveryOrders(supabase, { start: date, end: date });
+  return day.filter((order) => order.drivers.some((driver) => driver.profileId === profileId));
 }
 
 export interface ScorecardView extends DriverScorecard {
@@ -242,10 +219,21 @@ export async function loadDriverScorecard(
   const rows = orders ?? [];
 
   let log: ReminderLogRow[] = [];
+  let reserved = new Set<string>();
   if (rows.length > 0) {
+    const { data: driverRows, error: driverError } = await supabase
+      .from("catering_order_drivers")
+      .select("order_id")
+      .in(
+        "order_id",
+        rows.map((row) => row.id),
+      );
+    if (driverError) throw new Error(`Could not load the scorecard: ${driverError.message}`);
+    reserved = new Set((driverRows ?? []).map((row) => row.order_id));
+
     const { data: reminders, error: reminderError } = await supabase
       .from("catering_driver_reminders")
-      .select("order_id, kind, sent_at, folded, recipient_ids")
+      .select("order_id, kind, slot, sent_at, folded, recipient_ids")
       .in(
         "order_id",
         rows.map((row) => row.id),
@@ -257,6 +245,7 @@ export async function loadDriverScorecard(
             {
               orderId: row.order_id,
               kind: row.kind as ReminderKind,
+              slot: row.slot,
               sentAt: row.sent_at,
               folded: row.folded,
               recipientIds: row.recipient_ids,
@@ -273,6 +262,7 @@ export async function loadDriverScorecard(
       eventDate: row.event_date,
       eventTime: row.event_time,
       createdAt: row.created_at,
+      reserved: reserved.has(row.id),
     })),
     log,
   });

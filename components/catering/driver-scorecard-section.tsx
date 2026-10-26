@@ -57,7 +57,7 @@ export function DriverScorecardSection({
         )}
 
         <p className="text-[13px] text-muted-ink">
-          On time means reserved before any escalation. This is for review with leaders. Nothing is penalized
+          On time means marked reserved with no escalation. This is for review with leaders. Nothing is penalized
           automatically.
         </p>
       </div>
@@ -85,8 +85,7 @@ function ScorecardBody({ card }: { card: ScorecardView }) {
 
       <div className="flex flex-col gap-3">
         {PASS_ORDER.map((pass) => {
-          const { total, escalated } = card.byPass[pass];
-          const onTime = total - escalated;
+          const { total, onTime } = card.byPass[pass];
           return (
             <div key={pass} className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-2">
@@ -98,7 +97,7 @@ function ScorecardBody({ card }: { card: ScorecardView }) {
               <ProgressBar
                 value={total === 0 ? 0 : (onTime / total) * 100}
                 showLabel={false}
-                tone={escalated > 0 ? "warning" : "success"}
+                tone={onTime === total ? "success" : "warning"}
               />
             </div>
           );

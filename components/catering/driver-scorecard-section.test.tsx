@@ -9,11 +9,12 @@ import { DriverScorecardSection } from "./driver-scorecard-section";
 const empty: ScorecardView = {
   deliveries: 0,
   escalated: 0,
+  onTime: 0,
   onTimePct: null,
   byPass: {
-    night: { total: 0, escalated: 0 },
-    morning: { total: 0, escalated: 0 },
-    sameDay: { total: 0, escalated: 0 },
+    night: { total: 0, escalated: 0, onTime: 0 },
+    morning: { total: 0, escalated: 0, onTime: 0 },
+    sameDay: { total: 0, escalated: 0, onTime: 0 },
   },
   byLeader: [],
   escalations: [],
@@ -23,11 +24,12 @@ const empty: ScorecardView = {
 const busy: ScorecardView = {
   deliveries: 18,
   escalated: 2,
+  onTime: 16,
   onTimePct: 89,
   byPass: {
-    night: { total: 18, escalated: 2 },
-    morning: { total: 0, escalated: 0 },
-    sameDay: { total: 0, escalated: 0 },
+    night: { total: 18, escalated: 2, onTime: 16 },
+    morning: { total: 0, escalated: 0, onTime: 0 },
+    sameDay: { total: 0, escalated: 0, onTime: 0 },
   },
   byLeader: [{ leaderId: "l1", escalations: 2 }],
   escalations: [
@@ -59,7 +61,7 @@ describe("DriverScorecardSection", () => {
     expect(screen.getByText("Escalations")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "On time means reserved before any escalation. This is for review with leaders. Nothing is penalized automatically.",
+        "On time means marked reserved with no escalation. This is for review with leaders. Nothing is penalized automatically.",
       ),
     ).toBeInTheDocument();
   });

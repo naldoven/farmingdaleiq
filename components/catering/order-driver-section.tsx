@@ -4,15 +4,18 @@ import { DeliveryPlatformToggle } from "@/components/catering/drivers/platform-t
 import type { DriverRef } from "@/components/catering/driver-status";
 import { SectionCard, StatusBadge } from "@/components/mobile";
 import { nextOpenDay, type DeliveryPlatform } from "@/app/(app)/catering/drivers/logic";
+import { addStoreCalendarDays } from "@/lib/time";
 
 /**
  * Which Drivers tab lists an order: today's, the next open day's (Saturday
- * gives Monday, matching the night pass), or the week for anything else.
+ * gives Monday, matching the night pass), or this week's (today through six
+ * days out). Null for an order outside all three, which no tab shows yet.
  */
-export function driversPageHref(eventDate: string, today: string): string {
+export function driversPageHref(eventDate: string, today: string): string | null {
   if (eventDate === today) return "/catering/drivers?view=today";
   if (eventDate === nextOpenDay(today)) return "/catering/drivers?view=tomorrow";
-  return "/catering/drivers?view=week";
+  if (eventDate > today && eventDate <= addStoreCalendarDays(today, 6)) return "/catering/drivers?view=week";
+  return null;
 }
 
 /**
@@ -42,6 +45,7 @@ export function OrderDriverSection({
   canEditPlatform: boolean;
   canReserve: boolean;
 }) {
+  const driversHref = driversPageHref(eventDate, today);
   return (
     <SectionCard title="Driver">
       <div className="flex flex-col gap-3">
@@ -65,14 +69,20 @@ export function OrderDriverSection({
             <p className="text-[15px] text-muted-ink">No driver was reserved.</p>
           )}
         </div>
-        {open && canReserve && (
+        {open && canReserve && (driversHref ? (
           <Link
-            href={driversPageHref(eventDate, today)}
+            href={driversHref}
             className="inline-flex min-h-11 items-center text-[14px] font-semibold text-accent hover:underline"
           >
             Reserve on the Drivers page
           </Link>
-        )}
+        ) : (
+          <p className="text-[13px] text-muted-ink">
+            {eventDate < today
+              ? "This delivery date has passed."
+              : "It shows on the Drivers page the week before it goes out."}
+          </p>
+        ))}
       </div>
     </SectionCard>
   );

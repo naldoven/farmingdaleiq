@@ -26,11 +26,12 @@ let upserted: Array<Record<string, unknown>>;
 let upsertOptions: unknown;
 let insertedEvents: Array<Record<string, unknown>>;
 let deletes: Array<Array<[string, unknown]>>;
+let settingsUpdates: Array<{ values: Record<string, unknown>; filters: Array<[string, unknown]> }>;
 let orderFilters: Array<[string, unknown]>;
 
 function chain(response: () => Response, filters: Array<[string, unknown]> = []) {
   const query: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "in", "not"]) {
+  for (const method of ["select", "eq", "in", "not", "is"]) {
     query[method] = (...args: unknown[]) => {
       if (method !== "select") filters.push([String(args[0]), args.length > 2 ? args.slice(1) : args[1]]);
       return query;
@@ -61,7 +62,14 @@ function fakeAdmin() {
         case "setups":
           return chain(() => setups);
         case "catering_driver_settings":
-          return chain(() => settings);
+          return {
+            ...chain(() => settings),
+            update(values: Record<string, unknown>) {
+              const filters: Array<[string, unknown]> = [];
+              settingsUpdates.push({ values, filters });
+              return chain(() => ({ data: values, error: null }), filters);
+            },
+          };
         case "catering_driver_reminders":
           return {
             ...chain(() => reminderLog),
@@ -113,7 +121,8 @@ beforeEach(() => {
   orderDrivers = { data: [], error: null };
   reminderLog = { data: [], error: null };
   setups = { data: [{ day_part_id: "dp-night", shift_leader_id: "night-lead" }], error: null };
-  settings = { data: { escalation_profile_id: "jasmin" }, error: null };
+  settings = { data: { escalation_profile_id: "jasmin", reminders_live_from: "2026-10-01T04:00:00.000Z" }, error: null };
+  settingsUpdates = [];
   claimFilter = () => true;
   eventInsertError = null;
   upserted = [];
@@ -142,10 +151,10 @@ describe("runDriverReminders", () => {
   it("claims each reminder, then queues one message for the night pass to the posted Night leader", async () => {
     const result = await runDriverReminders(fakeAdmin(), at(MON, "19:00"));
     expect(result).toEqual({ status: "sent", claimed: 2, events: 1 });
-    expect(upsertOptions).toEqual({ onConflict: "order_id,kind", ignoreDuplicates: true });
-    expect(upserted.map((row) => [row.order_id, row.kind, row.recipient_ids, row.folded])).toEqual([
-      ["Lisa", "night_ping", ["night-lead"], false],
-      ["George", "night_ping", ["night-lead"], false],
+    expect(upsertOptions).toEqual({ onConflict: "order_id,kind,slot", ignoreDuplicates: true });
+    expect(upserted.map((row) => [row.order_id, row.kind, row.slot, row.recipient_ids, row.folded])).toEqual([
+      ["Lisa", "night_ping", "2026-10-13 11:00", ["night-lead"], false],
+      ["George", "night_ping", "2026-10-13 12:15", ["night-lead"], false],
     ]);
     expect(insertedEvents).toHaveLength(1);
     expect(insertedEvents[0].event_key).toBe("catering_driver_reminder");
@@ -177,8 +186,8 @@ describe("runDriverReminders", () => {
   it("does not resend what the log already has", async () => {
     reminderLog = {
       data: [
-        { order_id: "Lisa", kind: "night_ping", sent_at: at(MON, "19:00").toISOString(), folded: false, recipient_ids: [] },
-        { order_id: "George", kind: "night_ping", sent_at: at(MON, "19:00").toISOString(), folded: false, recipient_ids: [] },
+        { order_id: "Lisa", kind: "night_ping", slot: "2026-10-13 11:00", sent_at: at(MON, "19:00").toISOString(), folded: false, recipient_ids: [] },
+        { order_id: "George", kind: "night_ping", slot: "2026-10-13 12:15", sent_at: at(MON, "19:00").toISOString(), folded: false, recipient_ids: [] },
       ],
       error: null,
     };
@@ -213,7 +222,7 @@ describe("runDriverReminders", () => {
       error: null,
     };
     reminderLog = {
-      data: [{ order_id: "Nine", kind: "morning_ping", sent_at: at(TUE, "07:00").toISOString(), folded: false, recipient_ids: [] }],
+      data: [{ order_id: "Nine", kind: "morning_ping", slot: "2026-10-13 09:00", sent_at: at(TUE, "07:00").toISOString(), folded: false, recipient_ids: [] }],
       error: null,
     };
     setups = { data: [{ day_part_id: "dp-morning", shift_leader_id: "deja" }], error: null };
@@ -229,6 +238,33 @@ describe("runDriverReminders", () => {
     settings = { data: { escalation_profile_id: "jasmin", reminders_live_from: at(TUE, "05:00").toISOString() }, error: null };
     expect(await runDriverReminders(fakeAdmin(), at(TUE, "06:00"))).toEqual({ status: "idle" });
     expect(insertedEvents).toEqual([]);
+  });
+
+  it("resends for a new slot when an order is moved", async () => {
+    reminderLog = {
+      data: [
+        { order_id: "Lisa", kind: "night_ping", slot: "2026-10-12 11:00", sent_at: at(MON, "08:00").toISOString(), folded: false, recipient_ids: [] },
+      ],
+      error: null,
+    };
+    orders = { data: [orderRow("Lisa")], error: null };
+    await runDriverReminders(fakeAdmin(), at(MON, "19:00"));
+    expect(upserted.map((row) => [row.kind, row.slot])).toEqual([["night_ping", "2026-10-13 11:00"]]);
+  });
+
+  it("stamps the go-live instant on its first run and leaves that day's deliveries alone", async () => {
+    settings = { data: { escalation_profile_id: "jasmin", reminders_live_from: null }, error: null };
+    orders = { data: [orderRow("Lisa", { event_date: MON, created_at: at(MON, "06:00").toISOString() })], error: null };
+    const now = at(MON, "10:00");
+    expect(await runDriverReminders(fakeAdmin(), now)).toEqual({ status: "idle" });
+    expect(settingsUpdates).toEqual([
+      { values: { reminders_live_from: now.toISOString() }, filters: [["id", true], ["reminders_live_from", null]] },
+    ]);
+  });
+
+  it("does not stamp again once go-live is set", async () => {
+    await runDriverReminders(fakeAdmin(), at(MON, "19:00"));
+    expect(settingsUpdates).toEqual([]);
   });
 
   it("reports a failed read instead of sending", async () => {

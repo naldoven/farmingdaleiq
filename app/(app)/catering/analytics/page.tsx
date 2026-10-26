@@ -1,6 +1,6 @@
 import { DriverScorecardSection } from "@/components/catering/driver-scorecard-section";
 import { HScroll, ListRow, SectionCard, SectionLabel, StatTile } from "@/components/mobile";
-import { requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { storeLocalDate } from "@/lib/time";
 import { driverWeekHref, driverWeekTitle, resolveDriverWeek } from "@/app/(app)/catering/analytics/driver-week";
@@ -19,6 +19,10 @@ export default async function CateringAnalyticsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requirePermission("catering.view");
+  // The scorecard names which leaders missed reservations, so it is for the
+  // leaders who hold catering.drivers, not every crew member who can see
+  // catering. RLS on catering_driver_reminders enforces the same line.
+  const showScorecard = await hasPermission("catering.drivers");
 
   const params = await searchParams;
   const driverWeekParam = Array.isArray(params.driverWeek) ? params.driverWeek[0] : params.driverWeek;
@@ -33,10 +37,12 @@ export default async function CateringAnalyticsPage({
     supabase.from("catering_contacts").select("id, name"),
     // The scorecard is an add-on to a page that already worked: if it can't
     // load, say so inside its own card and leave the rest of Analytics alone.
-    loadDriverScorecard(supabase, week.range).catch((error): ScorecardView | null => {
-      console.error("catering analytics: could not load the driver scorecard", error);
-      return null;
-    }),
+    showScorecard
+      ? loadDriverScorecard(supabase, week.range).catch((error): ScorecardView | null => {
+          console.error("catering analytics: could not load the driver scorecard", error);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
 
   const analytics = computeAnalytics(filterRevenueOrders(orders ?? []), contacts ?? []);
@@ -92,12 +98,14 @@ export default async function CateringAnalyticsPage({
         </SectionCard>
       </div>
 
-      <DriverScorecardSection
-        title={driverWeekTitle(week.range)}
-        card={scorecard}
-        prevHref={driverWeekHref(params, week.prevDate)}
-        nextHref={week.nextDate ? driverWeekHref(params, week.nextDate) : null}
-      />
+      {showScorecard && (
+        <DriverScorecardSection
+          title={driverWeekTitle(week.range)}
+          card={scorecard}
+          prevHref={driverWeekHref(params, week.prevDate)}
+          nextHref={week.nextDate ? driverWeekHref(params, week.nextDate) : null}
+        />
+      )}
     </div>
   );
 }

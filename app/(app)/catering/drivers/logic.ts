@@ -1,6 +1,6 @@
 import { formatDigestClock } from "@/app/(app)/catering/logic";
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
-import { addStoreCalendarDays, formatStoreDateTimeInput, storeDateTimeInputToIso } from "@/lib/time";
+import { addStoreCalendarDays, formatStoreDateTimeInput, storeDateTimeInputToIso, storeLocalDate } from "@/lib/time";
 
 /**
  * Driver reservations (ARCHITECTURE.md "Catering" > "Driver reservations" and
@@ -91,6 +91,8 @@ export interface ReminderOrder {
 export interface ReminderLogRow {
   orderId: string;
   kind: ReminderKind;
+  /** reminderSlot() of the order when it was sent; a rescheduled order starts over. */
+  slot: string;
   sentAt: string;
   folded: boolean;
   recipientIds: string[];
@@ -113,10 +115,12 @@ export interface ReminderContext {
   leadersByDaypart: Record<string, string[]>;
   escalationContactId: string | null;
   /**
-   * When reminders went live (catering_driver_settings.reminders_live_from).
-   * On day one every delivery is unreserved in FIQ, even ones already
-   * reserved in Roadway, so an order whose night pass ran before this, and
-   * that arrived before it, is left alone instead of escalating at once.
+   * When reminders went live (catering_driver_settings.reminders_live_from,
+   * stamped by the cron's first run). On go-live day every delivery is
+   * unreserved in FIQ, even ones already reserved in Roadway, so deliveries
+   * due on or before that store day that arrived before go-live are left
+   * alone instead of escalating at once. Every later day gets the full
+   * schedule, whenever in the evening go-live happened.
    */
   liveFrom?: string | null;
 }
@@ -145,6 +149,15 @@ export function nightPassDate(eventDate: string): string {
 function storeInstant(date: string, clock: string): number {
   const iso = storeDateTimeInputToIso(`${date}T${clock.slice(0, 5)}`);
   return iso ? Date.parse(iso) : Number.NaN;
+}
+
+/**
+ * The delivery slot a reminder was sent for. Part of the once-only key, so an
+ * order moved to another day or time gets its reminders again instead of
+ * keeping the ones already spent on the old slot.
+ */
+export function reminderSlot(order: Pick<ReminderOrder, "eventDate" | "eventTime">): string {
+  return `${order.eventDate} ${order.eventTime?.slice(0, 5) ?? "none"}`;
 }
 
 /** The delivery instant, or null when the order has no usable time. */
@@ -195,6 +208,7 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
   const currentDaypart = daypartAt(ctx.now, ctx.dayparts);
   const parsedLive = ctx.liveFrom ? Date.parse(ctx.liveFrom) : Number.NaN;
   const liveFrom = Number.isNaN(parsedLive) ? null : parsedLive;
+  const liveDate = liveFrom === null ? null : storeLocalDate(new Date(liveFrom));
 
   const out: DueReminder[] = [];
   for (const order of ctx.orders) {
@@ -214,7 +228,7 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
     const morningLastCall = storeInstant(order.eventDate, REMINDER_TIMES.morningLastCall);
     const morningClose = storeInstant(order.eventDate, REMINDER_TIMES.morningClose);
     const dayClose = storeInstant(order.eventDate, REMINDER_TIMES.nightClose);
-    if (liveFrom !== null && nightPing < liveFrom && created < liveFrom) continue;
+    if (liveFrom !== null && liveDate !== null && order.eventDate <= liveDate && created < liveFrom) continue;
 
     // A pass covers the orders that existed when it fired; anything newer is
     // picked up by the next step, so nobody is pinged twice in a few minutes.
@@ -232,7 +246,8 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
     };
 
     const history = logByOrder.get(order.id) ?? [];
-    const already = new Set(history.map((row) => row.kind));
+    const slot = reminderSlot(order);
+    const already = new Set(history.filter((row) => row.slot === slot).map((row) => row.kind));
     const due = REMINDER_KINDS.filter((kind) => isDue[kind] && !already.has(kind));
     if (due.length === 0) continue;
 
@@ -325,7 +340,8 @@ function reminderTitle(kind: ReminderKind, count: number, total: number, day: { 
  * One app_events row per (kind, delivery date, recipients): a pass lists all
  * its orders in one push. Leader reminders and escalations use separate event
  * keys so Discord routes them to different channels (catering vs leaders).
- * Messages carry guest first names, times, and the app only.
+ * Messages carry the guest name as entered, the time, and the app only: never
+ * a phone number or address.
  */
 export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[], today: string): ReminderEvent[] {
   const byId = new Map(orders.map((order) => [order.id, order]));
@@ -399,22 +415,24 @@ export interface ScorecardEscalation {
 export interface DriverScorecard {
   deliveries: number;
   escalated: number;
-  /** Share reserved with no escalation; null in a week with no deliveries. */
+  /** Reserved with no escalation. A delivery never marked reserved is not on time, even unescalated. */
+  onTime: number;
+  /** onTime as a share of deliveries; null in a week with no deliveries. */
   onTimePct: number | null;
-  byPass: Record<DriverPass, { total: number; escalated: number }>;
+  byPass: Record<DriverPass, { total: number; escalated: number; onTime: number }>;
   byLeader: { leaderId: string; escalations: number }[];
   escalations: ScorecardEscalation[];
 }
 
-/** "On time" means reserved without an escalation. Nothing here penalizes anyone; it is for review. */
+/** "On time" means marked reserved without an escalation. Nothing here penalizes anyone; it is for review. */
 export function buildDriverScorecard(input: {
-  orders: Pick<ReminderOrder, "id" | "guestName" | "eventDate" | "eventTime" | "createdAt">[];
+  orders: (Pick<ReminderOrder, "id" | "guestName" | "eventDate" | "eventTime" | "createdAt"> & { reserved: boolean })[];
   log: ReminderLogRow[];
 }): DriverScorecard {
   const byPass: DriverScorecard["byPass"] = {
-    night: { total: 0, escalated: 0 },
-    morning: { total: 0, escalated: 0 },
-    sameDay: { total: 0, escalated: 0 },
+    night: { total: 0, escalated: 0, onTime: 0 },
+    morning: { total: 0, escalated: 0, onTime: 0 },
+    sameDay: { total: 0, escalated: 0, onTime: 0 },
   };
   const escalations: ScorecardEscalation[] = [];
 
@@ -425,7 +443,10 @@ export function buildDriverScorecard(input: {
       .filter((row) => row.orderId === order.id && !row.folded)
       .sort((a, b) => Date.parse(a.sentAt) - Date.parse(b.sentAt));
     const first = rows.find((row) => isEscalationKind(row.kind));
-    if (!first) continue;
+    if (!first) {
+      if (order.reserved) byPass[pass].onTime += 1;
+      continue;
+    }
     byPass[pass].escalated += 1;
     const lastPing = rows
       .filter((row) => !isEscalationKind(row.kind) && Date.parse(row.sentAt) <= Date.parse(first.sentAt))
@@ -451,10 +472,12 @@ export function buildDriverScorecard(input: {
     .sort((a, b) => b.escalations - a.escalations || a.leaderId.localeCompare(b.leaderId));
 
   const deliveries = input.orders.length;
+  const onTime = byPass.night.onTime + byPass.morning.onTime + byPass.sameDay.onTime;
   return {
     deliveries,
     escalated: escalations.length,
-    onTimePct: deliveries === 0 ? null : Math.round(((deliveries - escalations.length) / deliveries) * 100),
+    onTime,
+    onTimePct: deliveries === 0 ? null : Math.round((onTime / deliveries) * 100),
     byPass,
     byLeader,
     escalations,

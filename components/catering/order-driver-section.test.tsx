@@ -40,8 +40,14 @@ describe("driversPageHref", () => {
     expect(driversPageHref("2026-10-26", "2026-10-24")).toBe("/catering/drivers?view=tomorrow");
   });
 
-  it("sends anything else to the Week tab", () => {
+  it("sends the rest of the next six days to the Week tab", () => {
     expect(driversPageHref("2026-10-30", TODAY)).toBe("/catering/drivers?view=week");
+    expect(driversPageHref("2026-11-01", TODAY)).toBe("/catering/drivers?view=week");
+  });
+
+  it("has no tab for an order further out or already past", () => {
+    expect(driversPageHref("2026-11-02", TODAY)).toBeNull();
+    expect(driversPageHref("2026-10-20", TODAY)).toBeNull();
   });
 });
 

@@ -46,14 +46,18 @@ create table public.catering_order_drivers (
 create index catering_order_drivers_profile_idx
   on public.catering_order_drivers (profile_id);
 
--- One row per reminder per order. The cron runs every minute and two runs can
--- overlap, so it inserts these with on-conflict-do-nothing and only sends for
--- the rows its own insert returned: the unique key is the once-only guard.
+-- One row per reminder per order and delivery slot. The cron runs every minute
+-- and two runs can overlap, so it inserts these with on-conflict-do-nothing
+-- and only sends for the rows its own insert returned: the unique key is the
+-- once-only guard. slot is the delivery date and time the reminder was for
+-- (logic.ts reminderSlot), so an order moved to another day or time gets its
+-- reminders again instead of keeping the ones spent on the old slot.
 -- folded = due but not sent, because a leader was pinged about the same order
 -- moments earlier. The scorecard reads escalations and recipients from here.
 create table public.catering_driver_reminders (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.catering_orders(id) on delete cascade,
+  slot text not null default '',
   kind text not null check (kind in (
     'night_ping',
     'night_last_call',
@@ -67,21 +71,22 @@ create table public.catering_driver_reminders (
   recipient_ids uuid[] not null default '{}',
   folded boolean not null default false,
   sent_at timestamptz not null default now(),
-  unique (order_id, kind)
+  unique (order_id, kind, slot)
 );
 
 create index catering_driver_reminders_sent_at_idx
   on public.catering_driver_reminders (sent_at);
 
 -- Single row (id is always true), so "who gets escalations" is one setting.
--- reminders_live_from is stamped when this migration runs. On day one every
--- delivery is unreserved in FIQ, even ones already reserved in Roadway, so
--- the cron skips orders whose night pass ran before go-live (unless they
--- arrived after it) instead of escalating all of today's deliveries at once.
+-- reminders_live_from is stamped by the cron's first run, not by this
+-- migration, so applying the migration days early changes nothing. On go-live
+-- day every delivery is unreserved in FIQ, even ones already reserved in
+-- Roadway, so the cron leaves that day's deliveries alone (unless they arrive
+-- after go-live) instead of escalating them all at once.
 create table public.catering_driver_settings (
   id boolean primary key default true check (id),
   escalation_profile_id uuid references public.profiles(id) on delete set null,
-  reminders_live_from timestamptz not null default now(),
+  reminders_live_from timestamptz,
   updated_by uuid references public.profiles(id),
   updated_at timestamptz not null default now()
 );
@@ -91,10 +96,10 @@ values (true)
 on conflict (id) do nothing;
 
 -- RLS ------------------------------------------------------------------------
--- Reads follow the rest of catering (catering.view). Writes need
--- catering.drivers, granted below to Shift Supervisor and above. Reminder rows
--- are written only by the cron's service-role client, so they get no write
--- policy at all.
+-- Reads follow the rest of catering (catering.view), except the reminder log
+-- (below). Writes need catering.drivers, granted below to Shift Supervisor and
+-- above. Reminder rows are written only by the cron's service-role client, so
+-- they get no write policy at all.
 
 alter table public.catering_drivers enable row level security;
 alter table public.catering_order_drivers enable row level security;
@@ -114,13 +119,14 @@ create policy catering_order_drivers_select on public.catering_order_drivers
   for select to authenticated
   using (public.has_permission('catering.view') or public.has_permission('catering.drivers'));
 
--- The action checks the same two things; repeating them here means a direct
--- insert cannot reserve someone off the roster or put a driver on a pickup or
--- closed order.
+-- The action checks the same things; repeating them here means a direct
+-- insert cannot reserve someone off the roster, put a driver on a pickup or
+-- closed order, or record someone else as the person who reserved.
 create policy catering_order_drivers_insert on public.catering_order_drivers
   for insert to authenticated
   with check (
     public.has_permission('catering.drivers')
+    and reserved_by = auth.uid()
     and exists (
       select 1
       from public.catering_drivers d
@@ -136,13 +142,27 @@ create policy catering_order_drivers_insert on public.catering_order_drivers
     )
   );
 
+-- Same open-delivery-order rule as insert, so a closed order's drivers stay
+-- as they were (the action refuses this too).
 create policy catering_order_drivers_delete on public.catering_order_drivers
   for delete to authenticated
-  using (public.has_permission('catering.drivers'));
+  using (
+    public.has_permission('catering.drivers')
+    and exists (
+      select 1
+      from public.catering_orders o
+      where o.id = catering_order_drivers.order_id
+        and o.fulfillment = 'delivery'
+        and o.stage in ('new', 'confirm', 'setup', 'out')
+    )
+  );
 
+-- The log says which leader missed which delivery, so only leaders who hold
+-- catering.drivers read it (the scorecard is shown to them alone), not every
+-- crew member with catering.view.
 create policy catering_driver_reminders_select on public.catering_driver_reminders
   for select to authenticated
-  using (public.has_permission('catering.view') or public.has_permission('catering.drivers'));
+  using (public.has_permission('catering.drivers'));
 
 create policy catering_driver_settings_select on public.catering_driver_settings
   for select to authenticated
