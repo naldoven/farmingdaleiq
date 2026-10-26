@@ -24,8 +24,8 @@ describe("signInHint", () => {
     expect(signInHint(["roadway", "roadway"])).toBe("Sign in to the Roadway app before you leave.");
   });
 
-  it("names ezCater when only ezCater orders are on today", () => {
-    expect(signInHint(["ezcater"])).toBe("Sign in to the ezCater app before you leave.");
+  it("names ezCater and Roadway for an ezCater order, which is reserved in both", () => {
+    expect(signInHint(["ezcater"])).toBe("Sign in to the ezCater and Roadway apps before you leave.");
   });
 
   it("names both apps, Roadway first, when the orders mix", () => {
@@ -54,7 +54,7 @@ describe("MyDeliveriesCard", () => {
     expect(screen.getByText("Maple Elementary")).toBeInTheDocument();
     expect(screen.getByText("Roadway · 30 guests")).toBeInTheDocument();
     expect(screen.getByText("2:00 PM")).toBeInTheDocument();
-    expect(screen.getByText("ezCater · 1 guest")).toBeInTheDocument();
+    expect(screen.getByText("ezCater + Roadway · 1 guest")).toBeInTheDocument();
     expect(screen.getByText("Sign in to the Roadway and ezCater apps before you leave.")).toBeInTheDocument();
   });
 

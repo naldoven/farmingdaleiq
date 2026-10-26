@@ -13,6 +13,9 @@ import {
   nightPassDate,
   planDriverChanges,
   planDueReminders,
+  RESERVE_APPS,
+  RESERVE_LABELS,
+  joinApps,
   reminderSlot,
   reservationBlockedReason,
   sortDriversForPicker,
@@ -343,7 +346,7 @@ describe("buildReminderEvents", () => {
       order_ids: ["lisa", "george"],
     });
     expect(events[0].payload.message).toBe(
-      "Lisa 11:00 AM (Roadway) · George 12:15 PM (ezCater). Reserve them in Roadway or ezCater, then mark them in FIQ.",
+      "Lisa 11:00 AM (Roadway) · George 12:15 PM (ezCater + Roadway). Reserve them in the apps shown, then mark them in FIQ.",
     );
   });
 
@@ -365,7 +368,7 @@ describe("buildReminderEvents", () => {
     const [event] = buildReminderEvents(due, [george], today);
     expect(event.eventKey).toBe("catering_driver_escalation");
     expect(event.payload.title).toBe("Driver not reserved: night pass missed");
-    expect(event.payload.message).toBe("George 12:15 PM (ezCater). Still open after the 10 PM last call.");
+    expect(event.payload.message).toBe("George 12:15 PM (ezCater + Roadway). Still open after the 10 PM last call.");
     expect(event.payload.user_ids).toEqual(["jasmin"]);
   });
 
@@ -488,6 +491,16 @@ describe("Drivers page helpers", () => {
   });
 });
 
+describe("which apps a driver is reserved in", () => {
+  it("puts an ezCater order in ezCater and Roadway, and a Roadway order in Roadway only", () => {
+    expect(RESERVE_APPS.ezcater).toEqual(["ezCater", "Roadway"]);
+    expect(RESERVE_APPS.roadway).toEqual(["Roadway"]);
+    expect(RESERVE_LABELS.ezcater).toBe("ezCater + Roadway");
+    expect(joinApps(RESERVE_APPS.ezcater)).toBe("ezCater and Roadway");
+    expect(joinApps(RESERVE_APPS.roadway)).toBe("Roadway");
+  });
+});
+
 describe("reservation helpers", () => {
   it("diffs the picked drivers against the stored ones", () => {
     expect(planDriverChanges(["m", "j"], ["m", "a"])).toEqual({ add: ["a"], remove: ["j"] });
@@ -512,7 +525,7 @@ describe("reservation helpers", () => {
     });
     expect(
       driverAssignedMessage({ guestName: "George", eventDate: TUE, eventTime: null, platform: "ezcater" }).message,
-    ).toBe("Tue, Oct 13 (ezCater). Make sure you're signed in to the ezCater app before you leave.");
+    ).toBe("Tue, Oct 13 (ezCater + Roadway). Make sure you're signed in to the ezCater and Roadway apps before you leave.");
   });
 });
 

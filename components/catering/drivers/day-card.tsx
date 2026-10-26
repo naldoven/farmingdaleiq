@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { formatDigestClock } from "@/app/(app)/catering/logic";
-import { DELIVERY_PLATFORM_LABELS, type BoardDay, type BoardOrder } from "@/app/(app)/catering/drivers/logic";
+import { RESERVE_LABELS, type BoardDay, type BoardOrder } from "@/app/(app)/catering/drivers/logic";
 import { ReserveDriverButton } from "@/components/catering/drivers/driver-picker";
 import { ProgressBar, SectionCard, StatusBadge } from "@/components/mobile";
 
@@ -52,7 +52,7 @@ function DriverOrderRow({ order, canReserve }: { order: BoardOrder; canReserve: 
           {guests && <p className="text-[13px] text-muted-ink">{guests}</p>}
         </div>
         <StatusBadge tone={order.platform === "ezcater" ? "warning" : "info"} className="shrink-0">
-          {DELIVERY_PLATFORM_LABELS[order.platform]}
+          {RESERVE_LABELS[order.platform]}
         </StatusBadge>
       </div>
       <div className="flex items-center justify-between gap-3">

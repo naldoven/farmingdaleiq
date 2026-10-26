@@ -201,10 +201,10 @@ describe("driver picker", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
-  it("names ezCater in the hint for an ezCater order", () => {
+  it("names ezCater and Roadway in the hint for an ezCater order, which is reserved in both", () => {
     mount({ order: order({ platform: "ezcater" }) });
     const dialog = openPicker();
-    expect(within(dialog).getByText("Reserve in ezCater first, then tap here.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Reserve in ezCater and Roadway first, then tap here.")).toBeInTheDocument();
   });
 
   it("closes on Escape and on a backdrop tap, and hands focus back to the row button", () => {

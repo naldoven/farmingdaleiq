@@ -335,11 +335,13 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
 - **Discord**: catering events route like every other event (a new order or a
   stage change can post to a catering channel).
 - **Driver reservations** (asked for by the store's boss, 2026-10-25): every
-  delivery order needs a driver reserved in Chick-fil-A's Roadway site, or in
-  the ezCater app for ezCater orders (which the store re-keys into CFA online,
-  so they arrive like any other order). Neither connects to this app, so a
-  leader reserves there and then marks the order reserved here, picking one or
-  more drivers. Each delivery order carries a platform, Roadway by default;
+  delivery order needs a driver reserved in Chick-fil-A's Roadway site, and an
+  ezCater order in the ezCater app as well as Roadway (the store re-keys
+  ezCater orders into CFA online, so they arrive like any other order and
+  reach Roadway too). Neither app connects to this one, so a leader reserves
+  there and then marks the order reserved here, picking one or more drivers.
+  Every reminder, the picker, and the driver's notice name the apps the order
+  needs ("ezCater + Roadway"). Each delivery order carries a platform, Roadway by default;
   anyone who can edit orders flips it to ezCater. Marking, swapping, and
   clearing drivers, and keeping the driver roster, need `catering.drivers`
   (Shift Supervisor and above). The roster lists approved drivers with car size

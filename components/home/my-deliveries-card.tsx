@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import {
   DELIVERY_PLATFORMS,
-  DELIVERY_PLATFORM_LABELS,
+  RESERVE_APPS,
+  RESERVE_LABELS,
+  joinApps,
   type BoardOrder,
   type DeliveryPlatform,
 } from "@/app/(app)/catering/drivers/logic";
@@ -11,15 +13,19 @@ import { SectionCard } from "@/components/mobile";
 
 /**
  * The reminder under the list. It names only the apps today's orders actually
- * use, so a driver with one ezCater run isn't told to check Roadway.
+ * need, so a driver with only Roadway runs isn't told to check ezCater. An
+ * ezCater order needs both apps (RESERVE_APPS).
  */
 export function signInHint(platforms: DeliveryPlatform[]): string {
-  const used = DELIVERY_PLATFORMS.filter((platform) => platforms.includes(platform)).map(
-    (platform) => DELIVERY_PLATFORM_LABELS[platform],
-  );
+  const used = [
+    ...new Set(
+      DELIVERY_PLATFORMS.filter((platform) => platforms.includes(platform)).flatMap(
+        (platform) => RESERVE_APPS[platform],
+      ),
+    ),
+  ];
   if (used.length === 0) return "Sign in to your delivery app before you leave.";
-  if (used.length === 1) return `Sign in to the ${used[0]} app before you leave.`;
-  return `Sign in to the ${used.join(" and ")} apps before you leave.`;
+  return `Sign in to the ${joinApps(used)} ${used.length === 1 ? "app" : "apps"} before you leave.`;
 }
 
 function headcountLabel(headcount: number | null): string | null {
@@ -40,7 +46,7 @@ export function MyDeliveriesCard({ orders }: { orders: BoardOrder[] }) {
     <SectionCard title="Your deliveries today" className="border-accent">
       <ul className="flex flex-col divide-y divide-line">
         {orders.map((order) => {
-          const detail = [DELIVERY_PLATFORM_LABELS[order.platform], headcountLabel(order.headcount)]
+          const detail = [RESERVE_LABELS[order.platform], headcountLabel(order.headcount)]
             .filter(Boolean)
             .join(" · ");
           return (
