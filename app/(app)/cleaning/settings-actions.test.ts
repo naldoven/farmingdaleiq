@@ -47,7 +47,7 @@ function makeClient(options: { canPlan: boolean; tables?: Record<string, Result>
     const result = options.tables?.[table] ?? { data: null, error: null };
     const builder: Record<string, ReturnType<typeof vi.fn>> = {};
     const chain = () => builder;
-    for (const method of ["select", "eq", "update", "upsert", "insert", "delete"]) {
+    for (const method of ["select", "eq", "in", "gte", "limit", "update", "upsert", "insert", "delete"]) {
       builder[method] = vi.fn(chain);
     }
     builder.maybeSingle = vi.fn(async () => result);
@@ -164,6 +164,31 @@ describe("setZoneActive", () => {
     expect(builders.cleaning_zones!.update!).toHaveBeenCalledWith({ active: false });
     expect(builders.cleaning_zones!.eq!).toHaveBeenCalledWith("id", ZONE_ID);
     expect(mockRevalidate).toHaveBeenCalledWith("/cleaning/week");
+  });
+
+  it("takes a hidden zone's open cleans from today on off the board", async () => {
+    const { builders } = useClient({
+      canPlan: true,
+      tables: {
+        cleaning_zones: { data: [{ id: ZONE_ID }], error: null },
+        cleaning_items: { data: [{ id: USER_ID }], error: null },
+      },
+    });
+    expect(await setZoneActive({ id: ZONE_ID, active: false })).toEqual({ ok: true, data: undefined });
+    const board = builders.cleaning_assignments!;
+    expect(board.delete!).toHaveBeenCalled();
+    expect(board.in!).toHaveBeenCalledWith("item_id", [USER_ID]);
+    expect(board.eq!).toHaveBeenCalledWith("status", "planned");
+    expect(board.gte!).toHaveBeenCalledWith("date", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it("leaves the board alone when a zone is switched on", async () => {
+    const { builders } = useClient({
+      canPlan: true,
+      tables: { cleaning_zones: { data: [{ id: ZONE_ID }], error: null } },
+    });
+    expect(await setZoneActive({ id: ZONE_ID, active: true })).toEqual({ ok: true, data: undefined });
+    expect(builders.cleaning_assignments).toBeUndefined();
   });
 
   it("says so when no zone matched, instead of reporting a save", async () => {

@@ -10,8 +10,10 @@ import { addDays, boardWeekStart, isoWeekday } from "@/app/(app)/cleaning/week-l
  * is safe to repeat, so running hourly instead of at exact times means a
  * missed or failed run is simply caught up by the next one:
  *
- * 1. Close past days: cleans still planned on an earlier store-local day
- *    become misses and carry over once (close_cleaning_days).
+ * 1. From 3am, close past days: cleans still planned on an earlier
+ *    store-local day become misses and carry over once
+ *    (close_cleaning_days). Waiting until 3am lets the closing shift finish
+ *    and photograph last night's list after midnight.
  * 2. Build the current week if it was never built (first week live, or a
  *    Thursday build that failed). Nothing lands before today.
  * 3. From Thursday 8pm through Saturday, build next week so Mariana can edit
@@ -24,6 +26,8 @@ import { addDays, boardWeekStart, isoWeekday } from "@/app/(app)/cleaning/week-l
 
 /** Thursday-night build time, store-local. */
 const BUILD_FROM = "20:00:00";
+/** Earliest store-local time the day-end close runs. */
+const CLOSE_FROM = "03:00:00";
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -39,19 +43,23 @@ async function run(request: NextRequest) {
   const supabase = createServiceRoleClient();
   const { today, timeOfDay, timeZone } = await loadStoreClock(supabase);
 
-  const { data: closed, error: closeError } = await supabase.rpc("close_cleaning_days", { p_today: today });
-  if (closeError) {
-    return NextResponse.json({ error: `close: ${closeError.message}` }, { status: 500 });
+  let closed: unknown = null;
+  if (timeOfDay >= CLOSE_FROM) {
+    const { data, error: closeError } = await supabase.rpc("close_cleaning_days", { p_today: today });
+    if (closeError) {
+      return NextResponse.json({ error: `close: ${closeError.message}` }, { status: 500 });
+    }
+    closed = data;
   }
 
   try {
     const currentWeek = boardWeekStart(today);
-    const current = await buildCleaningWeek(supabase, { weekStart: currentWeek, today, timeZone });
+    const current = await buildCleaningWeek(supabase, { weekStart: currentWeek, today, timeOfDay, timeZone });
 
     const weekday = isoWeekday(today);
     const buildNext = (weekday === 4 && timeOfDay >= BUILD_FROM) || weekday === 5 || weekday === 6;
     const next = buildNext
-      ? await buildCleaningWeek(supabase, { weekStart: addDays(currentWeek, 7), today, timeZone })
+      ? await buildCleaningWeek(supabase, { weekStart: addDays(currentWeek, 7), today, timeOfDay, timeZone })
       : null;
 
     const { error: publishError } = await supabase

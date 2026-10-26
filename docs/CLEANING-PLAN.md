@@ -164,18 +164,25 @@ nothing is redone later.
 Built ahead of the Thursday target so the 36 BOH constants run in the app from the
 walkthrough day on; variables join as drafts are approved.
 
-- **Migration** `20261026010000_cleaning_board.sql`: slot caps, weeks, assignments,
+- **Migration** `20261026030000_cleaning_board.sql`: slot caps, weeks, assignments,
   and three database functions for the steps that must land together (complete with a
   stored photo, reject into a redo, close past days with miss, owner and carry-over).
-- **Hourly job** `/api/cron/cleaning`: closes past days, builds the current week if it
-  was never built (nothing lands before today), builds next week from Thursday 8pm,
-  stamps the week published on Monday.
+- **Hourly job** `/api/cron/cleaning`: from 3am closes past days (so the closing shift
+  can finish last night's list after midnight; Today shows it as "Still open from last
+  night"), builds the current week if it was never built (nothing lands before today,
+  or in today's AM after 2pm), builds next week from Thursday 8pm, stamps the week
+  published on Monday. A miss carries over exactly once; a variable dropped after a
+  second miss stays overdue and is placed first next week.
 - **Screens**: `/cleaning` (today), `/cleaning/week` (board and print),
   `/cleaning/settings` (caps, zones, coordinator tags), due dots on `/cleaning/items`.
 - **Owner attribution** reads the Morning and Closing Setup leaders as planned. Setups
-  is switched off today, so every miss records "no owner" until Setups is switched on
-  or another source is picked (open item 0 below). Completions always record who did
-  them.
+  is switched on (`lib/features.ts`), so a miss is owned by that day's posted Morning
+  (AM) or Closing (PM) Setup leader, and records "no owner" when none was posted.
+  Completions always record who did them.
+- **Planner limits**: planners plan (add, move, skip before the day, remove before the
+  day); only the database functions complete, reject, mark misses or set owners, so a
+  coordinator cannot rewrite her own record. Retiring an item or hiding a zone takes its
+  open cleans off the board.
 - **Not in this slice**: Discord posts, in-app alerts (misses summary, Saturday
   reminder), the today list on Home, ATD log, metrics.
 
@@ -230,11 +237,9 @@ tokens, desktop board if wanted.
 
 ## Before Phase 1 starts (Naldo)
 
-0. Decide how the app knows the AM and PM owner. The day-end close reads the Morning
-   and Closing Setup leaders, but the Setups module is switched off today
-   (`lib/features.ts`, `setups: false`), so misses record "no owner" for now. Either
-   switch Setups on and have leaders post them, or pick another source (for example
-   the coordinator names the AM and PM leader per day on the board).
+0. ~~Decide how the app knows the AM and PM owner.~~ Settled: Setups is switched on,
+   and the day-end close reads the posted Morning and Closing Setup leaders. Misses on a
+   day with no posted Setup record "no owner".
 1. Create the #cleaning Discord channel and its webhook.
 2. Send the walkthrough's variables (photos and notes are fine) when ready.
 3. Have Mariana check the BOH appendix below.

@@ -102,6 +102,11 @@ export interface TodayView {
   pm: TodayCard[];
   later: TodayDayGroup[];
   laterCount: number;
+  /**
+   * Last night's cleans still open after midnight. The day-end close waits
+   * until 3am, so the closing shift can finish and photograph them.
+   */
+  stillOpen: TodayCard[];
 }
 
 export interface TodayViewInput {
@@ -117,6 +122,8 @@ export interface TodayViewInput {
   /** Keyed by the assignment id a carry-over or redo points back to. */
   sources: Map<string, SourceInfo>;
   canPlan: boolean;
+  /** Planned cleans dated before today that the day-end close has not reached yet. */
+  stillOpen?: AssignmentLike[];
 }
 
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -313,6 +320,16 @@ export function buildTodayView(input: TodayViewInput): TodayView {
     pm: cardsFor(focus, "pm"),
     later,
     laterCount: later.reduce((sum, group) => sum + group.cards.length, 0),
+    // Interactive even on a Sunday: this is Saturday night's list.
+    stillOpen: (input.stillOpen ?? [])
+      .filter((row) => row.date < input.today && row.status === "planned")
+      .map((row) => ({
+        row,
+        item: input.items.get(row.item_id),
+        zone: input.zones.get(input.items.get(row.item_id)?.zone_id ?? ""),
+      }))
+      .sort(compareEntries)
+      .map((e) => toCard(e, input, true)),
   };
 }
 

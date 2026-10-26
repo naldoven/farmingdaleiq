@@ -73,6 +73,7 @@ function makeClient(queues: Record<string, Response[]> = {}) {
       eq: filter("eq"),
       neq: filter("neq"),
       gte: filter("gte"),
+      gt: filter("gt"),
       maybeSingle: () => builder,
       then(resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) {
         const queue = queues[`${table}.${op ?? "select"}`];
@@ -115,7 +116,7 @@ describe("every action runs the planner guard before touching the database", () 
 });
 
 describe("moveClean", () => {
-  const planned = { data: { week_start: "2026-10-26", status: "planned" } };
+  const planned = { data: { week_start: "2026-10-26", status: "planned", date: "2026-10-29" } };
 
   it("moves a planned clean, guarding the update on status planned", async () => {
     client = makeClient({ "cleaning_assignments.select": [planned], "cleaning_assignments.update": [{ data: [{ id: ID }] }] });
@@ -126,6 +127,15 @@ describe("moveClean", () => {
       ["eq", "id", ID],
       ["eq", "status", "planned"],
     ]);
+  });
+
+  it("refuses to move a clean off a day that has ended", async () => {
+    client = makeClient({
+      "cleaning_assignments.select": [{ data: { week_start: "2026-10-26", status: "planned", date: "2026-10-27" } }],
+    });
+    const result = await moveClean({ id: ID, date: "2026-10-30", half: "am" });
+    expect(result).toEqual({ ok: false, error: "That day has already passed." });
+    expect(callsOf("cleaning_assignments", "update")).toEqual([]);
   });
 
   it("refuses a clean that is not planned", async () => {
@@ -199,7 +209,7 @@ describe("moveClean", () => {
 });
 
 describe("skipClean", () => {
-  it("skips a planned clean from today on, with the reason", async () => {
+  it("skips a planned clean on a later day, with the reason", async () => {
     client = makeClient({ "cleaning_assignments.update": [{ data: [{ id: ID }] }] });
     expect(await skipClean({ id: ID, reason: "  Walk-in being serviced  " })).toEqual(OK);
     const [update] = callsOf("cleaning_assignments", "update");
@@ -207,7 +217,7 @@ describe("skipClean", () => {
     expect(update!.filters).toEqual([
       ["eq", "id", ID],
       ["eq", "status", "planned"],
-      ["gte", "date", "2026-10-28"],
+      ["gt", "date", "2026-10-28"],
     ]);
   });
 
@@ -235,14 +245,14 @@ describe("skipClean", () => {
     expect(await skipClean({ id: ID, reason: "Busy" })).toEqual({ ok: false, error: "Only a planned clean can be skipped." });
   });
 
-  it("refuses a past day, so a planner cannot hide a miss", async () => {
+  it("refuses today or a past day, so a planner cannot turn a miss into a skip", async () => {
     client = makeClient({
       "cleaning_assignments.update": [{ data: [] }],
       "cleaning_assignments.select": [{ data: { status: "planned", origin: "auto" } }],
     });
     const result = await skipClean({ id: ID, reason: "Busy" });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("already passed");
+    if (!result.ok) expect(result.error).toContain("later day");
   });
 });
 
@@ -286,7 +296,18 @@ describe("removeClean", () => {
       ["eq", "id", ID],
       ["eq", "status", "planned"],
       ["neq", "origin", "constant"],
+      ["gt", "date", "2026-10-28"],
     ]);
+  });
+
+  it("refuses to remove today's clean", async () => {
+    client = makeClient({
+      "cleaning_assignments.delete": [{ data: [] }],
+      "cleaning_assignments.select": [{ data: { status: "planned", origin: "manual" } }],
+    });
+    const result = await removeClean({ id: ID });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("later day");
   });
 
   it("explains that a constant is skipped, not removed", async () => {

@@ -397,3 +397,25 @@ describe("progressText", () => {
     expect(progressText([])).toBe("");
   });
 });
+
+describe("still open from last night", () => {
+  it("lists last night's open cleans after midnight, even on a Sunday", () => {
+    const sat = "2026-10-31";
+    const view = buildTodayView(
+      input([], [item("whale"), item("done-one")], {
+        today: "2026-11-01",
+        stillOpen: [
+          row("whale", { date: sat, half: "pm" }),
+          row("done-one", { date: sat, half: "pm", status: "done", photo_path: "done/x.jpg" }),
+        ],
+      }),
+    );
+    expect(view.closed).toBe(true);
+    expect(view.stillOpen.map((c) => c.id)).toEqual(["whale"]);
+    expect(view.stillOpen[0]!.status).toBe("planned");
+  });
+
+  it("is empty when the close has run", () => {
+    expect(buildTodayView(input([row("a")], [item("a")])).stillOpen).toEqual([]);
+  });
+});

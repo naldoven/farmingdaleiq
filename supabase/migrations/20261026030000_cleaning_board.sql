@@ -134,8 +134,14 @@ create policy cleaning_weeks_select on public.cleaning_weeks
   for select to authenticated
   using (public.has_permission('cleaning.complete') or public.can_plan_cleaning());
 
-create policy cleaning_weeks_write on public.cleaning_weeks
-  for all to authenticated
+-- No delete policy: deleting a week would cascade away its cleans, and with
+-- them the record of who did or missed what.
+create policy cleaning_weeks_insert on public.cleaning_weeks
+  for insert to authenticated
+  with check (public.can_plan_cleaning());
+
+create policy cleaning_weeks_update on public.cleaning_weeks
+  for update to authenticated
   using (public.can_plan_cleaning())
   with check (public.can_plan_cleaning());
 
@@ -147,6 +153,69 @@ create policy cleaning_assignments_write on public.cleaning_assignments
   for all to authenticated
   using (public.can_plan_cleaning())
   with check (public.can_plan_cleaning());
+
+-- RLS decides who may write; this decides what. The coordinator is herself a
+-- shift leader whose misses are counted, so through the API a planner may
+-- only plan: add planned cleans, move or skip or put back open ones, and
+-- delete open ones. Completion, rejection, misses, owners and carry-overs
+-- are written only by the functions below, which run as their owner rather
+-- than as `authenticated`, and by the service-role job (PR #89 review).
+create or replace function public.cleaning_assignments_guard()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user <> 'authenticated' then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'DELETE' then
+    if old.status <> 'planned' then
+      raise exception 'Only open cleans can be removed' using errcode = '42501';
+    end if;
+    return old;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.status <> 'planned'
+      or new.origin not in ('constant', 'auto', 'manual')
+      or new.carried_from_id is not null
+      or new.owner_user_id is not null
+      or new.completed_by is not null
+      or new.completed_at is not null
+      or new.photo_path is not null
+      or new.rejected_by is not null
+      or new.rejected_at is not null
+      or new.reject_note is not null then
+      raise exception 'New cleans start open' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if old.status not in ('planned', 'skipped')
+    or new.status not in ('planned', 'skipped')
+    or new.item_id is distinct from old.item_id
+    or new.origin is distinct from old.origin
+    or new.carried_from_id is distinct from old.carried_from_id
+    or new.owner_user_id is distinct from old.owner_user_id
+    or new.completed_by is distinct from old.completed_by
+    or new.completed_at is distinct from old.completed_at
+    or new.photo_path is distinct from old.photo_path
+    or new.rejected_by is distinct from old.rejected_by
+    or new.rejected_at is distinct from old.rejected_at
+    or new.reject_note is distinct from old.reject_note then
+    raise exception 'Only open cleans can be moved or skipped' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.cleaning_assignments_guard() from public, anon, authenticated;
+
+create trigger cleaning_assignments_guard
+  before insert or update or delete on public.cleaning_assignments
+  for each row execute function public.cleaning_assignments_guard();
 
 -- Completion photos ---------------------------------------------------------------
 -- Same private bucket as the walkthrough photos, under done/. The existing
@@ -166,7 +235,9 @@ create policy cleaning_done_photos_insert on storage.objects
 -- call finds it done and reports 'already_done', or 'done' when it is the
 -- same photo retried. The photo must already be in storage, which is what
 -- makes "no clean done without a stored photo" hold even for a direct API
--- call. Doing a clean earlier in the week than planned is allowed.
+-- call, and it must be one the caller uploaded, so nobody can finish a clean
+-- with another leader's leftover photo. Doing a clean earlier in the week
+-- than planned is allowed.
 
 create or replace function public.complete_cleaning_assignment(
   p_assignment_id uuid,
@@ -190,7 +261,9 @@ begin
   end if;
   if not exists (
     select 1 from storage.objects o
-    where o.bucket_id = 'cleaning-photos' and o.name = p_photo_path
+    where o.bucket_id = 'cleaning-photos'
+      and o.name = p_photo_path
+      and (o.owner_id = auth.uid()::text or o.owner = auth.uid())
   ) then
     return 'no_photo';
   end if;
@@ -269,6 +342,14 @@ begin
      and rejected_at is null
   returning * into v_row;
   if not found then
+    -- A retry after a lost response finds its own work done; say so rather
+    -- than report a failure.
+    if exists (
+      select 1 from public.cleaning_assignments
+      where id = p_assignment_id and rejected_at is not null
+    ) then
+      return 'already_rejected';
+    end if;
     return 'not_open';
   end if;
 
@@ -301,12 +382,18 @@ revoke all on function public.reject_cleaning_assignment(uuid, text, date, text)
 grant execute on function public.reject_cleaning_assignment(uuid, text, date, text) to authenticated;
 
 -- Close past days -----------------------------------------------------------------
--- Run by the hourly cleaning job with the store-local date. Every clean still
--- planned on an earlier day becomes a miss, owned by that day's Morning
--- (AM) or Closing (PM) Setup leader when one was posted, otherwise "no
--- owner". Each miss carries over once to the next open day (never earlier
--- than today), same half. Locking the planned rows makes a concurrent or
--- repeated run a no-op. Retired items and hidden zones do not carry.
+-- Run by the hourly cleaning job with the store-local date, from 3am so the
+-- closing shift can still finish last night's list after midnight. Every
+-- clean still planned on an earlier day becomes a miss, owned by that day's
+-- Morning (AM) or Closing (PM) Setup leader when one was posted, otherwise
+-- "no owner". A miss carries over to the next open day (never earlier than
+-- today), same half, exactly once: a carried clean that is missed again is
+-- not carried a second time, so one undone clean cannot turn into a miss
+-- every day of the week. A variable dropped that way stays overdue and the
+-- next build places it first. Locking the planned rows makes a concurrent or
+-- repeated run a no-op. A clean whose item was retired or whose zone was
+-- hidden before its day is recorded as skipped, not missed: nobody was
+-- supposed to do it any more.
 
 create or replace function public.close_cleaning_days(p_today date)
 returns jsonb
@@ -321,6 +408,17 @@ declare
   v_carried int := 0;
   v_n int;
 begin
+  update public.cleaning_assignments a
+     set status = 'skipped', skip_reason = 'Taken off the list'
+   where a.status = 'planned'
+     and a.date < p_today
+     and not exists (
+       select 1
+       from public.cleaning_items i
+       join public.cleaning_zones z on z.id = i.zone_id
+       where i.id = a.item_id and i.status = 'active' and z.active
+     );
+
   for r in
     update public.cleaning_assignments a
        set status = 'missed',
@@ -336,15 +434,10 @@ begin
            )
      where a.status = 'planned'
        and a.date < p_today
-    returning a.id, a.item_id, a.date, a.half
+    returning a.id, a.item_id, a.date, a.half, a.origin
   loop
     v_missed := v_missed + 1;
-    if exists (
-      select 1
-      from public.cleaning_items i
-      join public.cleaning_zones z on z.id = i.zone_id
-      where i.id = r.item_id and i.status = 'active' and z.active
-    ) then
+    if r.origin <> 'carry_over' then
       v_carry := greatest(public.cleaning_next_open_day(r.date), v_open_today);
       insert into public.cleaning_weeks (week_start)
       values (public.cleaning_week_start(v_carry))

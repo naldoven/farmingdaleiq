@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import type { ActionResult } from "@/app/(app)/cleaning/action-types";
 import { isUniqueViolation } from "@/app/(app)/cleaning/logic";
-import { requireCleaningPlanner } from "@/app/(app)/cleaning/queries";
+import { loadStoreClock, requireCleaningPlanner } from "@/app/(app)/cleaning/queries";
 import { isCoordinatorEligible } from "@/app/(app)/cleaning/settings-view";
 import {
   coordinatorSchema,
@@ -29,6 +29,7 @@ function revalidateSettings() {
   revalidatePath("/cleaning/settings");
   // The board reads the caps and the active zones when it builds a week.
   revalidatePath("/cleaning/week");
+  revalidatePath("/cleaning");
 }
 
 export async function saveSlotCaps(input: {
@@ -75,6 +76,26 @@ export async function setZoneActive(input: { id: string; active: boolean }): Pro
     const { data, error } = await supabase.from("cleaning_zones").update({ active }).eq("id", id).select("id");
     if (error) return { ok: false, error: error.message };
     if (!data || data.length === 0) return { ok: false, error: "That zone was not found." };
+
+    // A zone taken off the board takes its open cleans from today on with
+    // it; left there they would be closed out as misses for work nobody was
+    // meant to do (PR #89 review). Turning it back on brings items back at
+    // the next build, or a planner pulls them in.
+    if (!active) {
+      const { data: items, error: itemsError } = await supabase.from("cleaning_items").select("id").eq("zone_id", id);
+      if (itemsError) return { ok: false, error: itemsError.message };
+      const itemIds = (items ?? []).map((i) => i.id);
+      if (itemIds.length > 0) {
+        const { today } = await loadStoreClock(supabase);
+        const { error: boardError } = await supabase
+          .from("cleaning_assignments")
+          .delete()
+          .in("item_id", itemIds)
+          .eq("status", "planned")
+          .gte("date", today);
+        if (boardError) return { ok: false, error: boardError.message };
+      }
+    }
 
     revalidateSettings();
     return { ok: true, data: undefined };

@@ -23,7 +23,8 @@ import { createClient } from "@/lib/supabase/server";
  * it, and does both steps in one transaction.
  *
  * Safe to tap twice: the second call finds the clean already rejected
- * ('not_open') and creates no second redo. requireCleaningPlanner is the
+ * ('already_rejected'), creates no second redo, and reports success, so a
+ * retry after a lost response does not show an error for work that landed. requireCleaningPlanner is the
  * guard, and the function re-checks can_plan_cleaning() itself.
  */
 export async function rejectClean(input: { id: string; note: string }): Promise<ActionResult> {
@@ -46,9 +47,9 @@ export async function rejectClean(input: { id: string; note: string }): Promise<
       return { ok: false, error: "Could not reject this clean. Try again." };
     }
     if (data === "not_open") {
-      return { ok: false, error: "This clean can't be rejected. It may already be rejected, or it is not finished." };
+      return { ok: false, error: "This clean can't be rejected because it is not finished." };
     }
-    if (data !== "rejected") return { ok: false, error: "Could not reject this clean. Try again." };
+    if (data !== "rejected" && data !== "already_rejected") return { ok: false, error: "Could not reject this clean. Try again." };
 
     revalidatePath("/cleaning");
     revalidatePath("/cleaning/week");

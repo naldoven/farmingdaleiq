@@ -129,15 +129,22 @@ describe("rejectClean", () => {
     expect(rejectCall(client)).toBeUndefined();
   });
 
-  it("reports a clean that is already rejected as a friendly error, not a crash", async () => {
+  it("reports an unfinished clean as a friendly error, not a crash", async () => {
     vi.setSystemTime(new Date("2026-10-28T14:00:00Z"));
     createClient.mockResolvedValue(fakeSupabase({ rejectResult: "not_open" }));
 
     const result = await rejectClean({ id: ID, note: "Not clean" });
 
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/may already be rejected/);
+    expect(result.ok === false && result.error).toMatch(/not finished/);
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("treats a retry that finds the clean already rejected as success", async () => {
+    vi.setSystemTime(new Date("2026-10-28T14:00:00Z"));
+    createClient.mockResolvedValue(fakeSupabase({ rejectResult: "already_rejected" }));
+
+    expect(await rejectClean({ id: ID, note: "Not clean" })).toEqual({ ok: true, data: undefined });
   });
 
   it("maps a database permission refusal and hides other database text", async () => {

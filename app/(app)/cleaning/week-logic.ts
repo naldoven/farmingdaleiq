@@ -6,7 +6,7 @@ import type { Half, ItemKind } from "@/app/(app)/cleaning/constants";
  * week runs"). Dates are store-local "YYYY-MM-DD" strings and all arithmetic
  * runs on UTC midnights, so a daylight-saving week can never shift a day.
  * The SQL helpers cleaning_next_open_day and cleaning_week_start in
- * 20261026010000_cleaning_board.sql mirror nextOpenDay and the Monday math
+ * 20261026030000_cleaning_board.sql mirror nextOpenDay and the Monday math
  * here; keep them in step.
  */
 
@@ -55,13 +55,18 @@ export function boardWeekStart(date: string): string {
   return dow === 7 ? addDays(date, 1) : addDays(date, 1 - dow);
 }
 
-/** Mon AM through Sat PM, minus any day before fromDate. */
-export function weekSlots(weekStart: string, fromDate: string): Slot[] {
+/**
+ * Mon AM through Sat PM, minus any day before fromDate. With fromHalf "pm",
+ * fromDate's AM is dropped too: a build that runs mid-afternoon must not hand
+ * the morning shift cleans it has already gone home without.
+ */
+export function weekSlots(weekStart: string, fromDate: string, fromHalf: SlotHalf = "am"): Slot[] {
   const slots: Slot[] = [];
   for (let weekday = 1; weekday <= 6; weekday += 1) {
     const date = addDays(weekStart, weekday - 1);
     if (date < fromDate) continue;
-    slots.push({ date, weekday, half: "am" }, { date, weekday, half: "pm" });
+    if (!(date === fromDate && fromHalf === "pm")) slots.push({ date, weekday, half: "am" });
+    slots.push({ date, weekday, half: "pm" });
   }
   return slots;
 }
@@ -93,6 +98,26 @@ export function lastDoneDates(
     map.set(row.item_id, storeLocalNow(new Date(row.last_done_at), timeZone).date);
   }
   return map;
+}
+
+/**
+ * Treats a clean already planned from today on as if it were done on its
+ * planned date. Without this, next week's build (Thursday night, while
+ * Thursday to Saturday are still open) would see a variable as still due and
+ * place it a second time: a quarterly item cleaned Saturday and again
+ * Monday (PR #89 review). Skipped cleans are left out on purpose; a skip
+ * keeps the item overdue.
+ */
+export function projectLastDone(
+  lastDone: Map<string, string>,
+  planned: { item_id: string; date: string }[],
+): Map<string, string> {
+  const projected = new Map(lastDone);
+  for (const row of planned) {
+    const current = projected.get(row.item_id);
+    if (!current || row.date > current) projected.set(row.item_id, row.date);
+  }
+  return projected;
 }
 
 /**
@@ -140,6 +165,8 @@ export interface PlanInput {
   weekStart: string;
   /** First day that may receive cleans: today for a mid-week build. */
   fromDate: string;
+  /** "pm" once fromDate's morning is over. */
+  fromHalf?: SlotHalf;
   /** Active items in active zones only. */
   items: PlanItem[];
   /** Keyed "weekday|half". A missing key counts as 0. */
@@ -181,7 +208,7 @@ function byDueThenSort(
  * half) index, is what makes a retried build safe.
  */
 export function planWeek(input: PlanInput): { inserts: PlannedInsert[]; tray: string[] } {
-  const slots = weekSlots(input.weekStart, input.fromDate);
+  const slots = weekSlots(input.weekStart, input.fromDate, input.fromHalf);
   const weekEnd = addDays(input.weekStart, 5);
   const taken = new Set(input.existing.map((e) => `${e.item_id}|${e.date}|${e.half}`));
   const onBoard = new Set(input.existing.map((e) => e.item_id));
@@ -225,7 +252,10 @@ export function planWeek(input: PlanInput): { inserts: PlannedInsert[]; tray: st
     const open = slots.filter(
       (s) => (item.half === "either" || s.half === item.half) && (load.get(slotKey(s)) ?? 0) < capOf(s),
     );
-    const pick = open.find((s) => due === null || s.date >= due) ?? open[0];
+    // Past the due date if possible; otherwise as close to it as the week
+    // allows, so a full Saturday does not pull a weekly clean back to Monday
+    // and drift its due date earlier every week.
+    const pick = open.find((s) => due === null || s.date >= due) ?? open.at(-1);
     if (!pick) {
       tray.push(item.id);
       continue;
@@ -240,9 +270,10 @@ export function planWeek(input: PlanInput): { inserts: PlannedInsert[]; tray: st
 /**
  * The board's "due, not placed" tray: variables due by Saturday that have no
  * clean anywhere on the week. Same rule the build uses, read live so an item
- * approved mid-week shows up without a rebuild.
+ * approved mid-week shows up without a rebuild. Pass lastDone through
+ * projectLastDone, as the build does.
  */
-export function dueNotPlaced(input: Omit<PlanInput, "caps" | "fromDate">): string[] {
+export function dueNotPlaced(input: Omit<PlanInput, "caps" | "fromDate" | "fromHalf">): string[] {
   const weekEnd = addDays(input.weekStart, 5);
   const onBoard = new Set(input.existing.map((e) => e.item_id));
   return input.items

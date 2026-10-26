@@ -2,10 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/db/types";
 import type { ItemKind } from "@/app/(app)/cleaning/constants";
-import { loadLastDone, loadSlotCaps, loadWeekAssignments } from "@/app/(app)/cleaning/queries";
+import { loadLastDone, loadPlannedBefore, loadSlotCaps, loadWeekAssignments } from "@/app/(app)/cleaning/queries";
 import {
   addDays,
+  currentHalf,
   planWeek,
+  projectLastDone,
   type AssignmentStatus,
   type PlanItem,
   type SlotHalf,
@@ -58,12 +60,19 @@ export async function loadPlanItems(supabase: Client): Promise<PlanItem[]> {
  * cannot both place variables, and built_at closes it for good. If a build
  * dies midway the claim goes stale and a retry finishes it; planWeek skips
  * anything already on the board, so the retry adds only what is missing.
- * Nothing is placed before `today`, so a mid-week build never creates cleans
- * that would instantly count as missed.
+ * Nothing is placed before `today` (or in today's AM once it is afternoon),
+ * so a mid-week build never creates cleans that would instantly count as
+ * missed. Variables still open earlier in the week count as coming, so the
+ * Thursday build of next week does not place them a second time.
  */
 export async function buildCleaningWeek(
   supabase: Client,
-  { weekStart, today, timeZone }: { weekStart: string; today: string; timeZone: string },
+  {
+    weekStart,
+    today,
+    timeOfDay,
+    timeZone,
+  }: { weekStart: string; today: string; timeOfDay: string; timeZone: string },
 ): Promise<BuildResult> {
   if (addDays(weekStart, 5) < today) return { status: "past" };
 
@@ -87,11 +96,12 @@ export async function buildCleaningWeek(
     return week?.built_at ? { status: "already_built" } : { status: "busy" };
   }
 
-  const [items, caps, lastDone, existing] = await Promise.all([
+  const [items, caps, lastDone, existing, plannedBefore] = await Promise.all([
     loadPlanItems(supabase),
     loadSlotCaps(supabase),
     loadLastDone(supabase, timeZone),
     loadWeekAssignments(supabase, weekStart),
+    loadPlannedBefore(supabase, weekStart, today),
   ]);
 
   // Kind comes from the item, including retired ones still on the board, so
@@ -106,9 +116,10 @@ export async function buildCleaningWeek(
   const { inserts, tray } = planWeek({
     weekStart,
     fromDate: today > weekStart ? today : weekStart,
+    fromHalf: today >= weekStart ? currentHalf(timeOfDay) : "am",
     items,
     caps,
-    lastDone,
+    lastDone: projectLastDone(lastDone, plannedBefore),
     existing: existing.map((e) => ({
       item_id: e.item_id,
       date: e.date,

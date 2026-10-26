@@ -135,3 +135,22 @@ export async function loadWeekAssignments(supabase: Client, weekStart: string): 
   if (error) throw new Error(`Could not load the week's cleans: ${error.message}`);
   return data ?? [];
 }
+
+/**
+ * Cleans still open from today on in weeks before `weekStart`, for
+ * projectLastDone: next week's build and tray must count them as coming.
+ */
+export async function loadPlannedBefore(
+  supabase: Client,
+  weekStart: string,
+  today: string,
+): Promise<{ item_id: string; date: string }[]> {
+  const { data, error } = await supabase
+    .from("cleaning_assignments")
+    .select("item_id, date")
+    .eq("status", "planned")
+    .gte("date", today)
+    .lt("week_start", weekStart);
+  if (error) throw new Error(`Could not load open cleans: ${error.message}`);
+  return data ?? [];
+}

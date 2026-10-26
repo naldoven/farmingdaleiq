@@ -16,6 +16,7 @@ import {
   canPlanCleaning,
   loadItems,
   loadLastDone,
+  loadPlannedBefore,
   loadSlotCaps,
   loadStoreClock,
   loadWeek,
@@ -24,7 +25,7 @@ import {
 } from "@/app/(app)/cleaning/queries";
 import { weekStartSchema } from "@/app/(app)/cleaning/validation";
 import { loadPlanItems } from "@/app/(app)/cleaning/week-build";
-import { addDays, boardWeekStart, dueNotPlaced } from "@/app/(app)/cleaning/week-logic";
+import { addDays, boardWeekStart, dueNotPlaced, projectLastDone } from "@/app/(app)/cleaning/week-logic";
 import { WeekBoard } from "@/components/cleaning/week-board";
 import { WeekBuildButton } from "@/components/cleaning/week-build-button";
 import { WeekNav } from "@/components/cleaning/week-nav";
@@ -62,7 +63,7 @@ export default async function CleaningWeekPage({ searchParams }: { searchParams:
   const weekStart = parsedWeek.success ? parsedWeek.data.weekStart : thisWeek;
   const initialWeekday = openingWeekday(weekStart, clock.today, parseDayParam(first(params.day)));
 
-  const [week, assignmentRows, zones, items, caps, planItems, lastDone] = await Promise.all([
+  const [week, assignmentRows, zones, items, caps, planItems, lastDone, plannedBefore] = await Promise.all([
     loadWeek(supabase, weekStart),
     loadWeekAssignments(supabase, weekStart),
     loadZones(supabase),
@@ -71,6 +72,7 @@ export default async function CleaningWeekPage({ searchParams }: { searchParams:
     loadSlotCaps(supabase),
     loadPlanItems(supabase),
     loadLastDone(supabase, clock.timeZone),
+    loadPlannedBefore(supabase, weekStart, clock.today),
   ]);
 
   const built = Boolean(week?.built_at);
@@ -87,12 +89,14 @@ export default async function CleaningWeekPage({ searchParams }: { searchParams:
   });
 
   // The tray reads "due, not placed" against a finished build. Before it, every
-  // due item would show, which says nothing the build is about to fix.
+  // due item would show, which says nothing the build is about to fix. Cleans
+  // still open earlier in the week count as coming, the same rule the build
+  // uses, so next week's tray does not list what this week will still do.
   const trayIds = built
     ? dueNotPlaced({
         weekStart,
         items: planItems,
-        lastDone,
+        lastDone: projectLastDone(lastDone, plannedBefore),
         existing: toExistingAssignments(assignments, items),
       })
     : [];

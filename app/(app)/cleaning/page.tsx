@@ -16,7 +16,7 @@ import {
   loadZones,
   signPhotoUrls,
 } from "@/app/(app)/cleaning/queries";
-import { boardWeekStart } from "@/app/(app)/cleaning/week-logic";
+import { addDays, boardWeekStart } from "@/app/(app)/cleaning/week-logic";
 import { BuildWeekButton } from "@/components/cleaning/today-build-button";
 import { TodaySection } from "@/components/cleaning/today-card";
 import { TodayLater } from "@/components/cleaning/today-later";
@@ -49,6 +49,23 @@ async function loadSourceRows(supabase: Client, ids: string[]): Promise<Map<stri
   return found;
 }
 
+/**
+ * Planned cleans from the last two days that the day-end close (3am) has not
+ * reached yet: after midnight the date has moved on but the closing shift is
+ * still finishing last night's list. Two days covers Saturday night seen on a
+ * Sunday, which sits in the previous week.
+ */
+async function loadStillOpen(supabase: Client, today: string) {
+  const { data, error } = await supabase
+    .from("cleaning_assignments")
+    .select("*")
+    .eq("status", "planned")
+    .lt("date", today)
+    .gte("date", addDays(today, -2));
+  if (error) throw new Error(`Could not load last night's cleans: ${error.message}`);
+  return data ?? [];
+}
+
 /** Profile id to name, for "Done by Maria". A name that fails to load just drops the name. */
 async function loadNames(supabase: Client, ids: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>();
@@ -72,9 +89,10 @@ export default async function CleaningTodayPage() {
 
   const { today } = await loadStoreClock(supabase);
   const weekStart = boardWeekStart(today);
-  const [week, assignments, zones, items] = await Promise.all([
+  const [week, assignments, stillOpen, zones, items] = await Promise.all([
     loadWeek(supabase, weekStart),
     loadWeekAssignments(supabase, weekStart),
+    loadStillOpen(supabase, today),
     loadZones(supabase),
     // Retired items too: a clean already on the board keeps its name.
     loadItems(supabase, ["draft", "active", "retired"]),
@@ -84,7 +102,7 @@ export default async function CleaningTodayPage() {
   const completerIds = [...new Set(shown.map((row) => row.completed_by).filter((id): id is string => Boolean(id)))];
   const photoPaths = shown.map((row) => row.photo_path).filter((path): path is string => Boolean(path));
   const [earlier, people, photoUrls] = await Promise.all([
-    loadSourceRows(supabase, missingSourceIds(shown, assignments)),
+    loadSourceRows(supabase, missingSourceIds([...shown, ...stillOpen], assignments)),
     loadNames(supabase, completerIds),
     // One batched call for the whole page; per-photo signing dropped results
     // under load in the Quote Tool (see signPhotoUrls).
@@ -103,13 +121,14 @@ export default async function CleaningTodayPage() {
     photoUrls,
     sources,
     canPlan,
+    stillOpen,
   });
 
   // Carry-overs and redos can land in a week the Thursday build has not made
   // yet, so a week row alone does not mean the board exists.
   const built = Boolean(week?.built_at);
   const interactive = !view.closed;
-  const hasRows = view.am.length + view.pm.length + view.laterCount > 0;
+  const hasRows = view.am.length + view.pm.length + view.laterCount + view.stillOpen.length > 0;
   const progress = progressText([...view.am, ...view.pm]);
   const summary = view.closed ? "Closed today" : progress || (built ? "Nothing planned today" : "");
 
@@ -137,6 +156,10 @@ export default async function CleaningTodayPage() {
         <h2 className="text-[19px] font-semibold text-ink">
           Coming up: <span className="text-muted-ink">{view.focusLabel}</span>
         </h2>
+      ) : null}
+
+      {view.stillOpen.length > 0 ? (
+        <TodaySection title="Still open from last night" cards={view.stillOpen} interactive />
       ) : null}
 
       {built || hasRows ? (

@@ -11,6 +11,7 @@ import {
   nextDueDate,
   nextOpenDay,
   planWeek,
+  projectLastDone,
   redoSlot,
   weekSlots,
   type PlanInput,
@@ -253,5 +254,60 @@ describe("dueNotPlaced", () => {
     ]);
     const existing = [{ item_id: "placed", date: MON, half: "am" as const, status: "planned" as const, itemKind: "variable" as const }];
     expect(dueNotPlaced({ weekStart: MON, items, lastDone, existing })).toEqual(["b", "a"]);
+  });
+});
+
+describe("review fixes (PR #89)", () => {
+  it("drops today's AM once the morning is over", () => {
+    expect(weekSlots(MON, "2026-10-28", "pm")[0]).toEqual({ date: "2026-10-28", weekday: 3, half: "pm" });
+    const { inserts } = planWeek(
+      input({ fromDate: MON, fromHalf: "pm", items: [constant("am-only", [1], "am"), constant("pm-too", [1], "pm")] }),
+    );
+    expect(inserts.map((i) => i.item_id)).toEqual(["pm-too"]);
+  });
+
+  it("falls back to the open slot closest before the due date, not the earliest", () => {
+    const capsNoSat = caps(1);
+    capsNoSat.set("6|am", 0);
+    capsNoSat.set("6|pm", 0);
+    const { inserts } = planWeek(
+      input({ items: [variable("w", 1)], caps: capsNoSat, lastDone: new Map([["w", "2026-10-24"]]) }),
+    );
+    // Due Sat Oct 31, Saturday is full: Friday PM, not Monday.
+    expect(inserts).toEqual([{ item_id: "w", date: "2026-10-30", half: "pm", origin: "auto" }]);
+  });
+
+  it("projects a planned clean as done on its date, ignoring earlier ones", () => {
+    const projected = projectLastDone(new Map([["a", "2026-10-01"]]), [
+      { item_id: "a", date: "2026-10-31" },
+      { item_id: "b", date: "2026-10-29" },
+    ]);
+    expect(projected.get("a")).toBe("2026-10-31");
+    expect(projected.get("b")).toBe("2026-10-29");
+    expect(projectLastDone(new Map([["a", "2026-11-02"]]), [{ item_id: "a", date: "2026-10-31" }]).get("a")).toBe(
+      "2026-11-02",
+    );
+  });
+
+  it("builds two weeks back to back without placing a variable twice", () => {
+    const items = [variable("quarterly", 13), variable("weekly", 1)];
+    const lastDone = new Map([
+      ["quarterly", "2026-08-01"], // due Sat Oct 31
+      ["weekly", "2026-10-22"], // due Thu Oct 29
+    ]);
+    const thisWeek = planWeek(input({ items, lastDone }));
+    expect(thisWeek.inserts.map((i) => [i.item_id, i.date])).toEqual([
+      ["weekly", "2026-10-29"],
+      ["quarterly", "2026-10-31"],
+    ]);
+
+    // Thursday night: both still open on this week's board.
+    const nextStart = "2026-11-02";
+    const planned = thisWeek.inserts.map((i) => ({ item_id: i.item_id, date: i.date }));
+    const nextWeek = planWeek(
+      input({ weekStart: nextStart, fromDate: nextStart, items, lastDone: projectLastDone(lastDone, planned) }),
+    );
+    // The quarterly item is not due again; the weekly one lands a week after Thursday.
+    expect(nextWeek.inserts).toEqual([{ item_id: "weekly", date: "2026-11-05", half: "am", origin: "auto" }]);
   });
 });
