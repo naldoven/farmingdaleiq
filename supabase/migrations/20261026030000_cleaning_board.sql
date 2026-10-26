@@ -154,30 +154,55 @@ create policy cleaning_assignments_write on public.cleaning_assignments
   using (public.can_plan_cleaning())
   with check (public.can_plan_cleaning());
 
+-- Store-local today for the guard below. Security definer so it can read the
+-- store row whatever the caller's RLS on stores says.
+create or replace function public.cleaning_store_today()
+returns date
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select (now() at time zone coalesce((select timezone from public.stores limit 1), 'America/New_York'))::date;
+$$;
+
+revoke all on function public.cleaning_store_today() from public, anon, authenticated;
+grant execute on function public.cleaning_store_today() to authenticated;
+
 -- RLS decides who may write; this decides what. The coordinator is herself a
 -- shift leader whose misses are counted, so through the API a planner may
--- only plan: add planned cleans, move or skip or put back open ones, and
--- delete open ones. Completion, rejection, misses, owners and carry-overs
--- are written only by the functions below, which run as their owner rather
--- than as `authenticated`, and by the service-role job (PR #89 review).
+-- only plan, and only ahead of time: add open cleans from today on, move
+-- open ones between days from today on, skip or remove one only before its
+-- day, put a skipped one back. A clean on a day that has ended can only be
+-- completed or closed out as a miss. Completion, rejection, misses, owners
+-- and carry-overs are written only by the functions below, which run as
+-- their owner rather than as `authenticated`, and by the service-role job.
+-- The server actions apply the same date rules for friendly messages; this
+-- is what holds against a direct API call (PR #89 review).
 create or replace function public.cleaning_assignments_guard()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_today date;
 begin
   if current_user <> 'authenticated' then
     return coalesce(new, old);
   end if;
+  v_today := public.cleaning_store_today();
 
   if tg_op = 'DELETE' then
-    if old.status <> 'planned' then
-      raise exception 'Only open cleans can be removed' using errcode = '42501';
+    if old.status <> 'planned' or old.date <= v_today then
+      raise exception 'Only an open clean on a later day can be removed' using errcode = '42501';
     end if;
     return old;
   end if;
 
   if tg_op = 'INSERT' then
+    if new.date < v_today then
+      raise exception 'That day has already passed' using errcode = '42501';
+    end if;
     if new.status <> 'planned'
       or new.origin not in ('constant', 'auto', 'manual')
       or new.carried_from_id is not null
@@ -206,6 +231,12 @@ begin
     or new.rejected_at is distinct from old.rejected_at
     or new.reject_note is distinct from old.reject_note then
     raise exception 'Only open cleans can be moved or skipped' using errcode = '42501';
+  end if;
+  if old.date < v_today or new.date < v_today then
+    raise exception 'That day has already passed' using errcode = '42501';
+  end if;
+  if new.status = 'skipped' and old.status <> 'skipped' and old.date <= v_today then
+    raise exception 'A clean can only be skipped before its day' using errcode = '42501';
   end if;
   return new;
 end;
@@ -391,9 +422,11 @@ grant execute on function public.reject_cleaning_assignment(uuid, text, date, te
 -- not carried a second time, so one undone clean cannot turn into a miss
 -- every day of the week. A variable dropped that way stays overdue and the
 -- next build places it first. Locking the planned rows makes a concurrent or
--- repeated run a no-op. A clean whose item was retired or whose zone was
--- hidden before its day is recorded as skipped, not missed: nobody was
--- supposed to do it any more.
+-- repeated run a no-op. Retiring an item or hiding a zone takes its cleans
+-- off the board from tomorrow on, so a clean still open here was owed and
+-- counts as a miss; it just does not carry over, because the item is off
+-- the list. (Skipping it instead would let a planner retire an item at
+-- close to hide a miss.)
 
 create or replace function public.close_cleaning_days(p_today date)
 returns jsonb
@@ -408,17 +441,6 @@ declare
   v_carried int := 0;
   v_n int;
 begin
-  update public.cleaning_assignments a
-     set status = 'skipped', skip_reason = 'Taken off the list'
-   where a.status = 'planned'
-     and a.date < p_today
-     and not exists (
-       select 1
-       from public.cleaning_items i
-       join public.cleaning_zones z on z.id = i.zone_id
-       where i.id = a.item_id and i.status = 'active' and z.active
-     );
-
   for r in
     update public.cleaning_assignments a
        set status = 'missed',
@@ -437,7 +459,12 @@ begin
     returning a.id, a.item_id, a.date, a.half, a.origin
   loop
     v_missed := v_missed + 1;
-    if r.origin <> 'carry_over' then
+    if r.origin <> 'carry_over' and exists (
+      select 1
+      from public.cleaning_items i
+      join public.cleaning_zones z on z.id = i.zone_id
+      where i.id = r.item_id and i.status = 'active' and z.active
+    ) then
       v_carry := greatest(public.cleaning_next_open_day(r.date), v_open_today);
       insert into public.cleaning_weeks (week_start)
       values (public.cleaning_week_start(v_carry))

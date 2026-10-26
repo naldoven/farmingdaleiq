@@ -77,10 +77,11 @@ export async function setZoneActive(input: { id: string; active: boolean }): Pro
     if (error) return { ok: false, error: error.message };
     if (!data || data.length === 0) return { ok: false, error: "That zone was not found." };
 
-    // A zone taken off the board takes its open cleans from today on with
+    // A zone taken off the board takes its open cleans from tomorrow on with
     // it; left there they would be closed out as misses for work nobody was
-    // meant to do (PR #89 review). Turning it back on brings items back at
-    // the next build, or a planner pulls them in.
+    // meant to do (PR #89 review). Today's stay, as with a retired item, so
+    // hiding a zone at close cannot hide a miss. Turning it back on brings
+    // items back at the next build, or a planner pulls them in.
     if (!active) {
       const { data: items, error: itemsError } = await supabase.from("cleaning_items").select("id").eq("zone_id", id);
       if (itemsError) return { ok: false, error: itemsError.message };
@@ -92,7 +93,7 @@ export async function setZoneActive(input: { id: string; active: boolean }): Pro
           .delete()
           .in("item_id", itemIds)
           .eq("status", "planned")
-          .gte("date", today);
+          .gt("date", today);
         if (boardError) return { ok: false, error: boardError.message };
       }
     }

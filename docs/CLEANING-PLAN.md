@@ -181,8 +181,10 @@ walkthrough day on; variables join as drafts are approved.
   Completions always record who did them.
 - **Planner limits**: planners plan (add, move, skip before the day, remove before the
   day); only the database functions complete, reject, mark misses or set owners, so a
-  coordinator cannot rewrite her own record. Retiring an item or hiding a zone takes its
-  open cleans off the board.
+  coordinator cannot rewrite her own record. The database enforces the same date rules
+  as the screens, so a direct API call cannot skip or remove a clean on a day that has
+  started. Retiring an item or hiding a zone takes its open cleans off the board from
+  tomorrow on; today's stay owed.
 - **Not in this slice**: Discord posts, in-app alerts (misses summary, Saturday
   reminder), the today list on Home, ATD log, metrics.
 

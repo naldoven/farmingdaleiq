@@ -88,9 +88,11 @@ export async function approveItem(input: { id: string }): Promise<ActionResult> 
 /**
  * Takes an active item off future weeks but keeps it and its photos as
  * history (plan failure-mode list: "A retired item disappears from future
- * weeks but keeps its history"). Its open cleans from today on come off the
- * board too; left there they would be closed out as misses against a leader
- * for a clean nobody was meant to do any more (PR #89 review).
+ * weeks but keeps its history"). Its open cleans from tomorrow on come off
+ * the board too; left there they would be closed out as misses against a
+ * leader for a clean nobody was meant to do any more (PR #89 review). Today's
+ * stays: it was owed when the shift started, and dropping it would let a
+ * retire at close hide a miss. The database guard enforces the same line.
  */
 export async function retireItem(input: { id: string }): Promise<ActionResult> {
   try {
@@ -107,7 +109,7 @@ export async function retireItem(input: { id: string }): Promise<ActionResult> {
       .delete()
       .eq("item_id", id)
       .eq("status", "planned")
-      .gte("date", today);
+      .gt("date", today);
     if (boardError) return { ok: false, error: boardError.message };
 
     revalidateCleaning();

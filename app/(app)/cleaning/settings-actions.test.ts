@@ -47,7 +47,7 @@ function makeClient(options: { canPlan: boolean; tables?: Record<string, Result>
     const result = options.tables?.[table] ?? { data: null, error: null };
     const builder: Record<string, ReturnType<typeof vi.fn>> = {};
     const chain = () => builder;
-    for (const method of ["select", "eq", "in", "gte", "limit", "update", "upsert", "insert", "delete"]) {
+    for (const method of ["select", "eq", "in", "gt", "limit", "update", "upsert", "insert", "delete"]) {
       builder[method] = vi.fn(chain);
     }
     builder.maybeSingle = vi.fn(async () => result);
@@ -166,7 +166,7 @@ describe("setZoneActive", () => {
     expect(mockRevalidate).toHaveBeenCalledWith("/cleaning/week");
   });
 
-  it("takes a hidden zone's open cleans from today on off the board", async () => {
+  it("takes a hidden zone's open cleans from tomorrow on off the board", async () => {
     const { builders } = useClient({
       canPlan: true,
       tables: {
@@ -179,7 +179,7 @@ describe("setZoneActive", () => {
     expect(board.delete!).toHaveBeenCalled();
     expect(board.in!).toHaveBeenCalledWith("item_id", [USER_ID]);
     expect(board.eq!).toHaveBeenCalledWith("status", "planned");
-    expect(board.gte!).toHaveBeenCalledWith("date", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+    expect(board.gt!).toHaveBeenCalledWith("date", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
   });
 
   it("leaves the board alone when a zone is switched on", async () => {
