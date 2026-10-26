@@ -125,7 +125,15 @@ below describes observed behavior we intend to reproduce.
   in-app notice when something was missed. Monday from 6am, #cleaning gets a "week is
   live" post listing the rotating cleans. Saturday from 10am the coordinators get a
   "plan next week" reminder. Home shows leaders today's AM and PM progress.
-- Later phases (plan doc): an ATD found-and-fixed log and metrics.
+- **Found and fixed** (`/cleaning/finds`): a leader who spots and fixes something no
+  list covers posts a photo, the area and a one-line note. #cleaning gets the post with
+  the photo, naming the area, never the person. A planner can turn a find into a
+  master-list item; the find's photo becomes the item's reference photo.
+- **Metrics** (`/cleaning/stats`, `cleaning.view_reports`): by month, each shift
+  leader's on-time %, misses and carry-overs (credited from the posted Morning and
+  Closing Setups, listed by name, not ranked), each area's on-time %, the most overdue
+  rotating cleans, and the store's weekly trend. Every team member sees the store's
+  on-time % on Home; nothing else.
 
 ### Waste
 - Admins maintain **waste items** organized into **categories**. Item setup, item costs, and deleting
@@ -418,7 +426,8 @@ of building messaging:
   - *Wins & announcements* → #team: recognitions, Top Performer, broadcasts.
   - *Reward claims* → leaders channel: claim posted so delivery happens fast.
   - *Cleaning* → #cleaning: yesterday's cleaning summary (6 AM), the week going live
-    (Monday 6 AM). Item and area names only, never people.
+    (Monday 6 AM), each found-and-fixed post with its photo. Item and area names only,
+    never people.
 - **Privacy rule**: infractions and disciplinary events never auto-post; the only
   allowed routing for them is an explicitly-configured private leaders channel,
   and even then without point details — just "X received an infraction".
@@ -520,6 +529,8 @@ Cleaning:
 - `cleaning_weeks` (id, week_start unique Monday, build_started_at, built_at, published_at)
 - `cleaning_assignments` (id, week_start, item_id, date, half: am|pm, origin: constant|auto|manual|carry_over|redo, carried_from_id, status: planned|done|not_needed|skipped|missed, skip_reason, owner_user_id, completed_by, completed_at, photo_path, rejected_by, rejected_at, reject_note): unique (item_id, date, half)
 - View `cleaning_item_last_done` (item_id, last_done_at): last counted clean, never stored
+- `cleaning_atd_finds` (id = the phone's photo id, zone_id, note, photo_path, posted_by, posted_at, converted_item_id): the found-and-fixed log
+- Function `cleaning_store_trend(p_weeks)`: week_start, owed, on_time, missed for ended days; counts only, so any signed-in user may call it
 
 Waste:
 - `waste_categories` (id, name, sort)
@@ -596,6 +607,8 @@ Discord:
 | `/cleaning` | Today's cleans by AM and PM; photo completion; planners reject for a redo |
 | `/cleaning/week` | Weekly cleaning board; planners move, skip, remove, pull in; print |
 | `/cleaning/settings` | Slot caps, zones on the board, coordinator tags (planners) |
+| `/cleaning/finds` | Found-and-fixed log: post a photo, area and note; planners add a find to the master list |
+| `/cleaning/stats` | Cleaning metrics by month: shift leaders, areas, most overdue, store trend (leaders) |
 | `/cleaning/items` | Cleaning master list by zone with due dots; planners review walkthrough drafts |
 | `/cleaning/walkthrough` | Walkthrough camera: photograph items, tag zone and cadence |
 | `/setups` | Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes |

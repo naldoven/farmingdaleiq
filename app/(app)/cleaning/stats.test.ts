@@ -114,6 +114,12 @@ describe("leaderStats", () => {
     ]);
   });
 
+  it("counts a carry-over that landed after the period, once", () => {
+    const miss = row({ id: "last", date: "2026-10-31", half: "pm", status: "missed", completed_at: null, owner_user_id: "ben" });
+    const result = leaderStats([miss], owners, names, TZ, [{ carried_from_id: "last" }, { carried_from_id: "last" }]);
+    expect(result.leaders[0]).toMatchObject({ name: "Ben Cole", missed: 1, carriedOver: 1 });
+  });
+
   it("keeps the owner stamped on a miss even if the Setup changed later", () => {
     const rows = [row({ status: "missed", completed_at: null, owner_user_id: "ben" })];
     const result = leaderStats(rows, owners, names, TZ);

@@ -187,15 +187,23 @@ describe("catering drivers page", () => {
 describe("cleaning group", () => {
   const cleaning = () => NAV_GROUPS.find((g) => g.label === "Cleaning");
 
-  it("lists Today, Week board, Master list, Walkthrough in that order behind cleaning.complete", () => {
+  it("lists Today, Week board, Found and fixed, Master list, Walkthrough, Stats in that order", () => {
     const rows = cleaning()?.items.filter((i) => !i.hidden);
     expect(rows?.map((i) => [i.label, i.href])).toEqual([
       ["Today", "/cleaning"],
       ["Week board", "/cleaning/week"],
+      ["Found and fixed", "/cleaning/finds"],
       ["Master list", "/cleaning/items"],
       ["Walkthrough", "/cleaning/walkthrough"],
+      ["Stats", "/cleaning/stats"],
     ]);
-    for (const row of rows ?? []) expect(row.permission, row.href).toBe("cleaning.complete");
+  });
+
+  it("gates every row on cleaning.complete except Stats, which needs cleaning.view_reports", () => {
+    const rows = cleaning()?.items.filter((i) => !i.hidden) ?? [];
+    for (const row of rows) {
+      expect(row.permission, row.href).toBe(row.href === "/cleaning/stats" ? "cleaning.view_reports" : "cleaning.complete");
+    }
   });
 
   it("gives Today and Week board their own header titles", () => {
@@ -203,6 +211,21 @@ describe("cleaning group", () => {
     expect(resolveHeader("/cleaning/week")).toMatchObject({
       variant: "subpage",
       title: "Week board",
+      backHref: "/cleaning",
+      showBack: true,
+    });
+  });
+
+  it("gives Found and fixed and Stats their own header titles, not Today", () => {
+    expect(resolveHeader("/cleaning/finds")).toMatchObject({
+      variant: "subpage",
+      title: "Found and fixed",
+      backHref: "/cleaning",
+      showBack: true,
+    });
+    expect(resolveHeader("/cleaning/stats")).toMatchObject({
+      variant: "subpage",
+      title: "Stats",
       backHref: "/cleaning",
       showBack: true,
     });
@@ -237,12 +260,28 @@ describe("cleaning group", () => {
     expect(activeNavGroupLabel("/cleaning/week")).toBe("Cleaning");
   });
 
+  it("highlights Found and fixed and Stats on their own routes, never Today", () => {
+    expect(activeNavHref("/cleaning/finds")).toBe("/cleaning/finds");
+    expect(activeNavHref("/cleaning/stats")).toBe("/cleaning/stats");
+    expect(activeNavGroupLabel("/cleaning/finds")).toBe("Cleaning");
+    expect(activeNavGroupLabel("/cleaning/stats")).toBe("Cleaning");
+  });
+
   it("shows to a viewer with cleaning.complete and hides without it", () => {
     const visible = allItems(visibleNavGroups(new Set(["cleaning.complete"])));
-    for (const href of ["/cleaning", "/cleaning/week", "/cleaning/items", "/cleaning/walkthrough"]) {
+    for (const href of ["/cleaning", "/cleaning/week", "/cleaning/finds", "/cleaning/items", "/cleaning/walkthrough"]) {
       expect(visible).toContain(href);
     }
     expect(visibleNavGroups(new Set<string>()).some((g) => g.label === "Cleaning")).toBe(false);
+  });
+
+  it("shows Stats only to a viewer with cleaning.view_reports", () => {
+    expect(allItems(visibleNavGroups(new Set(["cleaning.complete"])))).not.toContain("/cleaning/stats");
+    const reports = allItems(visibleNavGroups(new Set(["cleaning.view_reports"])));
+    expect(reports).toContain("/cleaning/stats");
+    expect(reports).not.toContain("/cleaning/finds");
+    // The layout fans hasPermission out over these keys, so the new key must be in the set.
+    expect(navPermissionKeys()).toContain("cleaning.view_reports");
   });
 });
 

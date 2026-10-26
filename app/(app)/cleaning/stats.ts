@@ -107,13 +107,16 @@ export interface LeaderTally extends Tally {
  * on a day with no posted Setup go in their own bucket. Sorted by name, not
  * by score: the plan says no competition in v1.
  *
- * `setupOwners` is keyed "date|half".
+ * `setupOwners` is keyed "date|half". `laterCarries` are carry-overs dated
+ * after the period: a miss on its last day carries into the next one, and
+ * without them that miss would not count as carried over.
  */
 export function leaderStats(
   rows: StatRow[],
   setupOwners: Map<string, string>,
   names: Map<string, string>,
   timeZone: string,
+  laterCarries: { carried_from_id: string | null }[] = [],
 ): { leaders: LeaderTally[]; unowned: Tally } {
   const byLeader = new Map<string, Outcome[]>();
   const unowned: Outcome[] = [];
@@ -130,10 +133,18 @@ export function leaderStats(
     }
   }
 
-  const carried = new Map<string, number>();
+  // A miss carries over at most once, so a set of the misses that did is
+  // the count, wherever the carry landed.
+  const carriedFrom = new Set<string>();
   for (const row of rows) {
-    if (row.origin !== "carry_over" || !row.carried_from_id) continue;
-    const owner = missedBy.get(row.carried_from_id);
+    if (row.origin === "carry_over" && row.carried_from_id) carriedFrom.add(row.carried_from_id);
+  }
+  for (const carry of laterCarries) {
+    if (carry.carried_from_id) carriedFrom.add(carry.carried_from_id);
+  }
+  const carried = new Map<string, number>();
+  for (const id of carriedFrom) {
+    const owner = missedBy.get(id);
     if (owner) carried.set(owner, (carried.get(owner) ?? 0) + 1);
   }
 

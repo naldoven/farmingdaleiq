@@ -86,6 +86,7 @@ describe("visibleViewItems", () => {
       "training.view": true,
       "waste.log": true,
       "cleaning.complete": true,
+      "cleaning.view_reports": true,
       "people.view": true,
       "vendors.view": true,
       "maintenance.request": true,
@@ -120,8 +121,10 @@ describe("menu data", () => {
       "waste",
       "cleaning-today",
       "cleaning-week",
+      "cleaning-finds",
       "cleaning",
       "cleaning-walkthrough",
+      "cleaning-stats",
       "accountability",
       "rewards",
       "tokens",
@@ -148,23 +151,36 @@ describe("menu data", () => {
     );
   });
 
-  it("puts every Cleaning screen under its own Cleaning section with the same icon, gated by cleaning.complete", () => {
+  it("puts every Cleaning screen under its own Cleaning section with the same icon", () => {
     const cleaning = VIEW_ITEMS.filter((item) => item.key.startsWith("cleaning"));
     expect(cleaning.map((item) => [item.key, item.href])).toEqual([
       ["cleaning-today", "/cleaning"],
       ["cleaning-week", "/cleaning/week"],
+      ["cleaning-finds", "/cleaning/finds"],
       ["cleaning", "/cleaning/items"],
       ["cleaning-walkthrough", "/cleaning/walkthrough"],
+      ["cleaning-stats", "/cleaning/stats"],
     ]);
     for (const item of cleaning) {
       expect(item.section, item.key).toBe("Cleaning");
       expect(item.icon, item.key).toBe("cleaning");
     }
+  });
+
+  it("gates Cleaning on cleaning.complete, and Stats on cleaning.view_reports", () => {
+    const cleaning = VIEW_ITEMS.filter((item) => item.key.startsWith("cleaning"));
     const without = visibleViewItems(VIEW_ITEMS, {}).map((item) => item.key);
-    const withKey = visibleViewItems(VIEW_ITEMS, { "cleaning.complete": true }).map((item) => item.key);
+    const withComplete = visibleViewItems(VIEW_ITEMS, { "cleaning.complete": true }).map((item) => item.key);
+    const withReports = visibleViewItems(VIEW_ITEMS, { "cleaning.view_reports": true }).map((item) => item.key);
     for (const item of cleaning) {
       expect(without, item.key).not.toContain(item.key);
-      expect(withKey, item.key).toContain(item.key);
+      if (item.key === "cleaning-stats") {
+        expect(withComplete, item.key).not.toContain(item.key);
+        expect(withReports, item.key).toContain(item.key);
+      } else {
+        expect(withComplete, item.key).toContain(item.key);
+        expect(withReports, item.key).not.toContain(item.key);
+      }
     }
   });
 

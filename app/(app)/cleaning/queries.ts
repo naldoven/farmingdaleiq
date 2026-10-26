@@ -4,7 +4,7 @@ import { PermissionError } from "@/lib/auth/permissions";
 import type { Database } from "@/lib/db/types";
 import { storeLocalNow } from "@/app/(app)/checklists/logic";
 import { PHOTO_BUCKET } from "@/app/(app)/cleaning/constants";
-import { lastDoneDates } from "@/app/(app)/cleaning/week-logic";
+import { addDays, lastDoneDates } from "@/app/(app)/cleaning/week-logic";
 
 type Client = SupabaseClient<Database>;
 
@@ -204,4 +204,23 @@ export async function loadSetupOwners(supabase: Client, from: string, to: string
     if (half && setup.shift_leader_id) owners.set(`${setup.date}|${half}`, setup.shift_leader_id);
   }
   return owners;
+}
+
+/**
+ * Carry-overs dated in a window after a period, for leaderStats: a miss on
+ * the period's last day carries into the next one. A week covers a late
+ * close and a weekend.
+ */
+export async function loadCarriesAfter(
+  supabase: Client,
+  periodEnd: string,
+): Promise<{ carried_from_id: string | null }[]> {
+  const { data, error } = await supabase
+    .from("cleaning_assignments")
+    .select("carried_from_id")
+    .eq("origin", "carry_over")
+    .gt("date", periodEnd)
+    .lte("date", addDays(periodEnd, 7));
+  if (error) throw new Error(`Could not load carry-overs: ${error.message}`);
+  return data ?? [];
 }
