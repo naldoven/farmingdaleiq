@@ -158,10 +158,32 @@ grant execute on function public.cleaning_store_trend(int) to authenticated;
 -- coordinators' notices (PR #95 review). The summaries, the week post and the
 -- notices come only from the hourly job's service-role client, which bypasses
 -- RLS, so no signed-in user may insert them. A found-and-fixed post must name
--- a find the caller posted, and may not carry a channel override or a
--- recipient (which would @mention someone). Every other branch is copied
+-- a find the caller posted, not already announced, and may carry only the
+-- keys the finds route sends: an allowlist, because the notification drain
+-- reads recipients under several aliases (user_id, userId, recipientId, ...)
+-- and a Discord channel override under two, and any of those would let one
+-- row @mention someone or post elsewhere. Every other branch is copied
 -- unchanged from 20261026060000_catering_driver_reservations.sql, the
 -- policy's last definition.
+
+-- Whether a find has been announced. Security definer because the caller
+-- cannot read app_events (default_deny), and the check must see every row.
+create or replace function public.cleaning_find_announced(p_find_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.app_events e
+    where e.event_key = 'cleaning_atd_find'
+      and e.payload ->> 'findId' = p_find_id
+  );
+$$;
+
+revoke all on function public.cleaning_find_announced(text) from public, anon, authenticated;
+grant execute on function public.cleaning_find_announced(text) to authenticated;
 
 drop policy if exists app_events_insert_authenticated on public.app_events;
 create policy app_events_insert_authenticated on public.app_events
@@ -193,10 +215,8 @@ create policy app_events_insert_authenticated on public.app_events
           where f.id::text = payload ->> 'findId'
             and f.posted_by = auth.uid()
         )
-        and not (payload ? 'discord_channel_id')
-        and not (payload ? 'discordChannelId')
-        and not (payload ? 'user_id')
-        and not (payload ? 'user_ids')
+        and (payload - array['findId', 'title', 'message', 'image_url']) = '{}'::jsonb
+        and not public.cleaning_find_announced(payload ->> 'findId')
       )
       else true
     end
