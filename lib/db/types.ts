@@ -249,6 +249,125 @@ export type Database = {
         }
         Relationships: []
       }
+      catering_driver_reminders: {
+        Row: {
+          folded: boolean
+          id: string
+          kind: string
+          order_id: string
+          recipient_ids: string[]
+          sent_at: string
+        }
+        Insert: {
+          folded?: boolean
+          id?: string
+          kind: string
+          order_id: string
+          recipient_ids?: string[]
+          sent_at?: string
+        }
+        Update: {
+          folded?: boolean
+          id?: string
+          kind?: string
+          order_id?: string
+          recipient_ids?: string[]
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catering_driver_reminders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "catering_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catering_driver_settings: {
+        Row: {
+          escalation_profile_id: string | null
+          id: boolean
+          reminders_live_from: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          escalation_profile_id?: string | null
+          id?: boolean
+          reminders_live_from?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          escalation_profile_id?: string | null
+          id?: boolean
+          reminders_live_from?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catering_driver_settings_escalation_profile_id_fkey"
+            columns: ["escalation_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catering_driver_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catering_drivers: {
+        Row: {
+          active: boolean
+          car_size: string
+          has_ezcater_app: boolean
+          has_roadway_app: boolean
+          profile_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          car_size?: string
+          has_ezcater_app?: boolean
+          has_roadway_app?: boolean
+          profile_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          car_size?: string
+          has_ezcater_app?: boolean
+          has_roadway_app?: boolean
+          profile_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catering_drivers_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catering_drivers_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catering_followups: {
         Row: {
           contact_id: string | null
@@ -327,6 +446,49 @@ export type Database = {
         }
         Relationships: []
       }
+      catering_order_drivers: {
+        Row: {
+          order_id: string
+          profile_id: string
+          reserved_at: string
+          reserved_by: string | null
+        }
+        Insert: {
+          order_id: string
+          profile_id: string
+          reserved_at?: string
+          reserved_by?: string | null
+        }
+        Update: {
+          order_id?: string
+          profile_id?: string
+          reserved_at?: string
+          reserved_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catering_order_drivers_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "catering_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catering_order_drivers_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catering_order_drivers_reserved_by_fkey"
+            columns: ["reserved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catering_order_items: {
         Row: {
           id: string
@@ -370,6 +532,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           delivery_address: string | null
+          delivery_platform: string
           email: string | null
           event_date: string
           event_time: string | null
@@ -392,6 +555,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
+          delivery_platform?: string
           email?: string | null
           event_date: string
           event_time?: string | null
@@ -414,6 +578,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivery_address?: string | null
+          delivery_platform?: string
           email?: string | null
           event_date?: string
           event_time?: string | null

@@ -56,6 +56,13 @@ export const EVENT_KEYS = [
   "catering_stage_change",
   // Nightly list of tomorrow's orders and open confirmation calls. Discord only, so it is not in NOTIFIABLE_EVENT_KEYS.
   "catering_tomorrow_digest",
+  // Driver reservations (app/api/cron/catering-drivers). Reminders go to the
+  // posted shift leader and the catering channel; escalations to the
+  // escalation contact and the leaders channel, so they need separate keys to
+  // route separately. driver_assigned tells the driver, in-app only.
+  "catering_driver_reminder",
+  "catering_driver_escalation",
+  "catering_driver_assigned",
 
   // Waste
   //

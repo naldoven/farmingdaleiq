@@ -6,6 +6,7 @@ import { OrderSearch } from "@/components/catering/order-search";
 import type { OrderCardData } from "@/components/catering/order-card";
 import { SectionCard, SectionLabel, StatusBadge } from "@/components/mobile";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { loadDriverBadges } from "@/app/(app)/catering/driver-badges";
 import { createClient } from "@/lib/supabase/server";
 import {
   CANCELLED_STAGE,
@@ -72,11 +73,15 @@ export default async function CateringPipelinePage() {
   // Checklist completion per order drives each card's progress bar, and the
   // Confirmation Call rows drive the "Call not done" badge. Fetched as one
   // second query (rather than joined into the first) since it only needs
-  // order ids, which the first query already resolved.
+  // order ids, which the first query already resolved. Drivers load beside it,
+  // in one query for every delivery card on the board.
   const orderIds = (orders ?? []).map((o) => o.id);
-  const { data: checklistCounts } = orderIds.length
-    ? await supabase.from("catering_checklist_items").select("order_id, stage, done").in("order_id", orderIds)
-    : { data: [] as { order_id: string; stage: string; done: boolean }[] };
+  const [{ data: checklistCounts }, driversByOrder] = await Promise.all([
+    orderIds.length
+      ? supabase.from("catering_checklist_items").select("order_id, stage, done").in("order_id", orderIds)
+      : Promise.resolve({ data: [] as { order_id: string; stage: string; done: boolean }[] }),
+    loadDriverBadges(supabase, orders ?? []),
+  ]);
 
   const progressByOrder = new Map<string, { done: number; total: number }>();
   const callItemsByOrder = new Map<string, { done: boolean }[]>();
@@ -107,6 +112,7 @@ export default async function CateringPipelinePage() {
       checklistDone: progress?.done,
       checklistTotal: progress?.total,
       callNotDone: isConfirmationCallLate(o, callItemsByOrder.get(o.id) ?? [], now),
+      drivers: driversByOrder.get(o.id),
     };
   });
 
