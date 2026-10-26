@@ -92,7 +92,10 @@ export async function parseFindRequest(formData: FormData): Promise<ParsedFindRe
   if (!(FIND_ALLOWED_TYPES as readonly string[]).includes(file.type)) {
     return { ok: false, status: 400, error: "Only JPEG, PNG or WebP photos are allowed." };
   }
-  if (file.size === 0 || file.size > PHOTO_MAX_BYTES) {
+  if (file.size === 0) {
+    return { ok: false, status: 400, error: "Take a photo first." };
+  }
+  if (file.size > PHOTO_MAX_BYTES) {
     return { ok: false, status: 413, error: "Photo is too large." };
   }
 

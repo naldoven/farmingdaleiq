@@ -213,12 +213,12 @@ describe("toStatRows", () => {
 });
 
 describe("leaderIds", () => {
-  it("names the stamped owner, else the posted Setup leader, and skips ownerless days", () => {
+  it("names the owner stamped on a miss, else the posted Setup leader, and skips ownerless days", () => {
     const rows = [
-      stat({ owner_user_id: "stamped" }),
+      stat({ status: "missed", completed_at: null, owner_user_id: "stamped" }),
       stat({ date: "2026-10-28", half: "pm" }),
       stat({ date: "2026-10-29", half: "am" }),
-      stat({ date: "2026-10-27", half: "am", owner_user_id: "stamped" }),
+      stat({ date: "2026-10-27", half: "am", status: "missed", completed_at: null, owner_user_id: "stamped" }),
     ];
     const owners = new Map([
       ["2026-10-28|pm", "closer"],
@@ -232,12 +232,17 @@ describe("leaderRows and unownedView", () => {
   const TZ = "America/New_York";
 
   it("keeps the name order from leaderStats and adds no rank", () => {
+    // Done cleans are credited from the posted Setups; a miss from its stamp.
+    const owners = new Map([
+      ["2026-10-26|am", "u-zed"],
+      ["2026-10-27|am", "u-amy"],
+    ]);
     const rows = [
-      stat({ owner_user_id: "u-zed" }),
+      stat({ date: "2026-10-26", completed_at: "2026-10-26T14:00:00Z" }),
       stat({ owner_user_id: "u-amy", status: "missed", completed_at: null }),
-      stat({ owner_user_id: "u-amy" }),
+      stat({}),
     ];
-    const { leaders } = leaderStats(rows, new Map(), new Map([["u-zed", "Zed"], ["u-amy", "Amy"]]), TZ);
+    const { leaders } = leaderStats(rows, owners, new Map([["u-zed", "Zed"], ["u-amy", "Amy"]]), TZ);
     const view = leaderRows(leaders);
     expect(view.map((l) => l.name)).toEqual(["Amy", "Zed"]);
     expect(view[0]).toEqual({
@@ -253,13 +258,13 @@ describe("leaderRows and unownedView", () => {
   });
 
   it("shows a dash for a leader whose cleans have not closed", () => {
-    const rows = [stat({ owner_user_id: "u1", status: "planned", completed_at: null })];
-    const { leaders } = leaderStats(rows, new Map(), new Map([["u1", "Amy"]]), TZ);
+    const rows = [stat({ status: "planned", completed_at: null })];
+    const { leaders } = leaderStats(rows, new Map([["2026-10-27|am", "u1"]]), new Map([["u1", "Amy"]]), TZ);
     expect(leaderRows(leaders)[0]).toMatchObject({ pctText: "-", tone: "neutral", owned: 1 });
   });
 
   it("shows the No Setup posted bucket only when it holds cleans", () => {
-    const empty = leaderStats([stat({ owner_user_id: "u1" })], new Map(), new Map([["u1", "Amy"]]), TZ);
+    const empty = leaderStats([stat({})], new Map([["2026-10-27|am", "u1"]]), new Map([["u1", "Amy"]]), TZ);
     expect(unownedView(empty.unowned)).toBeNull();
 
     const withBucket = leaderStats(
@@ -275,8 +280,8 @@ describe("leaderRows and unownedView", () => {
 describe("areaRows", () => {
   it("keeps the order and color it is given and formats the percent", () => {
     const rows = areaRows([
-      { zoneId: "z1", name: "Boards", color: "#16A34A", owed: 10, onTime: 9, late: 0, missed: 1, pct: 90 },
-      { zoneId: "z2", name: "Dumpster", color: "#1D4ED8", owed: 3, onTime: 0, late: 0, missed: 0, pct: null },
+      { zoneId: "z1", name: "Boards", color: "#16A34A", owed: 10, onTime: 9, late: 0, missed: 1, sentBack: 0, pct: 90 },
+      { zoneId: "z2", name: "Dumpster", color: "#1D4ED8", owed: 3, onTime: 0, late: 0, missed: 0, sentBack: 0, pct: null },
     ]);
     expect(rows).toEqual([
       { zoneId: "z1", name: "Boards", color: "#16A34A", pctText: "90%", tone: "success", owed: 10, missed: 1 },

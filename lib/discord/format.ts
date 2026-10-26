@@ -126,6 +126,28 @@ function mention(discordUserId: string): string {
   return `<@${discordUserId}>`;
 }
 
+const FOUND_PHOTO_PATH = /^\/storage\/v1\/object\/sign\/cleaning-photos\/finds\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
+
+function foundPhotoUrl(key: EventKey, value: unknown): string | undefined {
+  if (key !== "cleaning_atd_find" || typeof value !== "string") return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:" || !FOUND_PHOTO_PATH.test(url.pathname)) return undefined;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseUrl) {
+    try {
+      if (new URL(supabaseUrl).host !== url.host) return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return value;
+}
+
 export interface BuildDiscordMessageOptions {
   /** Display name to use when a payload has no better title (e.g. "Jamie Rivera"). */
   recipientName?: string;
@@ -180,10 +202,12 @@ export function buildDiscordMessage(
     ? { parse: [], users: [recipientId] }
     : { parse: [] };
 
-  // A producer may attach one photo (a found-and-fixed post). Only an https
-  // URL is passed on: anything else would make Discord reject the whole post.
-  const imageUrl = typeof payload.image_url === "string" ? payload.image_url : undefined;
-  if (imageUrl && /^https:\/\//.test(imageUrl)) {
+  // A found-and-fixed post shows its photo. Only that event, and only a
+  // signed link to a finds/ photo in our own bucket: the event row is the
+  // input, and a photo from anywhere else would let one bad row put any
+  // image in the channel (PR #95 review). Anything else posts as text.
+  const imageUrl = foundPhotoUrl(key, payload.image_url);
+  if (imageUrl) {
     return { content, allowed_mentions, embeds: [{ image: { url: imageUrl } }] };
   }
 

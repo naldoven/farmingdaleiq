@@ -182,9 +182,14 @@ export async function loadAssignmentsBetween(supabase: Client, from: string, to:
 /**
  * Who led each half-day: the leader on that date's posted Morning (AM) or
  * Closing (PM) Setup, the same rule close_cleaning_days uses for misses.
- * Keyed "date|half". When a day part was posted twice, the latest post wins.
+ * Keyed "date|half". When a day part was posted twice, the latest post wins,
+ * even when it has no leader set (null), again like the close.
  */
-export async function loadSetupOwners(supabase: Client, from: string, to: string): Promise<Map<string, string>> {
+export async function loadSetupOwners(
+  supabase: Client,
+  from: string,
+  to: string,
+): Promise<Map<string, string | null>> {
   const [{ data: parts, error: partError }, { data: setups, error: setupError }] = await Promise.all([
     supabase.from("day_parts").select("id, name").in("name", ["Morning", "Closing"]),
     supabase
@@ -198,10 +203,10 @@ export async function loadSetupOwners(supabase: Client, from: string, to: string
   if (partError) throw new Error(`Could not load day parts: ${partError.message}`);
   if (setupError) throw new Error(`Could not load Setups: ${setupError.message}`);
   const halfByPart = new Map((parts ?? []).map((p) => [p.id, p.name === "Morning" ? "am" : "pm"]));
-  const owners = new Map<string, string>();
+  const owners = new Map<string, string | null>();
   for (const setup of setups ?? []) {
     const half = setup.day_part_id ? halfByPart.get(setup.day_part_id) : undefined;
-    if (half && setup.shift_leader_id) owners.set(`${setup.date}|${half}`, setup.shift_leader_id);
+    if (half) owners.set(`${setup.date}|${half}`, setup.shift_leader_id);
   }
   return owners;
 }

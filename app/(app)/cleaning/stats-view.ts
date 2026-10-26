@@ -1,15 +1,4 @@
-import {
-  monthBounds,
-  monthLabel,
-  monthOf,
-  recentMonths,
-  type LeaderTally,
-  type OverdueItem,
-  type StatRow,
-  type Tally,
-  type TrendPoint,
-  type ZoneTally,
-} from "@/app/(app)/cleaning/stats";
+import { monthBounds, monthLabel, monthOf, recentMonths, type LeaderTally, type OverdueItem, type StatRow, type Tally, type TrendPoint, type ZoneTally, statOwner } from "@/app/(app)/cleaning/stats";
 import { shortDateLabel } from "@/app/(app)/cleaning/today-view";
 import { addDays, type AssignmentStatus, type SlotHalf } from "@/app/(app)/cleaning/week-logic";
 
@@ -136,13 +125,12 @@ export function toStatRows(rows: AssignmentRowLike[]): StatRow[] {
 
 /**
  * The people leaderStats will credit, so the page asks for exactly their
- * names. Same owner rule as leaderStats: the owner stamped on the clean, else
- * that day's posted Setup leader.
+ * names. The same owner rule as leaderStats (statOwner).
  */
-export function leaderIds(rows: StatRow[], setupOwners: Map<string, string>): string[] {
+export function leaderIds(rows: StatRow[], setupOwners: Map<string, string | null>): string[] {
   const ids = new Set<string>();
   for (const row of rows) {
-    const owner = row.owner_user_id ?? setupOwners.get(`${row.date}|${row.half}`) ?? null;
+    const owner = statOwner(row, setupOwners);
     if (owner) ids.add(owner);
   }
   return [...ids];

@@ -214,11 +214,17 @@ walkthrough day on; variables join as drafts are approved.
   queues `cleaning_atd_find` for #cleaning with the photo (a signed link valid a year,
   since Discord shows the photo from it). A planner's "Add to master list" creates an
   active item with the find's photo as its reference photo.
-- **Metrics** (`/cleaning/stats`): one counting rule with the Today screen and the
-  morning summary (skipped and sent-back cleans are not owed; on time is done on or
-  before its day, store-local; an open clean is not scored yet). Shift leaders come
-  from posted Setups; a miss keeps the owner the close stamped on it. Leaders are listed
-  by name, not ranked. Home shows every team member the store's on-time %.
+- **Metrics** (`/cleaning/stats`): skipped cleans are not owed; on time is done on or
+  before its day, store-local; an open clean is not scored yet. A clean a planner sent
+  back counts as owed and not on time ("the first completion does not count as on
+  time"), and its redo is scored on its own shift; the Today screen and the morning
+  summary leave it out instead, since they count work still to do. Done cleans are
+  credited to the posted Morning or Closing Setup leader; a miss belongs only to whoever
+  the close stamped, "no owner" included. Leaders are listed by name, not ranked. Home
+  shows every team member the store's on-time %.
+- **Who can raise cleaning events**: only the hourly job may queue the summaries, the
+  week post and the coordinator notices; a found-and-fixed post must name a find the
+  poster made, with no channel override or recipient.
 - **To post finds to Discord**: point "Cleaning: found and fixed (with photo)" at
   #cleaning in `/settings/discord`, next to the other two Cleaning rows.
 

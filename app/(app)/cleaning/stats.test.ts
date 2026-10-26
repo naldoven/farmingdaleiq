@@ -48,9 +48,13 @@ describe("outcome", () => {
     expect(outcome(row({ completed_at: "2026-10-28T05:30:00Z" }), TZ)).toBe("late");
   });
 
-  it("is not owed when skipped or sent back for a redo", () => {
+  it("is not owed when skipped", () => {
     expect(outcome(row({ status: "skipped", completed_at: null }), TZ)).toBe("not_owed");
-    expect(outcome(row({ rejected_at: "2026-10-27T20:00:00Z" }), TZ)).toBe("not_owed");
+  });
+
+  it("counts a sent-back clean as owed and not on time, as the plan says", () => {
+    expect(outcome(row({ rejected_at: "2026-10-27T20:00:00Z" }), TZ)).toBe("sent_back");
+    expect(tally(["on_time", "sent_back"])).toMatchObject({ owed: 2, onTime: 1, sentBack: 1, pct: 50 });
   });
 
   it("counts a miss and leaves an open clean out of the score", () => {
@@ -66,6 +70,7 @@ describe("tally", () => {
       onTime: 2,
       late: 1,
       missed: 1,
+      sentBack: 0,
       pct: 50,
     });
   });
@@ -118,6 +123,19 @@ describe("leaderStats", () => {
     const miss = row({ id: "last", date: "2026-10-31", half: "pm", status: "missed", completed_at: null, owner_user_id: "ben" });
     const result = leaderStats([miss], owners, names, TZ, [{ carried_from_id: "last" }, { carried_from_id: "last" }]);
     expect(result.leaders[0]).toMatchObject({ name: "Ben Cole", missed: 1, carriedOver: 1 });
+  });
+
+  it("keeps a miss stamped with no owner unowned, even if a Setup was posted later", () => {
+    const rows = [row({ status: "missed", completed_at: null, owner_user_id: null })];
+    const result = leaderStats(rows, owners, names, TZ);
+    expect(result.leaders).toEqual([]);
+    expect(result.unowned).toMatchObject({ missed: 1 });
+  });
+
+  it("treats a posted Setup with no leader as no owner", () => {
+    const result = leaderStats([row({})], new Map([["2026-10-27|am", null]]), names, TZ);
+    expect(result.leaders).toEqual([]);
+    expect(result.unowned.owed).toBe(1);
   });
 
   it("keeps the owner stamped on a miss even if the Setup changed later", () => {

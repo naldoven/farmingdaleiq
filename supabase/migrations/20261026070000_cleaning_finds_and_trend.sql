@@ -60,15 +60,23 @@ create policy cleaning_atd_finds_delete on public.cleaning_atd_finds
   for delete to authenticated
   using (public.can_plan_cleaning());
 
--- A planner updates a find only to link the item it became. Through the API
--- the poster, photo, area, note and time stay as posted, so the log is a
--- record of what was found, not something to rewrite later.
+-- Through the API the server stamps a find's time (a find dated in the
+-- future would pin itself to the top of the log), and a planner updates a
+-- find only to link the item it became: the poster, photo, area, note and
+-- time stay as posted, so the log is a record of what was found, not
+-- something to rewrite later.
 create or replace function public.cleaning_atd_finds_guard()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if current_user = 'authenticated' then
+      new.posted_at := now();
+    end if;
+    return new;
+  end if;
   if current_user = 'authenticated' and (
     new.id is distinct from old.id
     or new.zone_id is distinct from old.zone_id
@@ -86,7 +94,7 @@ $$;
 revoke all on function public.cleaning_atd_finds_guard() from public, anon, authenticated;
 
 create trigger cleaning_atd_finds_guard
-  before update on public.cleaning_atd_finds
+  before insert or update on public.cleaning_atd_finds
   for each row execute function public.cleaning_atd_finds_guard();
 
 -- Find photos live in the same private bucket under finds/. The existing
@@ -103,10 +111,12 @@ create policy cleaning_find_photos_insert on storage.objects
 -- Week by week: cleans owed, done on time, missed. Team members see this on
 -- Home but cannot read the assignments themselves (leaders only), so this
 -- returns counts and nothing else: no items, no people. Only days that have
--- ended count, so a week in progress is not dragged down by today's open
--- cleans. On time = done (or checked, not needed) on or before its day,
--- store-local; skipped and sent-back cleans are not owed, the same rule the
--- Today screen and the morning summary use.
+-- ended count. Owed = cleans whose outcome is settled: done, checked not
+-- needed, or missed. A clean still open on an ended day (between midnight
+-- and the 3am close) is not owed yet, the same as stats.ts. On time = done
+-- on or before its day, store-local, and not sent back: the plan says a
+-- rejected clean's first completion does not count as on time. Skipped
+-- cleans are not owed.
 
 create or replace function public.cleaning_store_trend(p_weeks int default 12)
 returns table (week_start date, owed int, on_time int, missed int)
@@ -123,7 +133,7 @@ as $$
   )
   select
     a.week_start,
-    count(*) filter (where a.status <> 'skipped' and a.rejected_at is null)::int as owed,
+    count(*) filter (where a.status in ('done', 'not_needed', 'missed'))::int as owed,
     count(*) filter (
       where a.status in ('done', 'not_needed')
         and a.rejected_at is null
@@ -141,3 +151,53 @@ $$;
 
 revoke all on function public.cleaning_store_trend(int) from public, anon, authenticated;
 grant execute on function public.cleaning_store_trend(int) to authenticated;
+
+-- Event keys -----------------------------------------------------------------------
+-- app_events_insert_authenticated lets a signed-in user insert any key it does
+-- not list, and the cleaning keys fan out to #cleaning and to the
+-- coordinators' notices (PR #95 review). The summaries, the week post and the
+-- notices come only from the hourly job's service-role client, which bypasses
+-- RLS, so no signed-in user may insert them. A found-and-fixed post must name
+-- a find the caller posted, and may not carry a channel override or a
+-- recipient (which would @mention someone). Every other branch is copied
+-- unchanged from 20261026060000_catering_driver_reservations.sql, the
+-- policy's last definition.
+
+drop policy if exists app_events_insert_authenticated on public.app_events;
+create policy app_events_insert_authenticated on public.app_events
+  for insert to authenticated with check (
+    case event_key
+      when 'recognition' then public.has_permission('tokens.award')
+      when 'gift_sent' then public.has_permission('tokens.gift')
+      when 'reward_claim' then public.has_permission('rewards.claim')
+      when 'top_performer' then public.has_permission('setups.post')
+      when 'broadcast' then public.has_permission('feed.post_broadcast')
+      when 'infraction_issued' then
+        (public.has_permission('accountability.issue') or public.has_permission('accountability.manage'))
+      when 'disciplinary_triggered' then
+        (public.has_permission('accountability.issue') or public.has_permission('accountability.manage'))
+      when 'waste_logged' then public.has_permission('waste.log')
+      when 'waste_entry_deleted' then public.has_permission('waste.manage')
+      when 'waste_item_changed' then public.has_permission('waste.manage')
+      when 'waste_category_changed' then public.has_permission('waste.manage')
+      when 'catering_driver_reminder' then false
+      when 'catering_driver_escalation' then false
+      when 'catering_driver_assigned' then public.has_permission('catering.drivers')
+      when 'cleaning_daily_summary' then false
+      when 'cleaning_week_published' then false
+      when 'cleaning_misses' then false
+      when 'cleaning_plan_reminder' then false
+      when 'cleaning_atd_find' then (
+        exists (
+          select 1 from public.cleaning_atd_finds f
+          where f.id::text = payload ->> 'findId'
+            and f.posted_by = auth.uid()
+        )
+        and not (payload ? 'discord_channel_id')
+        and not (payload ? 'discordChannelId')
+        and not (payload ? 'user_id')
+        and not (payload ? 'user_ids')
+      )
+      else true
+    end
+  );

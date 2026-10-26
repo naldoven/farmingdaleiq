@@ -316,12 +316,37 @@ describe("convertFind", () => {
 });
 
 describe("deleteFind", () => {
-  it("deletes the find by id and refreshes the log", async () => {
-    const { writes } = useClient({ canPlan: true });
+  it("deletes an unconverted find by id and refreshes the log", async () => {
+    const { writes } = useClient({
+      canPlan: true,
+      responses: { "cleaning_atd_finds.delete": { data: [{ id: FIND_ID }], error: null } },
+    });
     expect(await deleteFind({ id: FIND_ID })).toEqual({ ok: true, data: undefined });
     const [removed] = writes("cleaning_atd_finds", "delete");
-    expect(removed!.filters).toEqual([["eq", ["id", FIND_ID]]]);
+    expect(removed!.filters).toEqual([
+      ["eq", ["id", FIND_ID]],
+      ["is", ["converted_item_id", null]],
+    ]);
     expect(mockRevalidate).toHaveBeenCalledWith("/cleaning/finds");
+  });
+
+  it("keeps a find that is already on the master list", async () => {
+    useClient({
+      canPlan: true,
+      responses: {
+        "cleaning_atd_finds.delete": { data: [], error: null },
+        "cleaning_atd_finds.select": { data: { id: FIND_ID }, error: null },
+      },
+    });
+    expect(await deleteFind({ id: FIND_ID })).toEqual({
+      ok: false,
+      error: "That find is on the master list, so it stays in the log.",
+    });
+  });
+
+  it("treats a find already gone as deleted (double tap)", async () => {
+    useClient({ canPlan: true, responses: { "cleaning_atd_finds.delete": { data: [], error: null } } });
+    expect(await deleteFind({ id: FIND_ID })).toEqual({ ok: true, data: undefined });
   });
 
   it("rejects an id that is not a uuid before any delete", async () => {

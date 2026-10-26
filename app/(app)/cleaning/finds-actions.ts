@@ -88,7 +88,16 @@ export async function convertFind(input: { findId: string; details: ItemDetailsI
       // the master list is worse than a retry, so take it back.
       await supabase.from("cleaning_items").delete().eq("id", itemId);
       if (claimError) return { ok: false, error: claimError.message };
+      // Lost to another tap: the find is on the list, which is what this tap
+      // wanted. Gone: say so, rather than report a success with nothing to
+      // show for it (PR #95 review).
+      const { data: still } = await supabase
+        .from("cleaning_atd_finds")
+        .select("converted_item_id")
+        .eq("id", parsed.findId)
+        .maybeSingle();
       revalidateFinds();
+      if (!still) return { ok: false, error: "That find was deleted." };
       return { ok: true, data: undefined };
     }
 
@@ -140,8 +149,10 @@ async function copyFindPhoto(
 /**
  * Removes a find from the log (a duplicate, a bad shot, a post that should
  * not have been made). The stored photo stays in the bucket, which has no
- * client delete policy by design (objects are immutable from the app). An
- * item made from the find is not touched. Deleting twice is a no-op.
+ * client delete policy by design (objects are immutable from the app). A
+ * find already on the master list stays, as the record of where that item
+ * came from; the screen hides Delete for it and this holds the same line.
+ * Deleting twice is a no-op.
  */
 export async function deleteFind(input: { id: string }): Promise<ActionResult> {
   try {
@@ -149,8 +160,17 @@ export async function deleteFind(input: { id: string }): Promise<ActionResult> {
     await requireCleaningPlanner(supabase);
     const { id } = findIdSchema.parse(input);
 
-    const { error } = await supabase.from("cleaning_atd_finds").delete().eq("id", id);
+    const { data: deleted, error } = await supabase
+      .from("cleaning_atd_finds")
+      .delete()
+      .eq("id", id)
+      .is("converted_item_id", null)
+      .select("id");
     if (error) return { ok: false, error: error.message };
+    if (!deleted || deleted.length === 0) {
+      const { data: still } = await supabase.from("cleaning_atd_finds").select("id").eq("id", id).maybeSingle();
+      if (still) return { ok: false, error: "That find is on the master list, so it stays in the log." };
+    }
 
     revalidateFinds();
     return { ok: true, data: undefined };

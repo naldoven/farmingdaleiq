@@ -88,6 +88,35 @@ describe("deliverPendingOutbox", () => {
     expect(db.rowsOf("discord_outbox")[0].status).toBe("sent");
   });
 
+  it("sends the queued photo embed, so a found-and-fixed post shows its photo", async () => {
+    sendDiscordWebhookMock.mockResolvedValueOnce(undefined);
+    const embeds = [{ image: { url: "https://x.supabase.co/storage/v1/object/sign/cleaning-photos/finds/a.jpg?token=t" } }];
+    const db = new FakeSupabase({
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_outbox: [
+        { id: "row-1", channel_id: "chan-1", payload: { content: "found", embeds }, status: "pending", attempts: 0 },
+      ],
+    });
+
+    await deliverPendingOutbox(25, db as unknown as Parameters<typeof deliverPendingOutbox>[1]);
+
+    expect(sendDiscordWebhookMock).toHaveBeenCalledWith("https://discord.example/hook", expect.objectContaining({ embeds }));
+  });
+
+  it("sends no embeds key for a text-only post", async () => {
+    sendDiscordWebhookMock.mockResolvedValueOnce(undefined);
+    const db = new FakeSupabase({
+      discord_channels: [{ id: "chan-1", webhook_url: "https://discord.example/hook", active: true }],
+      discord_outbox: [
+        { id: "row-1", channel_id: "chan-1", payload: { content: "hi" }, status: "pending", attempts: 0 },
+      ],
+    });
+
+    await deliverPendingOutbox(25, db as unknown as Parameters<typeof deliverPendingOutbox>[1]);
+
+    expect(sendDiscordWebhookMock.mock.calls[0]![1]).not.toHaveProperty("embeds");
+  });
+
   it("replays allowed_mentions from the queued payload so the recipient ping survives", async () => {
     sendDiscordWebhookMock.mockResolvedValueOnce(undefined);
 

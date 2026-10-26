@@ -298,9 +298,13 @@ describe("parseFindRequest", () => {
     });
   });
 
-  it("answers 413 for an empty or oversized photo", async () => {
+  it("answers 400 for an empty photo and 413 for an oversized one", async () => {
     const empty = new File([], "empty.jpg", { type: "image/jpeg" });
-    expect(await parseFindRequest(body({ photo: empty, payload: INPUT }))).toMatchObject({ ok: false, status: 413 });
+    expect(await parseFindRequest(body({ photo: empty, payload: INPUT }))).toMatchObject({
+      ok: false,
+      status: 400,
+      error: "Take a photo first.",
+    });
     const big = jpegFile("image/jpeg", new Uint8Array(PHOTO_MAX_BYTES + 1));
     expect(await parseFindRequest(body({ photo: big, payload: INPUT }))).toMatchObject({ ok: false, status: 413 });
   });

@@ -8,11 +8,14 @@ import { nextDueDate, type AssignmentStatus, type SlotHalf } from "@/app/(app)/c
  * on-time %, misses and carry-overs by month; zone completion % and most
  * overdue items; store weekly trend. Pure, so the stats page only loads rows.
  *
- * One counting rule everywhere, the same as the Today screen and the
- * morning summary: skipped cleans and cleans sent back for a redo are not
- * owed (the redo is its own clean), and a clean still open on its day is not
+ * Skipped cleans are not owed, and a clean still open on its day is not
  * scored yet. On time means done on or before its day, store-local; a clean
- * finished after midnight but before the 3am close is late.
+ * finished after midnight but before the 3am close is late. A clean a planner
+ * sent back counts as owed and not on time (plan "Checking": "the first
+ * completion does not count as on time"); its redo is scored as its own
+ * clean on the next shift. The Today screen and the morning summary leave a
+ * sent-back clean out instead, because they count work still to do, not
+ * how the shift did. cleaning_store_trend applies the same rule as here.
  */
 
 export interface StatRow {
@@ -28,10 +31,11 @@ export interface StatRow {
   rejected_at: string | null;
 }
 
-export type Outcome = "on_time" | "late" | "missed" | "open" | "not_owed";
+export type Outcome = "on_time" | "late" | "missed" | "sent_back" | "open" | "not_owed";
 
 export function outcome(row: StatRow, timeZone: string): Outcome {
-  if (row.status === "skipped" || row.rejected_at !== null) return "not_owed";
+  if (row.status === "skipped") return "not_owed";
+  if (row.rejected_at !== null) return "sent_back";
   if (row.status === "missed") return "missed";
   if (row.status === "done" || row.status === "not_needed") {
     if (!row.completed_at) return "late";
@@ -47,6 +51,8 @@ export interface Tally {
   onTime: number;
   late: number;
   missed: number;
+  /** Done, then rejected by a planner: owed, not on time. */
+  sentBack: number;
   /** On time over cleans whose day has closed; null before any has. */
   pct: number | null;
 }
@@ -56,8 +62,9 @@ export function tally(outcomes: Outcome[]): Tally {
   const onTime = outcomes.filter((o) => o === "on_time").length;
   const late = outcomes.filter((o) => o === "late").length;
   const missed = outcomes.filter((o) => o === "missed").length;
-  const closed = onTime + late + missed;
-  return { owed, onTime, late, missed, pct: closed === 0 ? null : Math.round((onTime / closed) * 100) };
+  const sentBack = outcomes.filter((o) => o === "sent_back").length;
+  const closed = onTime + late + missed + sentBack;
+  return { owed, onTime, late, missed, sentBack, pct: closed === 0 ? null : Math.round((onTime / closed) * 100) };
 }
 
 /** "YYYY-MM" to its first and last day. */
@@ -93,6 +100,12 @@ export function monthLabel(month: string): string {
   return `${MONTHS[m! - 1]} ${y}`;
 }
 
+/** Who a clean counts against: the stamped owner for a miss, else that half's Setup leader. */
+export function statOwner(row: StatRow, setupOwners: Map<string, string | null>): string | null {
+  if (row.status === "missed") return row.owner_user_id;
+  return setupOwners.get(`${row.date}|${row.half}`) ?? null;
+}
+
 export interface LeaderTally extends Tally {
   userId: string;
   name: string;
@@ -102,18 +115,20 @@ export interface LeaderTally extends Tally {
 
 /**
  * Credits each clean to the leader on that day's Morning (AM) or Closing (PM)
- * Setup (plan "Who does it"). A miss keeps the owner the day-end close
- * stamped on it, so a Setup edited afterwards cannot move the blame. Cleans
- * on a day with no posted Setup go in their own bucket. Sorted by name, not
- * by score: the plan says no competition in v1.
+ * Setup (plan "Who does it"). A miss is owned only by whoever the day-end
+ * close stamped on it, "no owner" included, so a Setup posted or edited
+ * afterwards cannot move the blame (PR #95 review). Cleans on a day with no
+ * posted Setup go in their own bucket. Sorted by name, not by score: the
+ * plan says no competition in v1.
  *
- * `setupOwners` is keyed "date|half". `laterCarries` are carry-overs dated
+ * `setupOwners` is keyed "date|half"; a null value is a posted Setup with no
+ * leader set. `laterCarries` are carry-overs dated
  * after the period: a miss on its last day carries into the next one, and
  * without them that miss would not count as carried over.
  */
 export function leaderStats(
   rows: StatRow[],
-  setupOwners: Map<string, string>,
+  setupOwners: Map<string, string | null>,
   names: Map<string, string>,
   timeZone: string,
   laterCarries: { carried_from_id: string | null }[] = [],
@@ -123,7 +138,7 @@ export function leaderStats(
   const missedBy = new Map<string, string>();
 
   for (const row of rows) {
-    const owner = row.owner_user_id ?? setupOwners.get(`${row.date}|${row.half}`) ?? null;
+    const owner = statOwner(row, setupOwners);
     const result = outcome(row, timeZone);
     if (owner) {
       byLeader.set(owner, [...(byLeader.get(owner) ?? []), result]);
@@ -196,7 +211,11 @@ export interface TrendPoint {
   pct: number | null;
 }
 
-/** cleaning_store_trend rows to labeled points. Every counted day has closed, so owed is the base. */
+/**
+ * cleaning_store_trend rows to labeled points. The function counts only
+ * settled cleans (done, checked not needed, missed) on ended days, so owed is
+ * the base, matching tally's closed count.
+ */
 export function trendPoints(
   rows: { week_start: string; owed: number; on_time: number; missed: number }[],
 ): TrendPoint[] {
