@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { NAV_GROUPS } from "@/lib/nav/page-map";
+
 import {
   ASSIGN_ACTIONS,
   MENU_SECTIONS,
   SEND_ACTIONS,
   VIEW_ITEMS,
   groupViewItems,
+  menuSectionPrefKey,
   visibleActions,
   visibleViewItems,
 } from "./menu-items";
@@ -145,7 +148,7 @@ describe("menu data", () => {
     );
   });
 
-  it("puts every Cleaning screen under Daily Ops with the same icon, gated by cleaning.complete", () => {
+  it("puts every Cleaning screen under its own Cleaning section with the same icon, gated by cleaning.complete", () => {
     const cleaning = VIEW_ITEMS.filter((item) => item.key.startsWith("cleaning"));
     expect(cleaning.map((item) => [item.key, item.href])).toEqual([
       ["cleaning-today", "/cleaning"],
@@ -154,7 +157,7 @@ describe("menu data", () => {
       ["cleaning-walkthrough", "/cleaning/walkthrough"],
     ]);
     for (const item of cleaning) {
-      expect(item.section, item.key).toBe("Daily Ops");
+      expect(item.section, item.key).toBe("Cleaning");
       expect(item.icon, item.key).toBe("cleaning");
     }
     const without = visibleViewItems(VIEW_ITEMS, {}).map((item) => item.key);
@@ -168,8 +171,26 @@ describe("menu data", () => {
   it("keeps Equipment reachable from the mobile Menu hub", () => {
     expect(VIEW_ITEMS.find((item) => item.key === "equipment")).toMatchObject({
       href: "/maintenance/equipment",
-      section: "Operations",
+      section: "Maintenance",
     });
+  });
+
+  it("files Vendors, Maintenance and Equipment under Maintenance", () => {
+    for (const key of ["vendors", "maintenance", "equipment"]) {
+      expect(VIEW_ITEMS.find((item) => item.key === key)?.section, key).toBe("Maintenance");
+    }
+    expect(MENU_SECTIONS).not.toContain("Operations");
+  });
+});
+
+describe("menuSectionPrefKey", () => {
+  it("never matches a sidebar group label, so the two collapse states stay apart", () => {
+    const sidebarLabels = new Set(NAV_GROUPS.map((group) => group.label));
+    // The overlap this guards against is real: both have Cleaning and Maintenance.
+    expect(MENU_SECTIONS.some((section) => sidebarLabels.has(section))).toBe(true);
+    for (const section of MENU_SECTIONS) {
+      expect(sidebarLabels.has(menuSectionPrefKey(section)), section).toBe(false);
+    }
   });
 });
 
@@ -199,7 +220,7 @@ describe("groupViewItems", () => {
 
   it("turns the module list into a handful of headings", () => {
     const grouped = groupViewItems(VIEW_ITEMS);
-    expect(grouped.length).toBeLessThanOrEqual(5);
+    expect(grouped.length).toBeLessThanOrEqual(6);
   });
 
   it("drops a section whose modules are all gated away", () => {

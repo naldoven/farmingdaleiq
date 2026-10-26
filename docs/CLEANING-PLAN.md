@@ -21,7 +21,8 @@ Mariana adjusts it on her phone, the shift leader marks each clean done with a p
 and anything not done is carried forward and counted. Every item shows when it was
 last cleaned. A print button produces the same weekly sheet the team already knows.
 
-BOH goes first. FOH is loaded at the same time but stays hidden until BOH is stable.
+BOH goes first. FOH areas are on the board too since 2026-10-26 (Naldo); they get
+cleans as FOH items from the walkthrough are approved.
 
 ## Decisions (locked in Q&A)
 
@@ -30,7 +31,7 @@ BOH goes first. FOH is loaded at the same time but stays hidden until BOH is sta
 | Scope | One master list for all deep cleans, constants and variables. Daily closing checklists stay in Checklists, untouched. |
 | Constants | Same clean, same weekday(s), every week, AM or PM. Seeded from the paper PDF. |
 | Variables | Repeat every 1, 2, 3, 4, 6, 8 or 13 weeks. Each item says AM, PM or Either. Each section (rack, shelf) is its own item. |
-| Zones | Six colors. FOH: Red (FC, vestibule), Purple (DT cockpit), Orange (dining room, patio, restrooms, playground). BOH: Green (boards, prep), Yellow (breading, machines), Blue (dish to door, dumpster). No cleaning teams. |
+| Zones | One zone per area, named the way the store talks (changed 2026-10-26 after the first phone walkthrough; colors were the first draft). BOH: Boards, Prep (Green), Breading, Machines (Yellow), Dish to door, Dumpster (Blue). FOH: Front counter, Vestibule (Red), DT cockpit (Purple), Dining room, Patio, Restrooms, Playground (Orange). The color stays on each area as a tag for the print sheet. No cleaning teams. |
 | Weekly plan | App auto-places next week Thursday night. Mariana moves, skips, or pulls extra items in through Saturday. The week goes live Monday automatically, edited or not. |
 | Load cap | Max variable cleans per half-day, set per day (Mon AM through Sat PM). Default 2. A slot can be 0. |
 | Skip | Planner-only deferral before the day, reason required. Not a miss, tracked as "skipped". The item stays overdue so it is placed first next week. |
@@ -153,7 +154,7 @@ nothing is redone later.
   burned in, so they can be edited later.
 - **Where it lands:** every save is a draft item. `/cleaning/items` lists drafts by
   zone with their photos and drawings; Naldo or a planner edits, approves, or deletes.
-- **Seeded first:** the 6 zones and the 36 BOH constants from the paper sheet, so the
+- **Seeded first:** the 6 zones (split into 13 areas on 2026-10-26) and the 36 BOH constants from the paper sheet, so the
   walk can attach reference photos to them. FOH constants come later; FOH items
   photographed on the walk land as drafts.
 - **Order:** Naldo paste-runs the migration in the Supabase SQL editor, then the PR
@@ -208,8 +209,8 @@ walkthrough in whatever form it arrives (photos and notes are fine).
 
 **Phase 2 (week after beta):** metrics and leaderboard, ATD log with its Discord post.
 
-**Phase 3 (after 2 stable BOH weeks):** switch FOH on, hand-off to team members,
-tokens, desktop board if wanted.
+**Phase 3 (after 2 stable BOH weeks):** FOH constants from its paper sheet (FOH areas
+are already on the board), hand-off to team members, tokens, desktop board if wanted.
 
 ## Failure modes the tests must cover first
 
@@ -231,8 +232,13 @@ tokens, desktop board if wanted.
 ## Settled after the first draft
 
 - Only Sunday counts as closed. Around any other closure Mariana moves cleans by hand.
-- Vestibule cleans go in the Red zone (the zones message wins over the PDF's orange
-  text; Naldo: either is fine).
+- Zones are areas, not colors (2026-10-26, migration `20261026050000_cleaning_area_zones.sql`).
+  The 36 BOH constants were moved to areas by best guess from their names; the less
+  certain ones are Air vents, Rethermalizer (Machines), Lowboy gaskets (Boards) and Spray
+  the whale (Dumpster). Mariana corrects any on the master list. FOH is on the board
+  from the same date; it has no cleans until walkthrough items are approved.
+- Vestibule cleans go in the Vestibule area, Red group (the zones message wins over the
+  PDF's orange text; Naldo: either is fine).
 - "Spray?Brush the whale" is "Spray the whale".
 - Letting a person hold more than one role is a separate, app-wide change and is not
   part of this module. The coordinator tag covers cleaning until then.
@@ -248,7 +254,8 @@ tokens, desktop board if wanted.
 
 ## Appendix: BOH constants seed (from the paper sheet, Mariana to verify)
 
-Zones by text color on the PDF: blue = Blue, green = Green, yellow = Yellow.
+Zones by text color on the PDF: blue = Blue, green = Green, yellow = Yellow. Since
+2026-10-26 each color is split into its areas (see "Settled after the first draft").
 
 | Day | AM | PM |
 |---|---|---|
