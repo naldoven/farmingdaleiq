@@ -36,8 +36,11 @@ describe("summaryDayFor", () => {
 });
 
 describe("buildDailySummary", () => {
-  it("returns nothing for a day with no cleans", () => {
+  it("returns nothing for a day with no cleans owed", () => {
     expect(buildDailySummary({ date: MON, rows: [], carriedOver: 0 })).toBeNull();
+    expect(
+      buildDailySummary({ date: MON, rows: [row({ status: "skipped" }), row({ rejected: true })], carriedOver: 0 }),
+    ).toBeNull();
   });
 
   it("counts done, missed and carried over, and lists the missed items by name and area", () => {

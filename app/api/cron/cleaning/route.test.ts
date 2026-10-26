@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const SATURDAY_MORNING = { today: "2026-10-31", timeOfDay: "10:05:00", timeZone: "America/New_York" };
+
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   publishSelect: vi.fn(),
+  publishFilters: [] as unknown[][],
   buildCleaningWeek: vi.fn(),
   queueDailySummary: vi.fn(),
   queuePlanReminder: vi.fn(),
@@ -19,6 +22,10 @@ vi.mock("@/lib/supabase/server", () => ({
       query.update = () => query;
       query.lte = () => query;
       query.is = () => query;
+      query.not = (...args: unknown[]) => {
+        mocks.publishFilters.push(args);
+        return query;
+      };
       query.select = mocks.publishSelect;
       return query;
     },
@@ -40,6 +47,8 @@ function request() {
 }
 
 beforeEach(() => {
+  mocks.clock = { ...SATURDAY_MORNING };
+  mocks.publishFilters.length = 0;
   vi.stubEnv("CRON_SECRET", "test-secret");
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.rpc.mockResolvedValue({ data: { missed: 0, carried: 0 }, error: null });
@@ -101,7 +110,11 @@ describe("cleaning cron", () => {
     await GET(request());
     expect(mocks.publishSelect).toHaveBeenCalledTimes(1);
     expect(mocks.queueWeekPublished).not.toHaveBeenCalled();
-    mocks.clock = { ...mocks.clock, timeOfDay: "10:05:00" };
+  });
+
+  it("never announces a week that was never built", async () => {
+    await GET(request());
+    expect(mocks.publishFilters).toContainEqual(["built_at", "is", null]);
   });
 
   it("reports a failed alert as a 500 so it shows in the logs", async () => {

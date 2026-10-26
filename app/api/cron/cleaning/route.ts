@@ -109,7 +109,10 @@ async function run(request: NextRequest) {
   }
 
   // Filtering on published_at is null and reading back what this update
-  // stamped is what makes each week's post go out exactly once.
+  // stamped is what makes each week's post go out exactly once. Only built
+  // weeks: a week whose build keeps failing would otherwise be announced as
+  // live with nothing on it, and the stamp would stop the real post once the
+  // build recovers.
   const weekPosts: AlertResult[] = [];
   if (timeOfDay >= PUBLISH_FROM) {
     const { data: published, error: publishError } = await supabase
@@ -117,6 +120,7 @@ async function run(request: NextRequest) {
       .update({ published_at: now.toISOString() })
       .lte("week_start", today)
       .is("published_at", null)
+      .not("built_at", "is", null)
       .select("week_start");
     if (publishError) fail("publish", publishError.message);
     for (const week of published ?? []) {

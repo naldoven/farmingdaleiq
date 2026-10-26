@@ -90,7 +90,7 @@ export function summaryDayFor(today: string): string | null {
  * back leaves it too and is counted as a redo: its redo is its own clean on
  * the next shift, so keeping both would count one job twice. That is the
  * same rule the Today screen uses (today-view progressText), so the post and
- * the screen agree. Null when the day had no cleans.
+ * the screen agree. Null when the day had no cleans owed.
  */
 export function buildDailySummary(input: { date: string; rows: SummaryRow[]; carriedOver: number }): DailySummary | null {
   if (input.rows.length === 0) return null;
@@ -98,6 +98,8 @@ export function buildDailySummary(input: { date: string; rows: SummaryRow[]; car
   const skipped = input.rows.filter((r) => r.status === "skipped").length;
   const redo = input.rows.filter((r) => r.rejected).length;
   const owed = input.rows.filter((r) => r.status !== "skipped" && !r.rejected);
+  // Every clean skipped or sent back: nothing was owed, so nothing to report.
+  if (owed.length === 0) return null;
   const done = owed.filter((r) => r.status === "done" || r.status === "not_needed").length;
   const missedRows = owed
     .filter((r) => r.status === "missed")
