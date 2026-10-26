@@ -64,6 +64,15 @@ export const EVENT_KEYS = [
   "catering_driver_escalation",
   "catering_driver_assigned",
 
+  // Cleaning (docs/CLEANING-PLAN.md "Decisions": Alerts, Discord). The
+  // Discord posts and the coordinator's in-app notices are separate keys on
+  // purpose: Discord @mentions whoever an event is addressed to, and
+  // #cleaning names items, never people.
+  "cleaning_daily_summary",
+  "cleaning_week_published",
+  "cleaning_misses",
+  "cleaning_plan_reminder",
+
   // Waste
   //
   // Audit-trail only -- deliberately NOT added to NOTIFIABLE_EVENT_KEYS. Waste

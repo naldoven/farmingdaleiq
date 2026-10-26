@@ -45,6 +45,9 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   "catering_driver_reminder",
   "catering_driver_escalation",
   "catering_driver_assigned",
+  // Cleaning coordinators only (recipients set by app/api/cron/cleaning).
+  "cleaning_misses",
+  "cleaning_plan_reminder",
 ]);
 
 /**
@@ -81,6 +84,8 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_driver_reminder: "Deliveries need a driver",
   catering_driver_escalation: "Delivery still has no driver",
   catering_driver_assigned: "You're delivering a catering order",
+  cleaning_misses: "Cleans were missed",
+  cleaning_plan_reminder: "Plan next week's cleaning",
 };
 
 const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
@@ -103,6 +108,8 @@ const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
   catering_driver_reminder: "/catering/drivers",
   catering_driver_escalation: "/catering/drivers",
   catering_driver_assigned: "/",
+  cleaning_misses: "/cleaning/week",
+  cleaning_plan_reminder: "/cleaning/week",
 };
 
 /**

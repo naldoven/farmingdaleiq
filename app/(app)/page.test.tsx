@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   countActiveDisciplinaryActions,
   summarizeActivity,
+  summarizeCleaningToday,
   summarizeCompletion,
   summarizeTaskScope,
   summarizeTasks,
@@ -118,5 +119,26 @@ describe("summarizeTokenActivity", () => {
     const rows = [{ id: "t3", delta: 5, kind: "earn", note: "   " }];
 
     expect(summarizeTokenActivity(rows)).toEqual([{ id: "t3", label: "Earned", delta: 5 }]);
+  });
+});
+
+describe("summarizeCleaningToday", () => {
+  it("counts each half like the Today screen: skipped and sent-back cleans leave the count", () => {
+    const rows = [
+      { half: "am", status: "done", rejected_at: null },
+      { half: "am", status: "not_needed", rejected_at: null },
+      { half: "am", status: "planned", rejected_at: null },
+      { half: "pm", status: "done", rejected_at: "2026-10-26T20:00:00Z" },
+      { half: "pm", status: "skipped", rejected_at: null },
+      { half: "pm", status: "planned", rejected_at: null },
+    ];
+    expect(summarizeCleaningToday(rows)).toEqual({
+      am: { done: 2, total: 3 },
+      pm: { done: 0, total: 1 },
+    });
+  });
+
+  it("is empty on a day with no cleans", () => {
+    expect(summarizeCleaningToday([])).toEqual({ am: { done: 0, total: 0 }, pm: { done: 0, total: 0 } });
   });
 });

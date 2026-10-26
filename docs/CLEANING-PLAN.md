@@ -186,8 +186,22 @@ walkthrough day on; variables join as drafts are approved.
   as the screens, so a direct API call cannot skip or remove a clean on a day that has
   started. Retiring an item or hiding a zone takes its open cleans off the board from
   tomorrow on; today's stay owed.
-- **Not in this slice**: Discord posts, in-app alerts (misses summary, Saturday
-  reminder), the today list on Home, ATD log, metrics.
+- **Alerts (built 2026-10-26)**: the hourly job queues, at most once a day each,
+  `cleaning_daily_summary` (#cleaning, from 6am, yesterday's counts and missed items,
+  plus how many misses had no posted Setup leader), `cleaning_misses` (in-app to the
+  coordinators, only when something was missed) and `cleaning_plan_reminder` (in-app to
+  the coordinators, Saturday from 10am), plus `cleaning_week_published` (#cleaning,
+  Monday from 6am). 6am rather than right after the 3am close so the coordinator's
+  notice does not buzz her phone in the night. Each step runs on its own, so a stuck
+  build never blocks an alert. The Discord and
+  in-app events are separate keys because the Discord sender @mentions an event's
+  recipient. With nobody tagged as coordinator, Location Manager and Director get the
+  notices. Home shows leaders today's AM and PM progress.
+- **To turn on the Discord posts**: create the #cleaning channel and its webhook, add it
+  in `/settings/discord`, and point "Cleaning: yesterday's done and missed (6 AM)" and
+  "Cleaning: week is live (Monday 6 AM)" at it. Until then the in-app notices work and the posts are
+  skipped.
+- **Not in this slice**: ATD log (and its `cleaning_atd_find` post), metrics.
 
 ## Build phases
 
