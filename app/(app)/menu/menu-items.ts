@@ -41,6 +41,16 @@ export const MENU_SECTIONS = [
 
 export type MenuSection = (typeof MENU_SECTIONS)[number];
 
+/**
+ * The key a Menu section's open/closed state is saved under in the store it
+ * shares with the sidebar (lib/nav/nav-prefs). Prefixed because the Menu now
+ * has "Cleaning" and "Maintenance" headings, the same labels as sidebar
+ * groups: collapsing one on the Menu must not collapse the sidebar group too.
+ */
+export function menuSectionPrefKey(section: MenuSection): string {
+  return `menu:${section}`;
+}
+
 /** Serializable icon key resolved inside the client-side menu renderer. */
 export type MenuViewIconName =
   | "settings"

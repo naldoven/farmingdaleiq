@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { NAV_GROUPS } from "@/lib/nav/page-map";
+
 import {
   ASSIGN_ACTIONS,
   MENU_SECTIONS,
   SEND_ACTIONS,
   VIEW_ITEMS,
   groupViewItems,
+  menuSectionPrefKey,
   visibleActions,
   visibleViewItems,
 } from "./menu-items";
@@ -177,6 +180,17 @@ describe("menu data", () => {
       expect(VIEW_ITEMS.find((item) => item.key === key)?.section, key).toBe("Maintenance");
     }
     expect(MENU_SECTIONS).not.toContain("Operations");
+  });
+});
+
+describe("menuSectionPrefKey", () => {
+  it("never matches a sidebar group label, so the two collapse states stay apart", () => {
+    const sidebarLabels = new Set(NAV_GROUPS.map((group) => group.label));
+    // The overlap this guards against is real: both have Cleaning and Maintenance.
+    expect(MENU_SECTIONS.some((section) => sidebarLabels.has(section))).toBe(true);
+    for (const section of MENU_SECTIONS) {
+      expect(sidebarLabels.has(menuSectionPrefKey(section)), section).toBe(false);
+    }
   });
 });
 

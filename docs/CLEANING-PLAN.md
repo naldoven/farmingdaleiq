@@ -21,7 +21,8 @@ Mariana adjusts it on her phone, the shift leader marks each clean done with a p
 and anything not done is carried forward and counted. Every item shows when it was
 last cleaned. A print button produces the same weekly sheet the team already knows.
 
-BOH goes first. FOH is loaded at the same time but stays hidden until BOH is stable.
+BOH goes first. FOH areas are on the board too since 2026-10-26 (Naldo); they get
+cleans as FOH items from the walkthrough are approved.
 
 ## Decisions (locked in Q&A)
 
@@ -153,7 +154,7 @@ nothing is redone later.
   burned in, so they can be edited later.
 - **Where it lands:** every save is a draft item. `/cleaning/items` lists drafts by
   zone with their photos and drawings; Naldo or a planner edits, approves, or deletes.
-- **Seeded first:** the 6 zones and the 36 BOH constants from the paper sheet, so the
+- **Seeded first:** the 6 zones (split into 13 areas on 2026-10-26) and the 36 BOH constants from the paper sheet, so the
   walk can attach reference photos to them. FOH constants come later; FOH items
   photographed on the walk land as drafts.
 - **Order:** Naldo paste-runs the migration in the Supabase SQL editor, then the PR
@@ -208,8 +209,8 @@ walkthrough in whatever form it arrives (photos and notes are fine).
 
 **Phase 2 (week after beta):** metrics and leaderboard, ATD log with its Discord post.
 
-**Phase 3 (after 2 stable BOH weeks):** switch FOH on, hand-off to team members,
-tokens, desktop board if wanted.
+**Phase 3 (after 2 stable BOH weeks):** FOH constants from its paper sheet (FOH areas
+are already on the board), hand-off to team members, tokens, desktop board if wanted.
 
 ## Failure modes the tests must cover first
 
@@ -236,8 +237,8 @@ tokens, desktop board if wanted.
   certain ones are Air vents, Rethermalizer (Machines), Lowboy gaskets (Boards) and Spray
   the whale (Dumpster). Mariana corrects any on the master list. FOH is on the board
   from the same date; it has no cleans until walkthrough items are approved.
-- Vestibule cleans go in the Red zone (the zones message wins over the PDF's orange
-  text; Naldo: either is fine).
+- Vestibule cleans go in the Vestibule area, Red group (the zones message wins over the
+  PDF's orange text; Naldo: either is fine).
 - "Spray?Brush the whale" is "Spray the whale".
 - Letting a person hold more than one role is a separate, app-wide change and is not
   part of this module. The coordinator tag covers cleaning until then.

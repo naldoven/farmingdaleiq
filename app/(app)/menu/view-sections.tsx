@@ -31,10 +31,10 @@ import {
 } from "@/lib/nav/nav-prefs";
 import { cn } from "@/lib/utils";
 
-import type { MenuViewIconName, MenuViewSection } from "./menu-items";
+import { menuSectionPrefKey, type MenuViewIconName, type MenuViewSection } from "./menu-items";
 
-/** The one section open on a first visit — what most of the team needs daily. */
-const DEFAULT_OPEN_SECTION = "Daily Ops";
+/** The one section open on a first visit: what most of the team needs daily. */
+const DEFAULT_OPEN_SECTION = menuSectionPrefKey("Daily Ops");
 
 /** Resolve serializable server-provided icon keys on the client side. */
 const VIEW_ICONS: Record<MenuViewIconName, LucideIcon> = {
@@ -60,13 +60,13 @@ const VIEW_ICONS: Record<MenuViewIconName, LucideIcon> = {
 
 /**
  * The Menu tab's "View" list, grouped into collapsible sections. Seventeen
- * modules in one scroll made the hub hard to skim on a phone; five headings
- * fit on screen at once and you open only the one you want.
+ * modules in one scroll made the hub hard to skim on a phone; a handful of
+ * headings fit on screen at once and you open only the one you want.
  *
  * Open/closed state shares the sidebar's persisted store (lib/nav/nav-prefs),
- * so a section stays how a user left it across visits. Section labels are
- * distinct from the sidebar's group labels, so the two never collide in that
- * store.
+ * so a section stays how a user left it across visits. Some section labels
+ * match sidebar group labels (Cleaning, Maintenance), so Menu state is saved
+ * under menuSectionPrefKey and the two never collide in that store.
  */
 export function MenuViewSections({ sections }: { sections: MenuViewSection[] }) {
   const prefs = useNavPrefs();
@@ -74,7 +74,8 @@ export function MenuViewSections({ sections }: { sections: MenuViewSection[] }) 
   return (
     <div className="flex flex-col gap-2.5">
       {sections.map((group) => {
-        const open = isNavGroupOpen(prefs, group.section, DEFAULT_OPEN_SECTION);
+        const prefKey = menuSectionPrefKey(group.section);
+        const open = isNavGroupOpen(prefs, prefKey, DEFAULT_OPEN_SECTION);
         return (
           <div
             key={group.section}
@@ -83,7 +84,7 @@ export function MenuViewSections({ sections }: { sections: MenuViewSection[] }) 
             <button
               type="button"
               aria-expanded={open}
-              onClick={() => setNavGroupOpen(group.section, !open)}
+              onClick={() => setNavGroupOpen(prefKey, !open)}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/60"
             >
               <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">
