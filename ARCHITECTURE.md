@@ -119,12 +119,12 @@ below describes observed behavior we intend to reproduce.
   Setup was posted, and carry over once to the next open day (Saturday to Monday).
 - **Print**: the week in the paper sheet's layout, Mon to Sat by AM and PM, BOH and FOH
   separately.
-- **Alerts**: each morning from 3am #cleaning gets yesterday's done, missed and
-  carried-over counts with the missed items (item and area names only, never people),
-  and the cleaning coordinators get an in-app notice when something was missed. Monday,
-  #cleaning gets a "week is live" post listing the rotating cleans. Saturday from 10am
-  the coordinators get a "plan next week" reminder. Home shows leaders today's AM and
-  PM progress.
+- **Alerts**: each morning from 6am #cleaning gets yesterday's done, missed and
+  carried-over counts with the missed items (item and area names only, never people;
+  misses with no posted Setup leader are counted), and the cleaning coordinators get an
+  in-app notice when something was missed. Monday from 6am, #cleaning gets a "week is
+  live" post listing the rotating cleans. Saturday from 10am the coordinators get a
+  "plan next week" reminder. Home shows leaders today's AM and PM progress.
 - Later phases (plan doc): an ATD found-and-fixed log and metrics.
 
 ### Waste
@@ -377,8 +377,8 @@ of building messaging:
     equipment marked down/up, PM coming due.
   - *Wins & announcements* → #team: recognitions, Top Performer, broadcasts.
   - *Reward claims* → leaders channel: claim posted so delivery happens fast.
-  - *Cleaning* → #cleaning: yesterday's cleaning summary (3 AM), the week going live
-    (Monday). Item and area names only, never people.
+  - *Cleaning* → #cleaning: yesterday's cleaning summary (6 AM), the week going live
+    (Monday 6 AM). Item and area names only, never people.
 - **Privacy rule**: infractions and disciplinary events never auto-post; the only
   allowed routing for them is an explicitly-configured private leaders channel,
   and even then without point details — just "X received an infraction".

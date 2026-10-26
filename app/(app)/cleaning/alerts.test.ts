@@ -13,7 +13,15 @@ import {
 const MON = "2026-10-26";
 
 function row(over: Partial<SummaryRow>): SummaryRow {
-  return { status: "done", rejected: false, itemName: "Mop sink", zoneName: "Dish to door", half: "pm", ...over };
+  return {
+    status: "done",
+    rejected: false,
+    ownerless: false,
+    itemName: "Mop sink",
+    zoneName: "Dish to door",
+    half: "pm",
+    ...over,
+  };
 }
 
 describe("summaryDayFor", () => {
@@ -44,7 +52,7 @@ describe("buildDailySummary", () => {
       carriedOver: 2,
     })!;
     expect(summary.title).toBe("Cleaning, Mon Oct 26");
-    expect(summary.counts).toEqual({ planned: 4, done: 2, missed: 2, skipped: 0, redo: 0, carriedOver: 2 });
+    expect(summary.counts).toEqual({ planned: 4, done: 2, missed: 2, skipped: 0, redo: 0, carriedOver: 2, noOwner: 0 });
     expect(summary.message).toBe(
       "2 of 4 done. 2 missed, 2 carried over. Missed: Air vents (Machines, AM); Boil out primary (Boards, PM).",
     );
@@ -55,14 +63,26 @@ describe("buildDailySummary", () => {
     expect(summary.message).toBe("2 of 2 done. Nothing missed.");
   });
 
-  it("leaves skipped cleans out of the total and counts a rejected clean as a redo, not done", () => {
+  it("leaves skipped and sent-back cleans out of the total, like the Today screen", () => {
+    // The sent-back clean's redo is its own row on the next shift; counting
+    // both would count one job twice.
     const summary = buildDailySummary({
       date: MON,
       rows: [row({}), row({ status: "skipped" }), row({ status: "done", rejected: true })],
       carriedOver: 0,
     })!;
-    expect(summary.counts).toMatchObject({ planned: 2, done: 1, skipped: 1, redo: 1 });
-    expect(summary.message).toBe("1 of 2 done. 1 sent back for a redo. 1 skipped. Nothing missed.");
+    expect(summary.counts).toMatchObject({ planned: 1, done: 1, skipped: 1, redo: 1 });
+    expect(summary.message).toBe("1 of 1 done. 1 sent back for a redo. 1 skipped. Nothing missed.");
+  });
+
+  it("calls out misses no Setup leader owned, as a count only", () => {
+    const summary = buildDailySummary({
+      date: MON,
+      rows: [row({ status: "missed", ownerless: true }), row({ status: "missed", itemName: "Freezer" })],
+      carriedOver: 2,
+    })!;
+    expect(summary.counts.noOwner).toBe(1);
+    expect(summary.message.endsWith("1 of them had no Setup leader posted.")).toBe(true);
   });
 
   it("caps a long missed list so the post stays readable", () => {
@@ -75,7 +95,7 @@ describe("buildDailySummary", () => {
 
   it("never names a person: it carries item and area names only", () => {
     const summary = buildDailySummary({ date: MON, rows: [row({ status: "missed" })], carriedOver: 1 })!;
-    expect(Object.keys(summary).sort()).toEqual(["counts", "dateLabel", "message", "missedText", "title"]);
+    expect(Object.keys(summary).sort()).toEqual(["counts", "date", "dateLabel", "message", "missedText", "title"]);
   });
 });
 
@@ -85,7 +105,7 @@ describe("buildMissesNotice", () => {
     expect(buildMissesNotice(clean)).toBeNull();
   });
 
-  it("points the coordinator at the week board", () => {
+  it("points the coordinator at the week the misses happened in", () => {
     const summary = buildDailySummary({
       date: MON,
       rows: [row({ status: "missed", itemName: "Air vents", zoneName: "Machines", half: "am" })],
@@ -94,8 +114,24 @@ describe("buildMissesNotice", () => {
     expect(buildMissesNotice(summary)).toEqual({
       title: "1 clean missed on Mon Oct 26",
       body: "Air vents (Machines, AM). 1 carried over to the next open day.",
-      link: "/cleaning/week",
+      link: "/cleaning/week?week=2026-10-26",
     });
+  });
+
+  it("links Saturday's misses to Saturday's week, not the coming one", () => {
+    const summary = buildDailySummary({ date: "2026-10-31", rows: [row({ status: "missed" })], carriedOver: 1 })!;
+    expect(buildMissesNotice(summary)?.link).toBe("/cleaning/week?week=2026-10-26");
+  });
+
+  it("tells the coordinator when nobody owned a miss", () => {
+    const summary = buildDailySummary({
+      date: MON,
+      rows: [row({ status: "missed", ownerless: true })],
+      carriedOver: 1,
+    })!;
+    expect(buildMissesNotice(summary)?.body).toBe(
+      "Mop sink (Dish to door, PM). 1 carried over to the next open day. 1 had no Setup leader posted.",
+    );
   });
 });
 

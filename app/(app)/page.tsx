@@ -11,6 +11,7 @@ import {
 } from "@/components/mobile";
 import { FirstRunGuideCard } from "@/components/home/first-run-guide-card";
 import { transactionKindLabel } from "@/app/(app)/tokens/logic";
+import { canPlanCleaning } from "@/app/(app)/cleaning/queries";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance, getRecentTransactions } from "@/lib/tokens/ledger";
@@ -123,17 +124,17 @@ export interface CleaningHalfSummary {
 /**
  * Today's AM and PM cleans for the home Cleaning card
  * (docs/CLEANING-PLAN.md "How a week runs" step 3: the lists show "on the
- * Cleaning screen and on Home"). Skipped cleans are not owed today, and a
- * clean a planner sent back counts as not done until its redo is.
+ * Cleaning screen and on Home"). Same rule as the Today screen
+ * (today-view progressText): skipped cleans are not owed today, and a clean
+ * a planner sent back leaves the count because its redo is its own clean on
+ * the next shift, so Home and /cleaning always show the same numbers.
  */
 export function summarizeCleaningToday(
   rows: { half: string; status: string; rejected_at: string | null }[],
 ): { am: CleaningHalfSummary; pm: CleaningHalfSummary } {
   const half = (which: string): CleaningHalfSummary => {
-    const owed = rows.filter((r) => r.half === which && r.status !== "skipped");
-    const done = owed.filter(
-      (r) => (r.status === "done" || r.status === "not_needed") && r.rejected_at === null,
-    ).length;
+    const owed = rows.filter((r) => r.half === which && r.status !== "skipped" && r.rejected_at === null);
+    const done = owed.filter((r) => r.status === "done" || r.status === "not_needed").length;
     return { done, total: owed.length };
   };
   return { am: half("am"), pm: half("pm") };
@@ -190,6 +191,9 @@ export default async function HomePage() {
       { data: notifications },
       balanceResult,
       recentTransactions,
+      { data: cleans },
+      canComplete,
+      canPlan,
     ] = await Promise.all([
       supabase.from("checklist_runs").select("status").eq("run_date", today),
       supabase.from("disciplinary_actions").select("status").eq("user_id", user.id),
@@ -206,6 +210,11 @@ export default async function HomePage() {
       supabase.from("notifications").select("kind, read_at").eq("user_id", user.id),
       getBalance(user.id, supabase),
       getRecentTransactions(user.id, 5, supabase),
+      // RLS returns these only to leaders and planners; everyone else gets
+      // an empty list and no card.
+      supabase.from("cleaning_assignments").select("half, status, rejected_at").eq("date", today),
+      hasPermission("cleaning.complete"),
+      canPlanCleaning(supabase),
     ]);
 
     checklists = summarizeCompletion((checklistRuns ?? []).map((r) => r.status));
@@ -228,14 +237,10 @@ export default async function HomePage() {
     balance = balanceResult;
     tokenActivity = summarizeTokenActivity(recentTransactions ?? []);
 
-    // Leaders only, the same key the Cleaning screens use; RLS would return
-    // no rows to anyone else anyway. Hidden on a day with no cleans (Sunday,
-    // or before the first week is built) rather than showing 0 of 0.
-    if (await hasPermission("cleaning.complete")) {
-      const { data: cleans } = await supabase
-        .from("cleaning_assignments")
-        .select("half, status, rejected_at")
-        .eq("date", today);
+    // The same readers as the Cleaning screens: leaders, plus anyone the
+    // coordinator tag lets plan. Hidden on a day with no cleans (Sunday, or
+    // before the first week is built) rather than showing 0 of 0.
+    if (canComplete || canPlan) {
       const summary = summarizeCleaningToday(cleans ?? []);
       if (summary.am.total + summary.pm.total > 0) cleaning = summary;
     }

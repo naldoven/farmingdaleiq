@@ -49,7 +49,7 @@ function makeClient() {
 }
 
 const callsOf = (table: string, op: string) => calls.filter((c) => c.table === table && c.op === op);
-const TUESDAY_3AM = { today: "2026-10-27", timeOfDay: "03:05:00", now: new Date("2026-10-27T07:05:00Z") };
+const TUESDAY_6AM = { today: "2026-10-27", timeOfDay: "06:05:00", now: new Date("2026-10-27T10:05:00Z") };
 const ITEM_A = "11111111-1111-4111-8111-111111111111";
 const ITEM_B = "22222222-2222-4222-8222-222222222222";
 
@@ -62,8 +62,15 @@ function mondayRows(withMiss: boolean) {
   queues["cleaning_assignments.select"] = [
     {
       data: [
-        { id: "a1", item_id: ITEM_A, status: "done", half: "am", rejected_at: null },
-        { id: "a2", item_id: ITEM_B, status: withMiss ? "missed" : "done", half: "pm", rejected_at: null },
+        { id: "a1", item_id: ITEM_A, status: "done", half: "am", rejected_at: null, owner_user_id: null },
+        {
+          id: "a2",
+          item_id: ITEM_B,
+          status: withMiss ? "missed" : "done",
+          half: "pm",
+          rejected_at: null,
+          owner_user_id: withMiss ? "closer" : null,
+        },
       ],
     },
     ...(withMiss ? [{ count: 1, data: null }] : []),
@@ -85,21 +92,21 @@ beforeEach(() => {
 });
 
 describe("queueDailySummary", () => {
-  it("waits for the 3am close and touches nothing before then", async () => {
-    const result = await queueDailySummary(makeClient(), { ...TUESDAY_3AM, timeOfDay: "02:05:00" });
+  it("waits until 6am, after the 3am close, and touches nothing before then", async () => {
+    const result = await queueDailySummary(makeClient(), { ...TUESDAY_6AM, timeOfDay: "05:05:00" });
     expect(result.status).toBe("skipped");
     expect(calls).toEqual([]);
   });
 
   it("has nothing to say on Monday, since Sunday is closed", async () => {
-    const result = await queueDailySummary(makeClient(), { ...TUESDAY_3AM, today: "2026-11-02" });
+    const result = await queueDailySummary(makeClient(), { ...TUESDAY_6AM, today: "2026-11-02" });
     expect(result.status).toBe("skipped");
     expect(calls).toEqual([]);
   });
 
   it("goes out once a day: a run that loses the claim queues nothing", async () => {
     queues["job_cursors.update"] = [{ data: [] }];
-    const result = await queueDailySummary(makeClient(), TUESDAY_3AM);
+    const result = await queueDailySummary(makeClient(), TUESDAY_6AM);
     expect(result.status).toBe("already_sent");
     expect(callsOf("app_events", "insert")).toEqual([]);
   });
@@ -109,7 +116,7 @@ describe("queueDailySummary", () => {
     mondayRows(true);
     queues["cleaning_coordinators.select"] = [{ data: [{ user_id: "mariana", profile: { active: true } }] }];
 
-    const result = await queueDailySummary(makeClient(), TUESDAY_3AM);
+    const result = await queueDailySummary(makeClient(), TUESDAY_6AM);
 
     expect(result.status).toBe("queued");
     const [insert] = callsOf("app_events", "insert");
@@ -122,13 +129,13 @@ describe("queueDailySummary", () => {
     expect(discord.title).toBe("Cleaning, Mon Oct 26");
     expect(discord.message).toBe("1 of 2 done. 1 missed, 1 carried over. Missed: Mop sink (Dish to door, PM).");
 
-    expect(events[1]!.payload).toMatchObject({ user_ids: ["mariana"], link: "/cleaning/week" });
+    expect(events[1]!.payload).toMatchObject({ user_ids: ["mariana"], link: "/cleaning/week?week=2026-10-26" });
   });
 
   it("skips the coordinator notice when nothing was missed", async () => {
     claimWins();
     mondayRows(false);
-    await queueDailySummary(makeClient(), TUESDAY_3AM);
+    await queueDailySummary(makeClient(), TUESDAY_6AM);
     const events = callsOf("app_events", "insert")[0]!.payload as { event_key: string }[];
     expect(events.map((e) => e.event_key)).toEqual(["cleaning_daily_summary"]);
     expect(callsOf("cleaning_coordinators", "select")).toEqual([]);
@@ -139,13 +146,13 @@ describe("queueDailySummary", () => {
     mondayRows(false);
     queues["app_events.insert"] = [{ error: { message: "boom" } }];
 
-    const result = await queueDailySummary(makeClient(), TUESDAY_3AM);
+    const result = await queueDailySummary(makeClient(), TUESDAY_6AM);
 
     expect(result).toEqual({ status: "error", error: "boom" });
     const updates = callsOf("job_cursors", "update");
     expect(updates).toHaveLength(2);
     expect(updates[1]!.payload).toMatchObject({ last_event_at: null });
-    expect(updates[1]!.filters).toContainEqual(["eq", "last_event_at", TUESDAY_3AM.now.toISOString()]);
+    expect(updates[1]!.filters).toContainEqual(["eq", "last_event_at", TUESDAY_6AM.now.toISOString()]);
   });
 });
 

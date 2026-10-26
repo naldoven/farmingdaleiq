@@ -28,8 +28,13 @@ type Client = SupabaseClient<Database>;
 
 export type AlertResult = { status: "queued" | "skipped" | "already_sent" | "error"; error?: string };
 
-/** Earliest store time for the morning summary: after the 3am day-end close. */
-const SUMMARY_FROM = "03:00:00";
+/**
+ * Earliest store time for the morning summary. The day-end close runs from
+ * 3am, but the coordinator's notice fans out to web push, and a 3am buzz
+ * every night someone missed a clean is the fastest way to get notifications
+ * turned off. 6am is after the close and around opening.
+ */
+export const SUMMARY_FROM = "06:00:00";
 
 const SUMMARY_JOB = "cleaning-daily-summary";
 const REMINDER_JOB = "cleaning-plan-reminder";
@@ -118,15 +123,15 @@ export async function loadCoordinatorIds(supabase: Client): Promise<string[]> {
   return (planners ?? []).map((p) => p.id);
 }
 
-/** Item name, area and kind for a set of item ids, in two queries. */
-async function loadItemLabels(
-  supabase: Client,
-  itemIds: string[],
-): Promise<Map<string, { name: string; zoneName: string; kind: ItemKind }>> {
+/**
+ * Item name, area and kind for every item, in two queries. The whole master
+ * list (a few hundred rows at most) rather than an id filter: a week with
+ * FOH on can hold enough ids to make an `in` filter's URL too long.
+ */
+async function loadItemLabels(supabase: Client): Promise<Map<string, { name: string; zoneName: string; kind: ItemKind }>> {
   const labels = new Map<string, { name: string; zoneName: string; kind: ItemKind }>();
-  if (itemIds.length === 0) return labels;
   const [{ data: items, error: itemError }, { data: zones, error: zoneError }] = await Promise.all([
-    supabase.from("cleaning_items").select("id, name, kind, zone_id").in("id", itemIds),
+    supabase.from("cleaning_items").select("id, name, kind, zone_id"),
     supabase.from("cleaning_zones").select("id, name"),
   ]);
   if (itemError) throw new Error(`Could not load items: ${itemError.message}`);
@@ -141,8 +146,9 @@ async function loadItemLabels(
 /**
  * The morning summary of yesterday's cleans: a #cleaning post with the
  * counts and missed items, and, when something was missed, an in-app notice
- * to the coordinators. Runs from 3am, after close_cleaning_days has turned
- * yesterday's open cleans into misses, so the counts are final.
+ * to the coordinators. Runs from 6am (SUMMARY_FROM), after the 3am
+ * close_cleaning_days has turned yesterday's open cleans into misses, so the
+ * counts are final. The caller skips it in a run whose close failed.
  */
 export async function queueDailySummary(
   supabase: Client,
@@ -159,7 +165,7 @@ export async function queueDailySummary(
   try {
     const { data: rows, error } = await supabase
       .from("cleaning_assignments")
-      .select("id, item_id, status, half, rejected_at")
+      .select("id, item_id, status, half, rejected_at, owner_user_id")
       .eq("date", day);
     if (error) throw new Error(error.message);
     if (!rows || rows.length === 0) return { status: "skipped" };
@@ -176,10 +182,11 @@ export async function queueDailySummary(
       carriedOver = count ?? 0;
     }
 
-    const labels = await loadItemLabels(supabase, [...new Set(rows.map((r) => r.item_id))]);
+    const labels = await loadItemLabels(supabase);
     const summaryRows: SummaryRow[] = rows.map((r) => ({
       status: r.status as AssignmentStatus,
       rejected: r.rejected_at !== null,
+      ownerless: r.status === "missed" && r.owner_user_id === null,
       itemName: labels.get(r.item_id)?.name ?? "Unknown item",
       zoneName: labels.get(r.item_id)?.zoneName ?? "",
       half: r.half as SlotHalf,
@@ -222,7 +229,7 @@ export async function queueDailySummary(
 export async function queueWeekPublished(supabase: Client, weekStart: string): Promise<AlertResult> {
   try {
     const rows = (await loadWeekAssignments(supabase, weekStart)).filter((r) => r.status !== "skipped");
-    const labels = await loadItemLabels(supabase, [...new Set(rows.map((r) => r.item_id))]);
+    const labels = await loadItemLabels(supabase);
     const weekRows: WeekRow[] = rows.map((r) => ({
       date: r.date,
       half: r.half as SlotHalf,

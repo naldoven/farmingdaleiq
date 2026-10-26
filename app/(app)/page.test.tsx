@@ -123,7 +123,7 @@ describe("summarizeTokenActivity", () => {
 });
 
 describe("summarizeCleaningToday", () => {
-  it("counts each half, leaving out skipped cleans and counting a sent-back clean as not done", () => {
+  it("counts each half like the Today screen: skipped and sent-back cleans leave the count", () => {
     const rows = [
       { half: "am", status: "done", rejected_at: null },
       { half: "am", status: "not_needed", rejected_at: null },
@@ -134,7 +134,7 @@ describe("summarizeCleaningToday", () => {
     ];
     expect(summarizeCleaningToday(rows)).toEqual({
       am: { done: 2, total: 3 },
-      pm: { done: 0, total: 2 },
+      pm: { done: 0, total: 1 },
     });
   });
 

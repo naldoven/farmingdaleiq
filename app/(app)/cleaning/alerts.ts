@@ -1,6 +1,12 @@
 import type { ItemKind } from "@/app/(app)/cleaning/constants";
 import { shortDateLabel, weekdayShort } from "@/app/(app)/cleaning/today-view";
-import { addDays, isoWeekday, type AssignmentStatus, type SlotHalf } from "@/app/(app)/cleaning/week-logic";
+import {
+  addDays,
+  boardWeekStart,
+  isoWeekday,
+  type AssignmentStatus,
+  type SlotHalf,
+} from "@/app/(app)/cleaning/week-logic";
 
 /**
  * Words for the cleaning alerts (docs/CLEANING-PLAN.md "Decisions": Alerts and
@@ -24,6 +30,8 @@ export interface SummaryRow {
   status: AssignmentStatus;
   /** A done clean a planner sent back; its redo is a separate clean. */
   rejected: boolean;
+  /** A miss with no posted Setup leader to own it (close_cleaning_days). */
+  ownerless: boolean;
   itemName: string;
   zoneName: string;
   half: SlotHalf;
@@ -32,6 +40,8 @@ export interface SummaryRow {
 export interface DailySummary {
   title: string;
   message: string;
+  /** The store-local day summarized. */
+  date: string;
   /** "Mon Oct 26". */
   dateLabel: string;
   /** The missed cleans, item (area, half), capped. Empty when none. */
@@ -43,6 +53,8 @@ export interface DailySummary {
     skipped: number;
     redo: number;
     carriedOver: number;
+    /** Misses with no posted Setup leader (plan "Data model": called out in the summary). */
+    noOwner: number;
   };
 }
 
@@ -74,17 +86,19 @@ export function summaryDayFor(today: string): string | null {
 /**
  * One day's cleans in a sentence or two for #cleaning (plan: "daily done /
  * missed / carried-over counts, the list of missed items"). Skipped cleans
- * were deferred on purpose, so they leave the total; a clean a planner sent
- * back is counted as a redo, not as done. Null when the day had no cleans.
+ * were deferred on purpose, so they leave the total. A clean a planner sent
+ * back leaves it too and is counted as a redo: its redo is its own clean on
+ * the next shift, so keeping both would count one job twice. That is the
+ * same rule the Today screen uses (today-view progressText), so the post and
+ * the screen agree. Null when the day had no cleans.
  */
 export function buildDailySummary(input: { date: string; rows: SummaryRow[]; carriedOver: number }): DailySummary | null {
   if (input.rows.length === 0) return null;
 
   const skipped = input.rows.filter((r) => r.status === "skipped").length;
-  const owed = input.rows.filter((r) => r.status !== "skipped");
-  const finished = (r: SummaryRow) => r.status === "done" || r.status === "not_needed";
-  const done = owed.filter((r) => finished(r) && !r.rejected).length;
-  const redo = owed.filter((r) => finished(r) && r.rejected).length;
+  const redo = input.rows.filter((r) => r.rejected).length;
+  const owed = input.rows.filter((r) => r.status !== "skipped" && !r.rejected);
+  const done = owed.filter((r) => r.status === "done" || r.status === "not_needed").length;
   const missedRows = owed
     .filter((r) => r.status === "missed")
     .sort(
@@ -97,9 +111,12 @@ export function buildDailySummary(input: { date: string; rows: SummaryRow[]; car
   const parts = [`${done} of ${owed.length} done.`];
   if (redo > 0) parts.push(`${redo} sent back for a redo.`);
   if (skipped > 0) parts.push(`${skipped} skipped.`);
+  const noOwner = missedRows.filter((r) => r.ownerless).length;
   if (missedRows.length > 0) {
     parts.push(`${missedRows.length} missed, ${input.carriedOver} carried over.`);
     parts.push(`Missed: ${missedText}.`);
+    // A count, never a name: the post goes to #cleaning.
+    if (noOwner > 0) parts.push(`${noOwner} of them had no Setup leader posted.`);
   } else {
     parts.push("Nothing missed.");
   }
@@ -108,6 +125,7 @@ export function buildDailySummary(input: { date: string; rows: SummaryRow[]; car
   return {
     title: `Cleaning, ${dateLabel}`,
     message: parts.join(" "),
+    date: input.date,
     dateLabel,
     missedText,
     counts: {
@@ -117,6 +135,7 @@ export function buildDailySummary(input: { date: string; rows: SummaryRow[]; car
       skipped,
       redo,
       carriedOver: input.carriedOver,
+      noOwner,
     },
   };
 }
@@ -124,15 +143,19 @@ export function buildDailySummary(input: { date: string; rows: SummaryRow[]; car
 /**
  * The coordinator's in-app misses summary (plan "Alerts": "end-of-day misses
  * summary to coordinators"). Only when something was missed: a "nothing
- * missed" notice every morning would train people to ignore the bell.
+ * missed" notice every morning would train people to ignore the bell. Misses
+ * nobody owned are called out, since that usually means the Setup was never
+ * posted. The link opens the week the misses happened in, which on a Sunday
+ * is not the week the board would open on.
  */
 export function buildMissesNotice(summary: DailySummary): { title: string; body: string; link: string } | null {
-  const { missed, carriedOver } = summary.counts;
+  const { missed, carriedOver, noOwner } = summary.counts;
   if (missed === 0) return null;
+  const unowned = noOwner > 0 ? ` ${noOwner} had no Setup leader posted.` : "";
   return {
     title: `${plural(missed, "clean", "cleans")} missed on ${summary.dateLabel}`,
-    body: `${summary.missedText}. ${carriedOver} carried over to the next open day.`,
-    link: "/cleaning/week",
+    body: `${summary.missedText}. ${carriedOver} carried over to the next open day.${unowned}`,
+    link: `/cleaning/week?week=${boardWeekStart(summary.date)}`,
   };
 }
 
