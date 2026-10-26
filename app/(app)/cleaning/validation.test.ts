@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addCleanSchema,
   completeSchema,
+  convertFindSchema,
+  findSchema,
   itemDetailsSchema,
   markupSchema,
   moveCleanSchema,
@@ -183,5 +185,23 @@ describe("board schemas", () => {
     expect(slotCapsSchema.safeParse({ caps: [{ weekday: 1, half: "am", maxVariables: 0 }] }).success).toBe(true);
     expect(slotCapsSchema.safeParse({ caps: [{ weekday: 7, half: "am", maxVariables: 2 }] }).success).toBe(false);
     expect(slotCapsSchema.safeParse({ caps: [{ weekday: 1, half: "pm", maxVariables: 21 }] }).success).toBe(false);
+  });
+});
+
+describe("found and fixed schemas", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("needs a one-line note of at most 200 characters", () => {
+    expect(findSchema.safeParse({ photoId: id, zoneId: id, note: "  " }).success).toBe(false);
+    expect(findSchema.safeParse({ photoId: id, zoneId: id, note: "x".repeat(201) }).success).toBe(false);
+    expect(findSchema.parse({ photoId: id, zoneId: id, note: "  Grease behind fryer " }).note).toBe("Grease behind fryer");
+  });
+
+  it("converts a find with the same item details the walkthrough uses", () => {
+    const parsed = convertFindSchema.safeParse({
+      findId: id,
+      details: { zoneId: id, name: "Behind fryer 2", kind: "variable", intervalWeeks: 4, half: "either", ifNeeded: false },
+    });
+    expect(parsed.success).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   CAPTURE_SOURCES,
+  FIND_NOTE_MAX,
   HALVES,
   INTERVAL_WEEKS,
   ITEM_KINDS,
@@ -174,3 +175,20 @@ export const slotCapsSchema = z.object({
 export const zoneActiveSchema = z.object({ id: z.string().uuid(), active: z.boolean() });
 
 export const coordinatorSchema = z.object({ userId: z.string().uuid() });
+
+// Found and fixed (docs/CLEANING-PLAN.md "Decisions": ATD log) -----------------------
+
+/** Multipart payload beside the photo on /api/cleaning/finds. */
+export const findSchema = z.object({
+  photoId: z.string().uuid(),
+  zoneId: z.string().uuid(),
+  note: z.string().trim().min(1, "Say what you found and fixed.").max(FIND_NOTE_MAX),
+});
+
+/** A planner turning a find into a master-list item. */
+export const convertFindSchema = z.object({
+  findId: z.string().uuid(),
+  details: itemDetailsSchema,
+});
+
+export const findIdSchema = z.object({ id: z.string().uuid() });

@@ -37,6 +37,7 @@ export const DISCORD_ROUTABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Cleaning -> #cleaning (item names only, never people)
   "cleaning_daily_summary",
   "cleaning_week_published",
+  "cleaning_atd_find",
 ]);
 
 /**
@@ -71,6 +72,7 @@ const EMOJI: Partial<Record<EventKey, string>> = {
   catering_driver_escalation: "🚨",
   cleaning_daily_summary: "🧽",
   cleaning_week_published: "🗓️",
+  cleaning_atd_find: "✨",
   infraction_issued: "⚠️",
   disciplinary_triggered: "⚠️",
 };
@@ -96,6 +98,7 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_driver_escalation: "Delivery still has no driver",
   cleaning_daily_summary: "Cleaning summary",
   cleaning_week_published: "Cleaning week is live",
+  cleaning_atd_find: "Found and fixed",
 };
 
 /**
@@ -176,6 +179,13 @@ export function buildDiscordMessage(
   const allowed_mentions: DiscordAllowedMentions = recipientId
     ? { parse: [], users: [recipientId] }
     : { parse: [] };
+
+  // A producer may attach one photo (a found-and-fixed post). Only an https
+  // URL is passed on: anything else would make Discord reject the whole post.
+  const imageUrl = typeof payload.image_url === "string" ? payload.image_url : undefined;
+  if (imageUrl && /^https:\/\//.test(imageUrl)) {
+    return { content, allowed_mentions, embeds: [{ image: { url: imageUrl } }] };
+  }
 
   return { content, allowed_mentions };
 }

@@ -965,6 +965,51 @@ export type Database = {
         }
         Relationships: []
       }
+      cleaning_atd_finds: {
+        Row: {
+          converted_item_id: string | null
+          id: string
+          note: string
+          photo_path: string
+          posted_at: string
+          posted_by: string
+          zone_id: string
+        }
+        Insert: {
+          converted_item_id?: string | null
+          id: string
+          note: string
+          photo_path: string
+          posted_at?: string
+          posted_by?: string
+          zone_id: string
+        }
+        Update: {
+          converted_item_id?: string | null
+          id?: string
+          note?: string
+          photo_path?: string
+          posted_at?: string
+          posted_by?: string
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_atd_finds_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_zones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_atd_finds_converted_item_id_fkey"
+            columns: ["converted_item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cleaning_assignments: {
         Row: {
           carried_from_id: string | null
@@ -4337,6 +4382,10 @@ export type Database = {
     }
     Functions: {
       can_plan_cleaning: { Args: never; Returns: boolean }
+      cleaning_store_trend: {
+        Args: { p_weeks?: number }
+        Returns: { week_start: string; owed: number; on_time: number; missed: number }[]
+      }
       close_cleaning_days: { Args: { p_today: string }; Returns: Json }
       complete_cleaning_assignment: {
         Args: { p_assignment_id: string; p_photo_path: string; p_not_needed?: boolean }

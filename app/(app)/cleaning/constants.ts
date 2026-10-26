@@ -43,6 +43,9 @@ export type CaptureSource = (typeof CAPTURE_SOURCES)[number];
 export const NAME_MAX = 120;
 export const NOTE_MAX = 500;
 
+/** A found-and-fixed note is one line (cleaning_atd_finds.note check). */
+export const FIND_NOTE_MAX = 200;
+
 /** A drawing larger than this is a bug or abuse, not a circle on a vent. */
 export const MARKUP_MAX_STROKES = 40;
 export const MARKUP_MAX_POINTS = 4000;

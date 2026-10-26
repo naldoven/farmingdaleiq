@@ -179,3 +179,27 @@ describe("buildDiscordMessage", () => {
     });
   });
 });
+
+describe("buildDiscordMessage photo", () => {
+  it("shows a found-and-fixed photo under the post", () => {
+    const msg = buildDiscordMessage("cleaning_atd_find", {
+      title: "Found and fixed",
+      message: "Machines: grease behind the fryer",
+      image_url: "https://example.supabase.co/storage/v1/object/sign/cleaning-photos/finds/x.jpg?token=t",
+    });
+    expect(msg.content).toBe("✨ **Found and fixed**: Machines: grease behind the fryer");
+    expect(msg.embeds).toEqual([
+      { image: { url: "https://example.supabase.co/storage/v1/object/sign/cleaning-photos/finds/x.jpg?token=t" } },
+    ]);
+    expect(msg.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("drops a photo URL that is not https, so Discord cannot reject the whole post", () => {
+    expect(buildDiscordMessage("cleaning_atd_find", { image_url: "javascript:alert(1)" }).embeds).toBeUndefined();
+    expect(buildDiscordMessage("cleaning_atd_find", { image_url: 42 }).embeds).toBeUndefined();
+  });
+
+  it("routes found-and-fixed posts to Discord", () => {
+    expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("cleaning_atd_find");
+  });
+});
