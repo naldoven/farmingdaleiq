@@ -40,7 +40,7 @@ export function DeliveryPlatformToggle({
 
   return (
     <div className="flex flex-col gap-1">
-      <div role="radiogroup" aria-label="Driver app" className="flex gap-2">
+      <div role="radiogroup" aria-label="Order source" className="flex gap-2">
         {DELIVERY_PLATFORMS.map((option) => {
           const selected = current === option;
           return (

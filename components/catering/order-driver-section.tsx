@@ -21,8 +21,9 @@ export function driversPageHref(eventDate: string, today: string): string | null
 /**
  * The "Driver" card on a delivery order's detail page: where the order came
  * from, which apps the driver is reserved in (RESERVE_APPS: ezCater orders go
- * in ezCater and Roadway), who is reserved, and a way over to the Drivers page
- * where the reserving happens (this app only records what was booked there). `drivers` is null when the read failed, so a hiccup says so
+ * in ezCater and Roadway), who is reserved, and a way over to the Drivers
+ * page where the reserving happens (this app only records what was booked
+ * there). `drivers` is null when the read failed, so a hiccup says so
  * instead of claiming "Needs driver". `open` is false once the order is
  * closed or cancelled and its drivers can no longer change.
  */
@@ -52,7 +53,9 @@ export function OrderDriverSection({
         <div className="flex flex-col gap-1.5">
           <p className="text-[13px] font-semibold text-muted-ink">Order source</p>
           <DeliveryPlatformToggle orderId={orderId} platform={platform} canEdit={canEditPlatform} />
-          <p className="text-[13px] text-muted-ink">Reserve the driver in {joinApps(RESERVE_APPS[platform])}.</p>
+          {open && (
+            <p className="text-[13px] text-muted-ink">Reserve the driver in {joinApps(RESERVE_APPS[platform])}.</p>
+          )}
         </div>
         <div className="flex flex-col gap-1.5">
           <p className="text-[13px] font-semibold text-muted-ink">
