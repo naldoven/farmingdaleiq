@@ -34,12 +34,21 @@ create policy cleaning_atd_finds_select on public.cleaning_atd_finds
   for select to authenticated
   using (public.has_permission('cleaning.complete') or public.can_plan_cleaning());
 
+-- The photo must already be in storage and be one the caller uploaded, the
+-- same rule complete_cleaning_assignment applies, so a find can never be
+-- posted with no photo or with someone else's.
 create policy cleaning_atd_finds_insert on public.cleaning_atd_finds
   for insert to authenticated
   with check (
     (public.has_permission('cleaning.complete') or public.can_plan_cleaning())
     and posted_by = auth.uid()
     and converted_item_id is null
+    and exists (
+      select 1 from storage.objects o
+      where o.bucket_id = 'cleaning-photos'
+        and o.name = photo_path
+        and o.owner_id = auth.uid()::text
+    )
   );
 
 create policy cleaning_atd_finds_update on public.cleaning_atd_finds
