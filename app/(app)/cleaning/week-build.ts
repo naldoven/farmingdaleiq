@@ -101,7 +101,7 @@ export async function buildCleaningWeek(
     loadSlotCaps(supabase),
     loadLastDone(supabase, timeZone),
     loadWeekAssignments(supabase, weekStart),
-    loadPlannedBefore(supabase, weekStart, today),
+    loadPlannedBefore(supabase, weekStart),
   ]);
 
   // Kind comes from the item, including retired ones still on the board, so

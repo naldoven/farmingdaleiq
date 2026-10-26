@@ -52,7 +52,7 @@ const ALREADY_THERE = "That item is already in that slot.";
 const GONE = "That clean is no longer on the board. Refresh and try again.";
 const CHANGED = "That clean changed while you were looking. Refresh and try again.";
 const PAST_DAY = "That day has already passed.";
-const BEFORE_THE_DAY = "Only a later day's clean can be skipped or removed. Today's stays on the list.";
+const BEFORE_THE_DAY = "Only a later day's clean can be moved, skipped or removed. Today's stays on the list.";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -63,12 +63,13 @@ async function currentState(supabase: Client, id: string): Promise<{ status: str
 }
 
 /**
- * Moves one planned clean to another day or half of its own week. Past days
- * are refused both ways: a planned clean left on a day that has ended is
- * closed out as a miss against that day's leader (close_cleaning_days), so
- * moving one there would be a planner creating a miss by hand, and moving one
- * off an ended day would be hiding one. Landing past the slot's cap is
- * allowed on purpose, it is the planner's call.
+ * Moves one planned clean to another day or half of its own week, before its
+ * day only (the database guard holds the same line). Moving today's clean,
+ * even to the other half, would take it off the shift that owes it, and a
+ * coordinator is herself a shift leader. A past target is refused too: a
+ * clean left on an ended day is closed out as a miss, so moving one there
+ * would be creating a miss by hand. Landing past the slot's cap is allowed on
+ * purpose, it is the planner's call.
  */
 export async function moveClean(input: { id: string; date: string; half: SlotHalf }): Promise<ActionResult> {
   try {
@@ -88,7 +89,8 @@ export async function moveClean(input: { id: string; date: string; half: SlotHal
       return { ok: false, error: "Pick a day in the same week." };
     }
     const { today } = await loadStoreClock(supabase);
-    if (date < today || row.date < today) return { ok: false, error: PAST_DAY };
+    if (row.date <= today) return { ok: false, error: BEFORE_THE_DAY };
+    if (date < today) return { ok: false, error: PAST_DAY };
 
     // The status filter makes a clean that was just done or skipped on
     // another phone fail here instead of being dragged along.

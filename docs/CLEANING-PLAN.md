@@ -179,8 +179,8 @@ walkthrough day on; variables join as drafts are approved.
   is switched on (`lib/features.ts`), so a miss is owned by that day's posted Morning
   (AM) or Closing (PM) Setup leader, and records "no owner" when none was posted.
   Completions always record who did them.
-- **Planner limits**: planners plan (add, move, skip before the day, remove before the
-  day); only the database functions complete, reject, mark misses or set owners, so a
+- **Planner limits**: planners plan (add from today on; move, skip or remove only before
+  the day); only the database functions complete, reject, mark misses or set owners, so a
   coordinator cannot rewrite her own record. The database enforces the same date rules
   as the screens, so a direct API call cannot skip or remove a clean on a day that has
   started. Retiring an item or hiding a zone takes its open cleans off the board from

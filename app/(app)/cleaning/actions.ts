@@ -61,22 +61,23 @@ export async function approveItem(input: { id: string }): Promise<ActionResult> 
       { today },
     ] = await Promise.all([supabase.auth.getUser(), loadStoreClock(supabase)]);
 
-    const { data: approved, error } = await supabase
+    const { error } = await supabase
       .from("cleaning_items")
       .update({ status: "active", approved_by: user?.id ?? null, approved_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("status", "draft")
-      .select("id");
+      .eq("status", "draft");
     if (error) return { ok: false, error: error.message };
 
-    if (approved && approved.length > 0) {
-      const { error: startError } = await supabase
-        .from("cleaning_items")
-        .update({ start_on: today })
-        .eq("id", id)
-        .is("start_on", null);
-      if (startError) return { ok: false, error: startError.message };
-    }
+    // Runs on every tap, not only the one that approved, so a retry after
+    // this step failed still sets it. The null filter keeps a planner's own
+    // start date.
+    const { error: startError } = await supabase
+      .from("cleaning_items")
+      .update({ start_on: today })
+      .eq("id", id)
+      .eq("status", "active")
+      .is("start_on", null);
+    if (startError) return { ok: false, error: startError.message };
 
     revalidateCleaning();
     return { ok: true, data: undefined };

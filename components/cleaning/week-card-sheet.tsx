@@ -92,8 +92,8 @@ export function WeekCardSheet({
         {isRestorable(card) ? (
           <div className="flex flex-col gap-3">
             <p className="rounded-lg bg-warning-soft px-3 py-2 text-[14px] text-ink">
-              Skipped{card.skipReason ? `: ${card.skipReason}` : ""}. It stays overdue and goes first when the next
-              week is built.
+              Skipped{card.skipReason ? `: ${card.skipReason}` : ""}. It stays overdue: the next build places it
+              first, or add it back from the tray.
             </p>
             <Button
               className="h-12 w-full rounded-lg text-[16px]"
@@ -108,7 +108,13 @@ export function WeekCardSheet({
           </div>
         ) : null}
 
-        {isMovable(card) && mode === null ? (
+        {isMovable(card) && mode === null && card.date <= today ? (
+          <p className="text-[14px] text-muted-ink">
+            Today&apos;s cleans stay on today&apos;s list. Only a later day&apos;s clean can be moved, skipped or removed.
+          </p>
+        ) : null}
+
+        {isMovable(card) && mode === null && card.date > today ? (
           <div className="flex flex-col gap-2">
             <Button variant="outline" className="h-12 w-full rounded-lg text-[16px]" onClick={() => choose("move")}>
               Move to another day or half
@@ -182,7 +188,7 @@ export function WeekCardSheet({
         {mode === "skip" ? (
           <div className="flex flex-col gap-3">
             <p className="text-[14px] text-muted-ink">
-              Not a miss. The item stays overdue and goes first when the next week is built.
+              Not a miss. The item stays overdue: the next build places it first, or add it back from the tray.
             </p>
             <Textarea
               aria-label="Reason for skipping"

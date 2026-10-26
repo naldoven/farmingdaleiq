@@ -171,9 +171,8 @@ grant execute on function public.cleaning_store_today() to authenticated;
 
 -- RLS decides who may write; this decides what. The coordinator is herself a
 -- shift leader whose misses are counted, so through the API a planner may
--- only plan, and only ahead of time: add open cleans from today on, move
--- open ones between days from today on, skip or remove one only before its
--- day, put a skipped one back. A clean on a day that has ended can only be
+-- only plan, and only ahead of time: add open cleans from today on, move,
+-- skip or remove one only before its day, put a skipped one back. A clean on a day that has ended can only be
 -- completed or closed out as a miss. Completion, rejection, misses, owners
 -- and carry-overs are written only by the functions below, which run as
 -- their owner rather than as `authenticated`, and by the service-role job.
@@ -235,6 +234,11 @@ begin
   if old.date < v_today or new.date < v_today then
     raise exception 'That day has already passed' using errcode = '42501';
   end if;
+  -- Rescheduling today's clean, even to the other half, would move it off
+  -- the shift that owes it, so only a later day's clean can be moved.
+  if (new.date is distinct from old.date or new.half is distinct from old.half) and old.date <= v_today then
+    raise exception 'Only a later day''s clean can be moved' using errcode = '42501';
+  end if;
   if new.status = 'skipped' and old.status <> 'skipped' and old.date <= v_today then
     raise exception 'A clean can only be skipped before its day' using errcode = '42501';
   end if;
@@ -294,7 +298,7 @@ begin
     select 1 from storage.objects o
     where o.bucket_id = 'cleaning-photos'
       and o.name = p_photo_path
-      and (o.owner_id = auth.uid()::text or o.owner = auth.uid())
+      and o.owner_id = auth.uid()::text
   ) then
     return 'no_photo';
   end if;
@@ -483,3 +487,15 @@ $$;
 
 revoke all on function public.close_cleaning_days(date) from public, anon, authenticated;
 grant execute on function public.close_cleaning_days(date) to service_role;
+
+-- Backfill ---------------------------------------------------------------------
+-- Approval now stamps a start date (a never-cleaned variable is due from it).
+-- Variables approved before that have none and would sort as due since
+-- forever; give them their approval day, store-local.
+
+update public.cleaning_items
+   set start_on = (approved_at at time zone 'America/New_York')::date
+ where kind = 'variable'
+   and status = 'active'
+   and start_on is null
+   and approved_at is not null;

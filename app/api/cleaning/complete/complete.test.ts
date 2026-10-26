@@ -135,7 +135,10 @@ describe("completeClean", () => {
   it("answers 409 for a clean that was skipped or missed meanwhile", async () => {
     const store = fakeStore({}, { status: "skipped" });
     const result = await completeClean(store.deps, INPUT, JPEG);
-    expect(result).toEqual({ status: 409, body: { ok: false, error: "This clean is no longer open." } });
+    expect(result).toEqual({
+      status: 409,
+      body: { ok: false, error: "This clean is closed. If it was missed, it is on today's list." },
+    });
     expect(store.done.size).toBe(0);
   });
 

@@ -165,11 +165,21 @@ describe("a day's sections", () => {
 });
 
 describe("a planner", () => {
-  it("opens the options sheet by tapping a planned card", () => {
-    renderBoard();
+  it("opens the options sheet by tapping a planned card on a later day", () => {
+    // Seen from Tuesday, Wednesday's clean is still ahead and can be replanned.
+    renderBoard({ today: "2026-10-27" });
     fireEvent.click(screen.getByRole("button", { name: /Hood filters/ }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move to another day or half" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip it" })).toBeInTheDocument();
+  });
+
+  it("offers no move, skip or remove on today's clean", () => {
+    renderBoard();
+    fireEvent.click(screen.getByRole("button", { name: /Hood filters/ }));
+    expect(screen.getByText(/Today's cleans stay on today's list/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move to another day or half" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Skip it" })).not.toBeInTheDocument();
   });
 
   it("cannot open a clean that is already done", () => {
@@ -181,7 +191,7 @@ describe("a planner", () => {
 
   it("refreshes the board after a change", async () => {
     moveClean.mockResolvedValue(OK);
-    renderBoard();
+    renderBoard({ today: "2026-10-27" });
     fireEvent.click(screen.getByRole("button", { name: /Hood filters/ }));
     fireEvent.click(screen.getByRole("button", { name: "Move to another day or half" }));
     fireEvent.click(screen.getByRole("button", { name: "Fri 30" }));

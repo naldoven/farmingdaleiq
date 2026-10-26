@@ -134,7 +134,18 @@ describe("moveClean", () => {
       "cleaning_assignments.select": [{ data: { week_start: "2026-10-26", status: "planned", date: "2026-10-27" } }],
     });
     const result = await moveClean({ id: ID, date: "2026-10-30", half: "am" });
-    expect(result).toEqual({ ok: false, error: "That day has already passed." });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("later day");
+    expect(callsOf("cleaning_assignments", "update")).toEqual([]);
+  });
+
+  it("refuses to move today's clean, even to the other half", async () => {
+    client = makeClient({
+      "cleaning_assignments.select": [{ data: { week_start: "2026-10-26", status: "planned", date: "2026-10-28" } }],
+    });
+    const result = await moveClean({ id: ID, date: "2026-10-28", half: "pm" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("later day");
     expect(callsOf("cleaning_assignments", "update")).toEqual([]);
   });
 

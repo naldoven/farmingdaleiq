@@ -72,7 +72,7 @@ export default async function CleaningWeekPage({ searchParams }: { searchParams:
     loadSlotCaps(supabase),
     loadPlanItems(supabase),
     loadLastDone(supabase, clock.timeZone),
-    loadPlannedBefore(supabase, weekStart, clock.today),
+    loadPlannedBefore(supabase, weekStart),
   ]);
 
   const built = Boolean(week?.built_at);

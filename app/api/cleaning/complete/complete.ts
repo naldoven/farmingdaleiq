@@ -141,7 +141,7 @@ export async function completeClean(
     case "not_found":
       return fail(404, "That clean was not found.");
     case "not_open":
-      return fail(409, "This clean is no longer open.");
+      return fail(409, "This clean is closed. If it was missed, it is on today's list.");
     case "not_if_needed":
       return fail(400, "This clean can't be marked not needed.");
     // The database could not see the photo we just stored: a storage hiccup
