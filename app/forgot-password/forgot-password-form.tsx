@@ -10,8 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 
 /**
  * Requests a password-reset email. The reset link routes through
- * /auth/callback (which exchanges the recovery code for a session) and then on
- * to /set-password via the `next` param. We always show the same neutral
+ * /auth/callback (which verifies the recovery token_hash from the Supabase
+ * "Reset Password" email template, or exchanges a legacy ?code=) and then on
+ * to /set-password. We always show the same neutral
  * confirmation so the form can't be used to probe which emails have accounts.
  */
 export function ForgotPasswordForm() {

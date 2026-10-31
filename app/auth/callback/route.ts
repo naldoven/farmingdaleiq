@@ -18,19 +18,34 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
   const rawNext = searchParams.get("next");
 
-  if (!code) {
-    return NextResponse.redirect(new URL("/login?error=auth", origin));
-  }
+  const fail = () =>
+    NextResponse.redirect(new URL("/login?error=auth", origin));
 
   const supabase = await createClient();
+
+  if (tokenHash) {
+    // The recovery email template links here with ?token_hash=. verifyOtp needs
+    // no PKCE code_verifier cookie, so the link works in any browser or device.
+    // The old ?code= link only worked in the browser that requested the reset
+    // (Gmail's in-app browser or a second browser failed with bad_code_verifier).
+    if (type !== "recovery") return fail();
+    const { error } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: tokenHash,
+    });
+    if (error) return fail();
+    return NextResponse.redirect(new URL("/set-password", origin));
+  }
+
+  if (!code) return fail();
+
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
-  if (error) {
-    return NextResponse.redirect(new URL("/login?error=auth", origin));
-  }
+  if (error) return fail();
 
   // Invite and recovery both require the user to choose a password before the
   // app is useful to them. We force /set-password for those even if `next`
