@@ -7,7 +7,7 @@ import { RecoveryActions } from "@/components/guest-recovery/recovery-actions";
 import { SectionCard, StatusBadge } from "@/components/mobile";
 import { hasPermission } from "@/lib/auth/permissions";
 import { buildSms, formatItems, recoveryLink } from "@/lib/guest-recovery/messages";
-import { readConfig } from "@/lib/guest-recovery/providers";
+import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
 import { createClient } from "@/lib/supabase/server";
 import { formatStoreDateTime } from "@/lib/time";
 
@@ -36,7 +36,7 @@ export default async function GuestRecoveryDetailPage({
 
   const now = new Date();
   const owed = recovery.status === "owed";
-  const baseUrl = readConfig().baseUrl;
+  const baseUrl = await resolveBaseUrl();
   const link = baseUrl && TOKEN_PATTERN.test(recovery.token) ? recoveryLink(baseUrl, recovery.token) : null;
   const smsText =
     link && recovery.guestPhone

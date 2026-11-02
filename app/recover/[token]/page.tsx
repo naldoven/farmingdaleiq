@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { STORE_NAME, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { hasPermission } from "@/lib/auth/permissions";
 import { firstNameOf, formatItems, recoveryLink } from "@/lib/guest-recovery/messages";
-import { readConfig } from "@/lib/guest-recovery/providers";
+import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
 import { qrSvg } from "@/lib/guest-recovery/qr";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { formatStoreDate } from "@/lib/time";
@@ -52,12 +51,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
     .eq("recovery_id", recovery.id)
     .order("name");
 
-  let baseUrl = readConfig().baseUrl;
-  if (!baseUrl) {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host");
-    baseUrl = host ? `https://${host}` : null;
-  }
+  const baseUrl = await resolveBaseUrl();
   const svg = baseUrl ? await qrSvg(recoveryLink(baseUrl, token)) : null;
 
   const owed = recovery.status === "owed";
