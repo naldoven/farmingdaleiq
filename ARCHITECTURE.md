@@ -407,6 +407,11 @@ hands over what was missed.
   Shows the guest's first name, the items and "This store only, receipt required". A signed-in
   leader who opens it is sent to the leader screen instead. Nothing else about the recovery
   or other guests is readable without signing in.
+- **Scan** (`/guest-recovery/scan`, `guest_recovery.log`): scan a guest's QR in the app, or
+  paste their link or code. Only the 64-character token is taken from what was scanned, and
+  the app opens `/recover/<token>` itself, so a QR holding some other address goes nowhere.
+  On the Menu hub Guest Recovery is its own section (Recoveries, Log a missing order, Scan a
+  code, Stats, Recovery menu), like Cleaning and Maintenance.
 - **Redeem** (`/guest-recovery/<id>`): guest, items, receipt reminder, Given and Void.
   Given and Void only move a recovery that is still owed, so a second scan or a double tap
   changes nothing and says "already handed over".
@@ -651,6 +656,7 @@ Discord:
 | `/cleaning/stats` | Cleaning metrics by month: shift leaders, areas, most overdue, store trend (leaders) |
 | `/guest-recovery` | Guest Recovery list: still owed, recently handed over; search |
 | `/guest-recovery/new` | Log a guest's missing items and send them the link and QR |
+| `/guest-recovery/scan` | Scan a guest's QR in the app, or paste their link or code |
 | `/guest-recovery/[id]` | Redeem screen: items, receipt reminder, Given and Void; resend |
 | `/guest-recovery/reporting` | Guest Recovery stats (`guest_recovery.manage`) |
 | `/guest-recovery/menu` | The recovery menu: add and hide items (`guest_recovery.manage`) |

@@ -249,6 +249,13 @@ export const NAV_GROUPS: NavGroup[] = [
         owner: "Guest Recovery",
       },
       {
+        href: "/guest-recovery/scan",
+        permission: "guest_recovery.log",
+        label: "Scan a code",
+        description: "Scan a guest's QR code with the camera, or paste their link, to hand over what they are owed.",
+        owner: "Guest Recovery",
+      },
+      {
         href: "/guest-recovery/reporting",
         permission: "guest_recovery.manage",
         label: "Stats",

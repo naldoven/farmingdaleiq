@@ -33,6 +33,7 @@ export interface MenuActionItem {
 export const MENU_SECTIONS = [
   "Daily Ops",
   "Cleaning",
+  "Guest Recovery",
   "People & Training",
   "Recognition",
   "Maintenance",
@@ -182,7 +183,11 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
   { key: "equipment", label: "Equipment", href: "/maintenance/equipment", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
   { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Daily Ops" },
-  { key: "guest-recovery", label: "Guest Recovery", href: "/guest-recovery", icon: "guest-recovery", iconTone: "neutral", section: "Daily Ops" },
+  { key: "guest-recovery", label: "Recoveries", href: "/guest-recovery", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
+  { key: "guest-recovery-new", label: "Log a missing order", href: "/guest-recovery/new", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
+  { key: "guest-recovery-scan", label: "Scan a code", href: "/guest-recovery/scan", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
+  { key: "guest-recovery-stats", label: "Stats", href: "/guest-recovery/reporting", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
+  { key: "guest-recovery-menu", label: "Recovery menu", href: "/guest-recovery/menu", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
 ];
