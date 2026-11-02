@@ -66,7 +66,7 @@ describe("the public guest page", () => {
     expect(html).not.toContain("nolan@example.com");
     expect(html).not.toContain("6315550142");
     expect(html).not.toContain("8407578");
-    expect(html).toMatch(/Receipt required/);
+    expect(html).toMatch(/Bring your receipt/);
   });
 
   it("is a 404 for anything that is not a 64-character token, without touching the database", async () => {

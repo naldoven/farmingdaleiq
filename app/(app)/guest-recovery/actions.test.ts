@@ -29,7 +29,7 @@ const input = {
   guestEmail: "nolan@example.com",
   guestPhone: "631-555-0142",
   orderNumber: "8407578",
-  note: "",
+  note: "Chicken sandwich missing",
   smsConsent: true,
   items: [{ menuItemId: MENU_ID, qty: 2 }],
 };

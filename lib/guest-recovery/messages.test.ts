@@ -40,7 +40,7 @@ describe("recoveryLink", () => {
 describe("buildEmail", () => {
   it("names the guest, the order, the items and carries the link", () => {
     const email = buildEmail(base);
-    expect(email.subject).toMatch(/sorry about your order/i);
+    expect(email.subject).toMatch(/Chick-fil-A Farmingdale order/);
     for (const part of [email.html, email.text]) {
       expect(part).toContain("Nolan");
       expect(part).toContain("8407578");

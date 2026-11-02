@@ -11,7 +11,7 @@ const valid = {
   guestEmail: "Nolan@Example.com ",
   guestPhone: "(631) 555-0142",
   orderNumber: " 8407578 ",
-  note: "",
+  note: " Chicken sandwich missing, called at 8 PM ",
   smsConsent: true,
   items: [{ menuItemId: MENU_ID, qty: 1 }],
 };
@@ -45,15 +45,22 @@ describe("logRecoverySchema", () => {
     expect(parsed.guestEmail).toBe("nolan@example.com");
     expect(parsed.guestPhone).toBe("+16315550142");
     expect(parsed.orderNumber).toBe("8407578");
-    expect(parsed.note).toBeNull();
+    expect(parsed.note).toBe("Chicken sandwich missing, called at 8 PM");
+    expect(logRecoverySchema.parse({ ...valid, note: "" }).note).toBeNull();
   });
 
-  it("accepts email only or phone only, but not neither", () => {
-    expect(logRecoverySchema.safeParse({ ...valid, guestPhone: "", smsConsent: false }).success).toBe(true);
-    expect(logRecoverySchema.safeParse({ ...valid, guestEmail: "" }).success).toBe(true);
-    const neither = logRecoverySchema.safeParse({ ...valid, guestEmail: "", guestPhone: "" });
-    expect(neither.success).toBe(false);
-    if (!neither.success) expect(neither.error.issues[0].message).toMatch(/email or a phone/i);
+  it("requires the name, phone, email and order number; only the note can be left blank", () => {
+    const cases: [Partial<typeof valid>, RegExp][] = [
+      [{ guestName: " " }, /guest's name/i],
+      [{ guestPhone: "" }, /phone number/i],
+      [{ guestEmail: "" }, /email/i],
+      [{ orderNumber: "  " }, /order number/i],
+    ];
+    for (const [override, message] of cases) {
+      const result = logRecoverySchema.safeParse({ ...valid, ...override });
+      expect(result.success, JSON.stringify(override)).toBe(false);
+      if (!result.success) expect(result.error.issues.map((i) => i.message).join(" ")).toMatch(message);
+    }
   });
 
   it("rejects a bad email and a bad phone with a plain message", () => {
@@ -86,8 +93,8 @@ describe("logRecoverySchema", () => {
     expect(logRecoverySchema.safeParse({ ...valid, submissionId: "abc" }).success).toBe(false);
   });
 
-  it("only treats the text consent as given when a phone is there", () => {
-    const parsed = logRecoverySchema.parse({ ...valid, guestPhone: "", smsConsent: true });
-    expect(parsed.smsConsent).toBe(false);
+  it("keeps the text consent only as the leader set it, since a phone is always there now", () => {
+    expect(logRecoverySchema.parse({ ...valid, smsConsent: false }).smsConsent).toBe(false);
+    expect(logRecoverySchema.parse({ ...valid, smsConsent: true }).smsConsent).toBe(true);
   });
 });

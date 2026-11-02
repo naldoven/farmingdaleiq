@@ -28,14 +28,6 @@ export function normalizeUsPhone(raw: string): string | null {
   return `+1${national}`;
 }
 
-const optionalText = (max: number, label: string) =>
-  z
-    .string()
-    .trim()
-    .max(max, `${label} is too long (up to ${max} characters)`)
-    .optional()
-    .transform((value) => (value ? value : null));
-
 const itemSchema = z
   .object({
     menuItemId: z.uuid("That menu item is not valid").nullish(),
@@ -63,37 +55,40 @@ export const logRecoverySchema = z
   .object({
     submissionId: z.uuid("Something went wrong with the form. Reload and try again."),
     guestName: z.string().trim().min(1, "Enter the guest's name").max(GUEST_NAME_MAX, "That name is too long"),
-    guestEmail: z.string().trim().max(254, "That email is too long").optional(),
-    guestPhone: z.string().trim().max(30, "That phone number is too long").optional(),
-    orderNumber: optionalText(ORDER_NUMBER_MAX, "The order number"),
-    note: optionalText(NOTE_MAX, "The note"),
+    guestEmail: z.string().trim().min(1, "Enter the guest's email").max(254, "That email is too long"),
+    guestPhone: z.string().trim().min(1, "Enter the guest's phone number").max(30, "That phone number is too long"),
+    orderNumber: z
+      .string()
+      .trim()
+      .min(1, "Enter the order number")
+      .max(ORDER_NUMBER_MAX, `The order number is too long (up to ${ORDER_NUMBER_MAX} characters)`),
+    note: z
+      .string()
+      .trim()
+      .max(NOTE_MAX, `That is too long (up to ${NOTE_MAX} characters)`)
+      .optional()
+      .transform((value) => (value ? value : null)),
     smsConsent: z.boolean().default(false),
     items: z.array(itemSchema).min(1, "Pick at least one missing item").max(MAX_ITEMS, `Up to ${MAX_ITEMS} items`),
   })
   .superRefine((value, ctx) => {
-    const email = value.guestEmail ?? "";
-    const phone = value.guestPhone ?? "";
-    if (!email && !phone) {
-      ctx.addIssue({ code: "custom", path: ["guestEmail"], message: "Enter an email or a phone number" });
-    }
-    if (email && !z.email().safeParse(email).success) {
+    if (value.guestEmail && !z.email().safeParse(value.guestEmail).success) {
       ctx.addIssue({ code: "custom", path: ["guestEmail"], message: "That email does not look right" });
     }
-    if (phone && !normalizeUsPhone(phone)) {
+    if (value.guestPhone && !normalizeUsPhone(value.guestPhone)) {
       ctx.addIssue({ code: "custom", path: ["guestPhone"], message: "Enter a 10-digit US phone number" });
     }
   })
   .transform((value) => {
-    const guestPhone = value.guestPhone ? normalizeUsPhone(value.guestPhone) : null;
     return {
       submissionId: value.submissionId,
       guestName: value.guestName,
-      guestEmail: value.guestEmail ? value.guestEmail.toLowerCase() : null,
-      guestPhone,
+      guestEmail: value.guestEmail.toLowerCase(),
+      // superRefine already proved the phone normalizes.
+      guestPhone: normalizeUsPhone(value.guestPhone) as string,
       orderNumber: value.orderNumber,
       note: value.note,
-      // Consent to text means nothing without a number to text.
-      smsConsent: Boolean(guestPhone) && value.smsConsent,
+      smsConsent: value.smsConsent,
       items: value.items,
     };
   });

@@ -394,8 +394,9 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
 When a guest calls about a wrong or missing order, a leader logs it here and the guest
 gets a link and QR code by email and text. On their next visit a leader scans the QR and
 hands over what was missed.
-- **Log** (`/guest-recovery/new`, `guest_recovery.log`): guest name, phone, email (at
-  least one), order number, a note, a consent tick ("guest OK'd a text", shown when a phone is given; email needs no tick),
+- **Log** (`/guest-recovery/new`, `guest_recovery.log`): guest name, phone, email and
+  order number (all four required), an optional note, a consent tick ("guest OK'd a text";
+  email needs no tick),
   and the missing items picked from the store's recovery menu (a free-text "other" line
   covers anything not listed). Confirming saves the recovery and sends in the same step.
 - **Send**: email and text each go once per recovery (claim-before-send, a send log row

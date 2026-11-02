@@ -172,16 +172,20 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
               <dt className="text-[13px] text-muted-ink">What was missing</dt>
               <dd className="font-semibold text-accent-ink">{formatItems(selectedItems)}</dd>
             </div>
-            {orderNumber.trim() && (
+            <div>
+              <dt className="text-[13px] text-muted-ink">Order number</dt>
+              <dd>{orderNumber.trim()}</dd>
+            </div>
+            {note.trim() && (
               <div>
-                <dt className="text-[13px] text-muted-ink">Order number</dt>
-                <dd>{orderNumber.trim()}</dd>
+                <dt className="text-[13px] text-muted-ink">Note</dt>
+                <dd>{note.trim()}</dd>
               </div>
             )}
             <div>
               <dt className="text-[13px] text-muted-ink">They will be sent</dt>
               <dd>
-                {email ? <p>Email to {email}</p> : null}
+                <p>Email to {email}</p>
                 {phone ? (
                   <p>{smsConsent ? `Text to ${guestPhone.trim()}` : "No text (guest did not agree to one)"}</p>
                 ) : null}
@@ -281,7 +285,7 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
           )}
           <div>
             <label htmlFor={`${formId}-order`} className={LABEL}>
-              Order number (optional)
+              Order number
             </label>
             <input
               id={`${formId}-order`}
@@ -303,7 +307,7 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
               onChange={(e) => setNote(e.target.value)}
               maxLength={300}
               autoComplete="off"
-              placeholder="Missing from order, late night, and so on"
+              placeholder="Anything the next leader should know"
             />
           </div>
         </div>

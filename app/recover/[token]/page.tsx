@@ -60,7 +60,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
     <main className="mx-auto flex min-h-dvh max-w-[480px] flex-col gap-4 bg-canvas p-4 pt-8">
       <p className="text-[12px] font-bold uppercase tracking-widest text-accent">{STORE_NAME}</p>
       <h1 className="text-[26px] font-bold leading-tight text-ink">
-        Hi {firstNameOf(recovery.guest_name)}, we&apos;re sorry about your order.
+        Hi {firstNameOf(recovery.guest_name)}, thank you for telling us about your order.
       </h1>
 
       {owed ? (
@@ -71,8 +71,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
               {formatItems((items ?? []).map((i) => ({ name: i.name, qty: i.qty })))}
             </p>
             <p className="mt-3 text-[15px] text-ink">
-              Next time you visit, bring your receipt inside or through the drive-thru and show this page to any team
-              member.
+              On your next visit, bring your receipt and show this page to any team member.
             </p>
           </section>
 
@@ -90,7 +89,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
           )}
 
           <p className="rounded-xl bg-warning-soft p-3 text-[14px] text-ink">
-            <strong>Redeemable only at {STORE_NAME}.</strong> Receipt required.
+            <strong>Good at {STORE_NAME} only.</strong> Bring your receipt.
           </p>
         </>
       ) : recovery.status === "given" ? (

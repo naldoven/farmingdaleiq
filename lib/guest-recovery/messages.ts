@@ -60,19 +60,19 @@ export interface BuiltEmail {
 export function buildEmail(input: MessageInput & { qrContentId?: string }): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
-  const subject = "We're sorry about your order";
+  const subject = `Your ${STORE_NAME} order: how we will make it right`;
 
   const text = [
-    `Hi ${first}, we're sorry about your order.`,
+    `Hi ${first}, thank you for telling us about your order.`,
     "",
     `${orderPhrase(input.orderNumber)} ${items}`,
     "",
-    `We have it ready for you. Next time you visit ${STORE_NAME}, bring your receipt inside or through the drive-thru and show this link to any team member:`,
+    `We would like to make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
     input.link,
     "",
-    `Redeemable only at ${STORE_NAME}. Receipt required.`,
+    `Good at ${STORE_NAME} only. Bring your receipt.`,
     "",
-    "Questions? Just reply to this email.",
+    "Questions? Reply to this email and the store will see it.",
   ].join("\n");
 
   const qr = input.qrContentId
@@ -87,15 +87,15 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;padding:28px">
 <tr><td>
 <p style="margin:0 0 8px;font-size:12px;letter-spacing:1px;font-weight:700;color:#e51636;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
-<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, we're sorry about your order.</h1>
+<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, thank you for telling us about your order.</h1>
 <p style="margin:0 0 8px;font-size:15px;line-height:1.5">${escapeHtml(orderPhrase(input.orderNumber))}</p>
 <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#9c0f28">${escapeHtml(items)}</p>
-<p style="margin:0 0 20px;font-size:15px;line-height:1.5">We have it ready for you. Next time you visit, bring your receipt inside or through the drive-thru and show your code to any team member.</p>
-<p style="margin:0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px">Show my code</a></p>
+<p style="margin:0 0 20px;font-size:15px;line-height:1.5">We would like to make it right. On your next visit, bring your receipt and show this code to any team member.</p>
+<p style="margin:0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px">View my code</a></p>
 ${qr}
-<p style="margin:24px 0 0;padding:12px 14px;background:#fef3c7;border-radius:12px;font-size:13px;line-height:1.5"><strong>Redeemable only at ${escapeHtml(STORE_NAME)}.</strong><br>Receipt required.</p>
+<p style="margin:24px 0 0;padding:12px 14px;background:#fef3c7;border-radius:12px;font-size:13px;line-height:1.5"><strong>Good at ${escapeHtml(STORE_NAME)} only.</strong><br>Bring your receipt.</p>
 <p style="margin:20px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>
-<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Questions? Just reply to this email.</p>
+<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Questions? Reply to this email and the store will see it.</p>
 </td></tr>
 </table>
 </td></tr>
@@ -115,8 +115,8 @@ const SMS_MAX = 480;
  */
 export function buildSms(input: MessageInput): string {
   const first = firstNameOf(input.guestName);
-  const head = `${STORE_NAME}: Hi ${first}, we're sorry about your order. We owe you: `;
-  const tail = `. Show this to a team member on your next visit, with your receipt: ${input.link} Reply STOP to opt out.`;
+  const head = `${STORE_NAME}: Hi ${first}, thanks for telling us about your order. We owe you: `;
+  const tail = `. On your next visit, show this link to a team member and bring your receipt: ${input.link} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;
 
   let shown = input.items.length;
