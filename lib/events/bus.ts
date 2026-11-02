@@ -74,6 +74,10 @@ export const EVENT_KEYS = [
   "cleaning_plan_reminder",
   "cleaning_atd_find",
 
+  // Guest Recovery: a Spotlight reward is waiting for its assignee. In-app only,
+  // written by the server, and the payload never carries guest details.
+  "guest_recovery_spotlight",
+
   // Waste
   //
   // Audit-trail only -- deliberately NOT added to NOTIFIABLE_EVENT_KEYS. Waste

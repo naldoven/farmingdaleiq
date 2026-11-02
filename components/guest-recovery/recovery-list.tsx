@@ -7,7 +7,7 @@ import { Plus } from "lucide-react";
 import type { RecoveryView } from "@/app/(app)/guest-recovery/types";
 import { matchesSearch } from "@/app/(app)/guest-recovery/view";
 import { RecoveryCard } from "@/components/guest-recovery/recovery-card";
-import { SearchBar } from "@/components/mobile";
+import { ChipRow, FilterChip, SearchBar } from "@/components/mobile";
 
 /**
  * The Guest Recovery list: still owed first (the longest wait on top), then
@@ -18,14 +18,20 @@ export function RecoveryList({
   owed,
   recent,
   nowIso,
+  viewerId,
 }: {
   owed: RecoveryView[];
   recent: RecoveryView[];
   nowIso: string;
+  viewerId: string | null;
 }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "spotlight" | "mine">("all");
   const now = new Date(nowIso);
-  const owedShown = owed.filter((r) => matchesSearch(r, query));
+  const spotlightOwed = owed.filter((r) => r.path === "spotlight");
+  const mine = spotlightOwed.filter((r) => viewerId !== null && r.assignedTo === viewerId);
+  const pool = filter === "spotlight" ? spotlightOwed : filter === "mine" ? mine : owed;
+  const owedShown = pool.filter((r) => matchesSearch(r, query));
   const recentShown = recent.filter((r) => matchesSearch(r, query));
 
   return (
@@ -45,13 +51,25 @@ export function RecoveryList({
         onChange={(e) => setQuery(e.target.value)}
       />
 
+      <ChipRow>
+        <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
+          All ({owed.length})
+        </FilterChip>
+        <FilterChip active={filter === "spotlight"} onClick={() => setFilter("spotlight")}>
+          Spotlight to send ({spotlightOwed.length})
+        </FilterChip>
+        <FilterChip active={filter === "mine"} onClick={() => setFilter("mine")}>
+          Mine to send ({mine.length})
+        </FilterChip>
+      </ChipRow>
+
       <section aria-labelledby="owed-heading" className="space-y-3">
         <h2 id="owed-heading" className="text-[13px] font-bold uppercase tracking-wide text-muted-ink">
           Still owed ({owedShown.length})
         </h2>
         {owedShown.length === 0 ? (
           <p className="rounded-xl bg-card p-4 text-[15px] text-muted-ink shadow-card">
-            {query ? "No match." : "Nobody is waiting on a recovery."}
+            {query ? "No match." : filter === "all" ? "Nobody is waiting on a recovery." : "Nothing here right now."}
           </p>
         ) : (
           owedShown.map((recovery) => <RecoveryCard key={recovery.id} recovery={recovery} now={now} />)

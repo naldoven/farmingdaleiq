@@ -269,6 +269,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "The items leaders pick from: add new ones, hide old ones.",
         owner: "Guest Recovery",
       },
+      {
+        href: "/guest-recovery/settings",
+        permission: "guest_recovery.manage",
+        label: "Recovery settings",
+        description: "How long a code is good for, and who sends Chick-fil-A app guests their rewards.",
+        owner: "Guest Recovery",
+      },
     ],
   },
   ...(SETUPS_AND_SHIFTS_ITEMS.length > 0

@@ -1,11 +1,20 @@
 "use client";
 
-import { useId, useMemo, useRef, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Minus, Plus } from "lucide-react";
 
 import { logRecovery } from "@/app/(app)/guest-recovery/actions";
-import { MAX_ITEMS, MAX_QTY } from "@/app/(app)/guest-recovery/constants";
+import {
+  MAX_ITEMS,
+  MAX_QTY,
+  REASONS,
+  REASON_LABELS,
+  SPOTLIGHT_PROMISE_HOURS,
+  type Reason,
+  type RecoveryPath,
+} from "@/app/(app)/guest-recovery/constants";
 import type { MenuItemView } from "@/app/(app)/guest-recovery/types";
 import { logRecoverySchema, normalizeUsPhone } from "@/app/(app)/guest-recovery/validation";
 import { SectionCard } from "@/components/mobile";
@@ -67,12 +76,13 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
   const router = useRouter();
   const formId = useId();
   const [pending, startTransition] = useTransition();
-  // One id per attempt at saving this form's data. A retry of the same data
-  // (dropped connection) reuses it, so the server returns the first recovery
-  // instead of making a second. Editing after an attempt starts a new one, so
-  // the correction is saved rather than swallowed by the earlier recovery.
-  const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
-  const attempted = useRef(false);
+  // One id for the life of this form. A retry (dropped connection, double tap)
+  // reuses it, so the server returns the first recovery instead of making a
+  // second. If an attempt's outcome is unknown (the answer never came back), the
+  // form stops letting the leader edit: the save may have gone through, so the
+  // choices are to retry the same data or to check the list.
+  const [submissionId] = useState(() => crypto.randomUUID());
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
 
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [guestName, setGuestName] = useState("");
@@ -81,6 +91,8 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
   const [orderNumber, setOrderNumber] = useState("");
   const [note, setNote] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
+  const [path, setPath] = useState<RecoveryPath | null>(null);
+  const [reason, setReason] = useState<Reason | null>(null);
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [others, setOthers] = useState<OtherItem[]>([]);
   const [search, setSearch] = useState("");
@@ -119,6 +131,8 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
       orderNumber,
       note,
       smsConsent,
+      reason: reason ?? undefined,
+      path: path ?? undefined,
       items: [
         ...Object.entries(picked).map(([menuItemId, qty]) => ({ menuItemId, qty })),
         ...others.filter((o) => o.name.trim()).map((o) => ({ name: o.name.trim(), qty: o.qty })),
@@ -140,10 +154,10 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
 
   function confirm() {
     setError(null);
-    attempted.current = true;
     startTransition(async () => {
       try {
-        const result = await logRecovery(buildInput());
+        const result = await logRecovery(buildInput() as Parameters<typeof logRecovery>[0]);
+        setUnknownOutcome(false);
         if (!result.ok) {
           setError(result.error);
           return;
@@ -152,7 +166,8 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
       } catch {
         // The save may have gone through even though the answer never came
         // back. Same id on the retry, so it cannot be logged or sent twice.
-        setError("Could not reach the server. Check the Recoveries list, then tap Confirm again. It will not send twice.");
+        setUnknownOutcome(true);
+        setError("Could not reach the server. Tap Confirm again: it will not send twice. Or check the Recoveries list.");
       }
     });
   }
@@ -173,6 +188,10 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
               <dd className="font-semibold text-accent-ink">{formatItems(selectedItems)}</dd>
             </div>
             <div>
+              <dt className="text-[13px] text-muted-ink">Why they called</dt>
+              <dd>{reason ? REASON_LABELS[reason] : ""}</dd>
+            </div>
+            <div>
               <dt className="text-[13px] text-muted-ink">Order number</dt>
               <dd>{orderNumber.trim()}</dd>
             </div>
@@ -185,6 +204,14 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
             <div>
               <dt className="text-[13px] text-muted-ink">They will be sent</dt>
               <dd>
+                {path === "spotlight" ? (
+                  <p className="font-semibold">
+                    Chick-fil-A app guest: a message saying their reward comes within {SPOTLIGHT_PROMISE_HOURS} hours.
+                    No code. The overseer is told to send it.
+                  </p>
+                ) : (
+                  <p className="font-semibold">A code they bring in with their receipt.</p>
+                )}
                 <p>Email to {email}</p>
                 {phone ? (
                   <p>{smsConsent ? `Text to ${guestPhone.trim()}` : "No text (guest did not agree to one)"}</p>
@@ -198,20 +225,23 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
             </p>
           )}
           <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                if (attempted.current) {
-                  attempted.current = false;
-                  setSubmissionId(crypto.randomUUID());
-                }
-                setStep("edit");
-              }}
-              className="min-h-11 flex-1 rounded-lg border border-border px-4 text-base font-semibold text-ink disabled:opacity-50"
-            >
-              Back
-            </button>
+            {unknownOutcome ? (
+              <Link
+                href="/guest-recovery"
+                className="flex min-h-11 flex-1 items-center justify-center rounded-lg border border-border px-4 text-base font-semibold text-ink"
+              >
+                Check the list
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setStep("edit")}
+                className="min-h-11 flex-1 rounded-lg border border-border px-4 text-base font-semibold text-ink disabled:opacity-50"
+              >
+                Back
+              </button>
+            )}
             <button
               type="button"
               disabled={pending}
@@ -228,6 +258,56 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
 
   return (
     <form onSubmit={review} className="space-y-4" noValidate>
+      <SectionCard title="Does the guest have the Chick-fil-A app?">
+        <div role="radiogroup" aria-label="Does the guest have the Chick-fil-A app?" className="grid gap-2">
+          {(
+            [
+              ["standard", "No app", "We email and text them a code to bring in with their receipt."],
+              [
+                "spotlight",
+                "Has the Chick-fil-A app",
+                `We tell them a reward comes within ${SPOTLIGHT_PROMISE_HOURS} hours. The overseer sends it. No code.`,
+              ],
+            ] as const
+          ).map(([value, title, help]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={path === value}
+              onClick={() => setPath(value)}
+              className={cn(
+                "min-h-14 rounded-xl border px-4 py-3 text-left",
+                path === value ? "border-accent bg-accent-soft" : "border-border bg-card",
+              )}
+            >
+              <span className="block text-[16px] font-semibold text-ink">{title}</span>
+              <span className="block text-[13px] text-muted-ink">{help}</span>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Why did they call?">
+        <div role="radiogroup" aria-label="Why did they call?" className="flex flex-wrap gap-2">
+          {REASONS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={reason === value}
+              onClick={() => setReason(value)}
+              className={cn(
+                "min-h-11 rounded-full border px-4 text-[15px] font-semibold",
+                reason === value ? "border-accent bg-accent text-white" : "border-border bg-card text-ink",
+              )}
+            >
+              {REASON_LABELS[value]}
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
       <SectionCard title="Guest">
         <div className="space-y-3">
           <div>

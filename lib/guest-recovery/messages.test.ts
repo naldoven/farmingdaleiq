@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildEmail,
   buildSms,
+  buildSpotlightEmail,
+  buildSpotlightSms,
   firstNameOf,
   formatItems,
   recoveryLink,
@@ -96,5 +98,62 @@ describe("buildSms", () => {
   it("stays a reasonable length even with a long list", () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ name: `Item number ${i} with a long name`, qty: 1 }));
     expect(buildSms({ ...base, items: many }).length).toBeLessThanOrEqual(480);
+  });
+});
+
+describe("expiry line", () => {
+  it("tells the guest how long the code is good for, in the email, the text and the page-ready copy", () => {
+    const withDate = { ...base, goodUntil: "Good until Feb 1, 2027" };
+    expect(buildEmail(withDate).text).toContain("Good until Feb 1, 2027");
+    expect(buildEmail(withDate).html).toContain("Good until Feb 1, 2027");
+    expect(buildSms(withDate)).toContain("Good until Feb 1, 2027");
+  });
+
+  it("leaves it out when no date is given", () => {
+    expect(buildEmail(base).text).not.toMatch(/Good until/);
+  });
+
+  it("keeps the text under the length cap with a long list and a date", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ name: `Item number ${i} with a long name`, qty: 1 }));
+    expect(buildSms({ ...base, items: many, goodUntil: "Good until Feb 1, 2027" }).length).toBeLessThanOrEqual(480);
+  });
+});
+
+describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
+  const spot = { guestName: "Nolan Patrick", orderNumber: "8407578", items };
+
+  it("promise a reward within 48 hours, name the items and order, and carry no link or QR", () => {
+    const email = buildSpotlightEmail(spot);
+    const sms = buildSpotlightSms(spot);
+    for (const part of [email.text, email.html, sms]) {
+      expect(part).toContain("Nolan");
+      expect(part).toMatch(/within 48 hours/);
+      expect(part).not.toMatch(/https?:\/\//);
+      expect(part).not.toContain("cid:");
+    }
+    expect(email.text).toContain("8407578");
+    expect(email.text).toContain("2 x Medium Mac & Cheese");
+    expect(email.html).not.toContain("<img");
+    expect(sms).toMatch(/Reply STOP to opt out/);
+    expect(sms).toContain("Chick-fil-A Farmingdale");
+  });
+
+  it("escape what the leader typed", () => {
+    const email = buildSpotlightEmail({ ...spot, guestName: "<script>x</script>", items: [{ name: "<b>y</b>", qty: 1 }] });
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).not.toContain("<b>y</b>");
+  });
+
+  it("follow the voice rules", () => {
+    const email = buildSpotlightEmail(spot);
+    for (const part of [email.subject, email.html, email.text, buildSpotlightSms(spot)]) {
+      expect(part).not.toContain("\u2014");
+      expect(part).not.toMatch(/\b(unlock|leverage|delve)\b/i);
+    }
+  });
+
+  it("keep the text short even with a long list", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ name: `Item number ${i} with a long name`, qty: 1 }));
+    expect(buildSpotlightSms({ ...spot, items: many }).length).toBeLessThanOrEqual(480);
   });
 });

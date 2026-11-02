@@ -1,4 +1,10 @@
-import { FAST_SEND_MINUTES, STALE_OWED_DAYS } from "@/app/(app)/guest-recovery/constants";
+import {
+  FAST_SEND_MINUTES,
+  NO_REASON_LABEL,
+  REASON_LABELS,
+  STALE_OWED_DAYS,
+  type Reason,
+} from "@/app/(app)/guest-recovery/constants";
 import { STORE_TIME_ZONE, storeLocalDate } from "@/lib/time";
 
 /**
@@ -15,6 +21,8 @@ export interface ReportRow {
   loggedBy: string;
   loggedByName: string;
   items: { family: string; qty: number }[];
+  /** Null for recoveries logged before reasons existed. */
+  reason: string | null;
   /** Earliest sent_at of any successful send. */
   firstSendAt: string | null;
   emailSent: boolean;
@@ -40,6 +48,9 @@ export interface GuestRecoveryReport {
   byMonth: { month: string; count: number }[];
   missingItems: { family: string; recoveries: number }[];
   totalRecoveries: number;
+  /** Void recoveries count here, like missingItems. Key "none" = not recorded. */
+  reasons: { reason: string; label: string; recoveries: number }[];
+  repeatGuests: { recoveries: number; guests: number } | null;
   byDaypart: { name: string; count: number }[];
   byWeekday: { day: string; count: number }[];
   loggedBy: { name: string; count: number }[];
@@ -111,7 +122,12 @@ function median(values: number[]): number | null {
 
 export function buildGuestRecoveryReport(
   rows: ReportRow[],
-  opts: { month: string; now: Date; dayParts: DayPartInput[] },
+  opts: {
+    month: string;
+    now: Date;
+    dayParts: DayPartInput[];
+    repeat?: { recoveries: number; guests: number } | null;
+  },
 ): GuestRecoveryReport {
   const { month, now } = opts;
   const monthOfRow = new Map(rows.map((r) => [r.id, monthOf(r.createdAt)]));
@@ -154,6 +170,19 @@ export function buildGuestRecoveryReport(
     .map(([family, recoveries]) => ({ family, recoveries }))
     .sort((a, b) => b.recoveries - a.recoveries || a.family.localeCompare(b.family));
 
+  const reasonCounts = new Map<string, number>();
+  for (const r of inMonth) {
+    const key = r.reason ?? "none";
+    reasonCounts.set(key, (reasonCounts.get(key) ?? 0) + 1);
+  }
+  const reasons = [...reasonCounts]
+    .map(([reason, recoveries]) => ({
+      reason,
+      label: reason === "none" ? NO_REASON_LABEL : (REASON_LABELS[reason as Reason] ?? reason),
+      recoveries,
+    }))
+    .sort((a, b) => b.recoveries - a.recoveries || a.label.localeCompare(b.label));
+
   const partsSorted = [...opts.dayParts].sort((a, b) => a.sort - b.sort);
   const partCounts = partsSorted.map(() => 0);
   let other = 0;
@@ -190,6 +219,8 @@ export function buildGuestRecoveryReport(
     byMonth,
     missingItems,
     totalRecoveries: inMonth.length,
+    reasons,
+    repeatGuests: opts.repeat ?? null,
     byDaypart,
     byWeekday: WEEKDAYS.map((day, i) => ({ day, count: weekdayCounts[i] })),
     loggedBy: [...loggerCounts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),

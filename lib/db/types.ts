@@ -2079,6 +2079,11 @@ export type Database = {
       }
       guest_recoveries: {
         Row: {
+          assigned_to: string | null
+          switched_at: string | null
+          expires_at: string
+          path: string
+          reason: string | null
           created_at: string
           given_at: string | null
           given_by: string | null
@@ -2097,6 +2102,11 @@ export type Database = {
           voided_by: string | null
         }
         Insert: {
+          assigned_to?: string | null
+          switched_at?: string | null
+          expires_at?: string
+          path?: string
+          reason?: string | null
           created_at?: string
           given_at?: string | null
           given_by?: string | null
@@ -2115,6 +2125,11 @@ export type Database = {
           voided_by?: string | null
         }
         Update: {
+          assigned_to?: string | null
+          switched_at?: string | null
+          expires_at?: string
+          path?: string
+          reason?: string | null
           created_at?: string
           given_at?: string | null
           given_by?: string | null
@@ -2183,6 +2198,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      guest_recovery_settings: {
+        Row: {
+          backup_id: string | null
+          expiry_days: number
+          id: boolean
+          overseer_id: string | null
+          overseer_off: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          backup_id?: string | null
+          expiry_days?: number
+          id?: boolean
+          overseer_id?: string | null
+          overseer_off?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          backup_id?: string | null
+          expiry_days?: number
+          id?: boolean
+          overseer_id?: string | null
+          overseer_off?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       guest_recovery_sends: {
         Row: {
@@ -4587,19 +4632,36 @@ export type Database = {
         Returns: string | null
       }
       give_guest_recovery: { Args: { p_id: string }; Returns: string }
+      assign_guest_recovery: { Args: { p_id: string; p_assignee: string }; Returns: string }
+      guest_recovery_prior_counts: {
+        Args: { p_ids: string[] }
+        Returns: { out_id: string; out_prior: number }[]
+      }
+      guest_recovery_repeat_summary: {
+        Args: { p_from: string; p_to: string }
+        Returns: { repeat_recoveries: number; repeat_guests: number }[]
+      }
       log_guest_recovery: {
         Args: {
           p_submission_id: string
           p_guest_name: string
-          p_guest_email: string | null
-          p_guest_phone: string | null
-          p_order_number: string | null
+          p_guest_email: string
+          p_guest_phone: string
+          p_order_number: string
           p_note: string | null
           p_sms_consent: boolean
           p_items: Json
+          p_reason: string
+          p_path: string
         }
-        Returns: { out_id: string; out_created: boolean }[]
+        Returns: { out_id: string; out_created: boolean; out_assigned_to: string | null }[]
       }
+      save_guest_recovery_settings: {
+        Args: { p_expiry_days: number; p_overseer: string | null; p_backup: string | null }
+        Returns: string
+      }
+      set_guest_recovery_overseer_off: { Args: { p_off: boolean }; Returns: string }
+      switch_guest_recovery_to_standard: { Args: { p_id: string }; Returns: string }
       void_guest_recovery: { Args: { p_id: string }; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
       reject_cleaning_assignment: {

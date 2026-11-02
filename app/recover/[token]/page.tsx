@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
-import { STORE_NAME, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import { SPOTLIGHT_PROMISE_HOURS, STORE_NAME, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { hasPermission } from "@/lib/auth/permissions";
 import { firstNameOf, formatItems, recoveryLink } from "@/lib/guest-recovery/messages";
@@ -40,7 +41,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
   const service = createServiceRoleClient();
   const { data: recovery } = await service
     .from("guest_recoveries")
-    .select("id, guest_name, status, created_at, given_at")
+    .select("id, guest_name, status, created_at, given_at, path, expires_at")
     .eq("token", token)
     .maybeSingle();
   if (!recovery) notFound();
@@ -52,9 +53,11 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
     .order("name");
 
   const baseUrl = await resolveBaseUrl();
-  const svg = baseUrl ? await qrSvg(recoveryLink(baseUrl, token)) : null;
+  const svg = baseUrl && recovery.path !== "spotlight" ? await qrSvg(recoveryLink(baseUrl, token)) : null;
 
   const owed = recovery.status === "owed";
+  const spotlight = recovery.path === "spotlight";
+  const expired = owed && isExpired(recovery.expires_at);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-[480px] flex-col gap-4 bg-canvas p-4 pt-8">
@@ -63,8 +66,26 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
         Hi {firstNameOf(recovery.guest_name)}, thank you for telling us about your order.
       </h1>
 
-      {owed ? (
+      {owed && spotlight ? (
+        <section className="rounded-xl bg-card p-4 shadow-card">
+          <p className="text-[13px] text-muted-ink">We owe you</p>
+          <p className="mt-1 text-[20px] font-bold text-accent-ink">
+            {formatItems((items ?? []).map((i) => ({ name: i.name, qty: i.qty })))}
+          </p>
+          <p className="mt-3 text-[15px] text-ink">
+            A team member is sending your reward. You will receive it within {SPOTLIGHT_PROMISE_HOURS} hours.
+          </p>
+        </section>
+      ) : owed ? (
         <>
+          {expired && (
+            <div role="alert" className="rounded-xl border-2 border-danger bg-danger-soft p-4 text-center">
+              <p className="text-[22px] font-extrabold tracking-wide text-danger">This code has expired</p>
+              <p className="mt-1 text-[14px] text-ink">
+                {expiryLine(recovery.expires_at)}. Ask a team member, they can still help.
+              </p>
+            </div>
+          )}
           <section className="rounded-xl bg-card p-4 shadow-card">
             <p className="text-[13px] text-muted-ink">We owe you</p>
             <p className="mt-1 text-[20px] font-bold text-accent-ink">
@@ -73,6 +94,11 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
             <p className="mt-3 text-[15px] text-ink">
               On your next visit, bring your receipt and show this page to any team member.
             </p>
+            {!expired && recovery.expires_at && (
+              <p className="mt-2 text-[14px] font-semibold text-ink">
+                Good until {formatStoreDate(recovery.expires_at)}
+              </p>
+            )}
           </section>
 
           {svg && (

@@ -21,14 +21,15 @@ function row(over: Partial<ReportRow> = {}): ReportRow {
     loggedBy: "u1",
     loggedByName: "Ann",
     items: [{ family: "Nuggets", qty: 1 }],
+    reason: null,
     firstSendAt: null,
     emailSent: false,
     smsSent: false,
     ...over,
   };
 }
-const run = (rows: ReportRow[], month = "2026-11") =>
-  buildGuestRecoveryReport(rows, { month, now: NOW, dayParts: DAY_PARTS });
+const run = (rows: ReportRow[], month = "2026-11", repeat?: { recoveries: number; guests: number } | null) =>
+  buildGuestRecoveryReport(rows, { month, now: NOW, dayParts: DAY_PARTS, repeat });
 const afterMin = (min: number) => new Date(BASE + min * 60000).toISOString();
 
 describe("buildGuestRecoveryReport", () => {
@@ -178,5 +179,37 @@ describe("buildGuestRecoveryReport", () => {
     ]);
     expect(r.followThrough.owedOverSevenDays).toBe(2);
     expect(r.followThrough.stillOwed).toBe(1);
+  });
+
+  it("groups reasons, counts nulls as Not recorded, sorts by count then label", () => {
+    const r = run([
+      row({ reason: "wrong_item" }),
+      row({ reason: "missing_item" }),
+      row({ reason: "missing_item" }),
+      row({ reason: "quality" }),
+      row({ reason: null }),
+      row({ reason: null }),
+      row({ reason: "missing_item", status: "void" }),
+      row({ reason: "too_slow", createdAt: "2026-10-10T16:00:00Z" }), // other month
+    ]);
+    expect(r.reasons).toEqual([
+      { reason: "missing_item", label: "Missing item", recoveries: 3 },
+      { reason: "none", label: "Not recorded", recoveries: 2 },
+      { reason: "quality", label: "Quality problem", recoveries: 1 },
+      { reason: "wrong_item", label: "Wrong item", recoveries: 1 },
+    ]);
+  });
+
+  it("reasons are empty for an empty month and use store time for the month edge", () => {
+    expect(run([]).reasons).toEqual([]);
+    const late = row({ createdAt: "2027-01-01T04:59:00Z", reason: "other" });
+    expect(run([late], "2026-12").reasons).toEqual([{ reason: "other", label: "Other", recoveries: 1 }]);
+    expect(run([late], "2027-01").reasons).toEqual([]);
+  });
+
+  it("passes repeat guests through, or null when not supplied", () => {
+    expect(run([], "2026-11", { recoveries: 4, guests: 2 }).repeatGuests).toEqual({ recoveries: 4, guests: 2 });
+    expect(run([]).repeatGuests).toBeNull();
+    expect(run([], "2026-11", null).repeatGuests).toBeNull();
   });
 });

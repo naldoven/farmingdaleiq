@@ -413,6 +413,22 @@ hands over what was missed.
   the app opens `/recover/<token>` itself, so a QR holding some other address goes nowhere.
   On the Menu hub Guest Recovery is its own section (Recoveries, Log a missing order, Scan a
   code, Stats, Recovery menu), like Cleaning and Maintenance.
+- **Reason and path** (required on the log form): one tap for why they called (Missing item,
+  Wrong item, Quality problem, Took too long, Other), and whether the guest has the Chick-fil-A
+  app. No app is the normal flow. App guests ("Spotlight") get an instant email and text saying
+  their reward comes within 48 hours, with no QR; their recovery is assigned to the overseer
+  (the backup while the overseer is marked off), who is told in-app with no guest details and
+  sends the reward by hand. If the guest's app account does not come up, one tap switches them
+  to the normal email, text and QR (sent once, own claim kind, fresh expiry). The assignee can
+  tag another leader in.
+- **Expiry**: each recovery stores `expires_at` (logged time plus the expiry setting, default
+  90 days; changing the setting affects new recoveries only). The guest page and the messages
+  show the date. An expired code never errors: the guest page and the redeem screen still show
+  the items under a large red EXPIRED banner, and Given takes a second confirming tap.
+- **Settings** (`/guest-recovery/settings`, `guest_recovery.manage`): expiry days, overseer,
+  backup. The overseer can mark themselves off from the list screen.
+- **Repeat guests**: another recovery for the same phone or email within 90 days. Cards show
+  "2nd recovery in 90 days"; Stats shows how many recoveries were repeats and how many guests.
 - **Redeem** (`/guest-recovery/<id>`): guest, items, receipt reminder, Given and Void.
   Given and Void only move a recovery that is still owed, so a second scan or a double tap
   changes nothing and says "already handed over".
@@ -570,6 +586,9 @@ Guest Recovery:
 - `guest_recoveries` (id, submission_id unique, token unique, guest_name, guest_email, guest_phone, order_number, note, status: owed|given|void, sms_consent, logged_by, created_at, given_at, given_by, voided_at, voided_by)
 - `guest_recovery_items` (id, recovery_id, menu_item_id, name, family, qty): name and family are snapshots so a renamed menu item does not rewrite history
 - `guest_recovery_sends` (id, recovery_id, channel: email|sms, kind: initial|resend, status: sending|sent|failed|skipped, error, sent_at, created_at): written only by the server; one initial send per channel
+- `guest_recoveries` also has: reason (missing_item|wrong_item|quality|too_slow|other, null on old rows), path (standard|spotlight), expires_at, assigned_to (the Spotlight owner)
+- `guest_recovery_settings` (id, expiry_days, overseer_id, backup_id, overseer_off, updated_by, updated_at): one row, changed only through database functions
+- `guest_recovery_sends.kind` also allows `switch` (a Spotlight guest moved to the normal message, once)
 - `guest_sms_optouts` (phone, opted_out_at): numbers the carrier reported as opted out; never texted again
 - `cleaning_slot_caps` (weekday 1-6, half: am|pm, max_variables, default 2)
 - `cleaning_weeks` (id, week_start unique Monday, build_started_at, built_at, published_at)
@@ -660,6 +679,7 @@ Discord:
 | `/guest-recovery/scan` | Scan a guest's QR in the app, or paste their link or code |
 | `/guest-recovery/[id]` | Redeem screen: items, receipt reminder, Given and Void; resend |
 | `/guest-recovery/reporting` | Guest Recovery stats (`guest_recovery.manage`) |
+| `/guest-recovery/settings` | Expiry days, Spotlight overseer and backup (`guest_recovery.manage`) |
 | `/guest-recovery/menu` | The recovery menu: add and hide items (`guest_recovery.manage`) |
 | `/recover/[token]` | Public guest page: items and QR code; leaders are sent to the redeem screen |
 | `/cleaning/items` | Cleaning master list by zone with due dots; planners review walkthrough drafts |
