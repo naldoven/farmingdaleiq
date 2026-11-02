@@ -58,6 +58,10 @@ const SERVICE_ROLE_ONLY_RPCS: Record<string, string> = {
   // Marks every open clean on a past day missed and carries it over; only the
   // hourly job in app/api/cron/cleaning may decide a day is over.
   close_cleaning_days: "cleaning day-end close, granted to service_role only",
+  // Claims the once-only right to send a guest's email or text. The server calls
+  // it after checking the leader's permission; a signed-in user must not be able
+  // to burn a recovery's initial send from the browser.
+  claim_guest_recovery_send: "guest recovery send claim, granted to service_role only",
 };
 
 function readMigrations(): MigrationFile[] {

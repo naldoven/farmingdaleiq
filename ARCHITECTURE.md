@@ -390,6 +390,37 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
   who got the last ping before each, and the list of escalations. It is for
   review with leaders; nothing is penalized automatically.
 
+### Guest Recovery (added 2026-11-02, modeled on the Avondale Guest Recovery screen)
+When a guest calls about a wrong or missing order, a leader logs it here and the guest
+gets a link and QR code by email and text. On their next visit a leader scans the QR and
+hands over what was missed.
+- **Log** (`/guest-recovery/new`, `guest_recovery.log`): guest name, phone, email (at
+  least one), order number, a note, a consent tick ("guest OK'd a text", shown when a phone is given; email needs no tick),
+  and the missing items picked from the store's recovery menu (a free-text "other" line
+  covers anything not listed). Confirming saves the recovery and sends in the same step.
+- **Send**: email and text each go once per recovery (claim-before-send, a send log row
+  per attempt). A failed or unconfigured channel shows on the card with Resend; the link
+  can also be copied. Texting stays off until `GUEST_SMS_ENABLED` is set (carrier
+  registration takes days); until then the card offers a copy-the-text button.
+  No promos in these messages. First text names the store and says "Reply STOP to opt out".
+- **The link** (`/recover/<token>`, public): a random 64-character token, never an id.
+  Shows the guest's first name, the items and "This store only, receipt required". A signed-in
+  leader who opens it is sent to the leader screen instead. Nothing else about the recovery
+  or other guests is readable without signing in.
+- **Redeem** (`/guest-recovery/<id>`): guest, items, receipt reminder, Given and Void.
+  Given and Void only move a recovery that is still owed, so a second scan or a double tap
+  changes nothing and says "already handed over".
+- **List** (`/guest-recovery`): still owed first (oldest on top), recently given and voided
+  below, search by name or order number.
+- **Reporting** (`/guest-recovery/reporting`, `guest_recovery.manage`): by month, recoveries,
+  still owed, picked up %, voided, typical time to send and to pick up; items most often
+  missing (grouped by family, so all sizes of Mac & Cheese count together); daypart and
+  weekday; logged by leader; follow-through (sent within 15 minutes, still owed over 7 days).
+- **Menu** (`/guest-recovery/menu`, `guest_recovery.manage`): the recovery menu is its own
+  list, seeded with the Chick-fil-A menu, separate from the catering menu. Add and hide items.
+- Privacy: guest email and phone are only read by signed-in holders of `guest_recovery.log`.
+  They never go to Discord, logs, URLs or event payloads. Guest recoveries post no events.
+
 ### Reporting
 - **Store dashboard**: at-a-glance action items and insights (overdue to-dos, flagged
   checklist answers, waste spikes, pending reward claims, employees near disciplinary
@@ -527,6 +558,13 @@ Cleaning:
 - `cleaning_items` (id, zone_id, name, kind: constant|variable, days_of_week int[], half: am|pm|either, interval_weeks, start_on, if_needed, note, status: draft|active|retired, created_by, approved_by, approved_at, sort)
 - `cleaning_item_photos` (id = the phone's photo id, item_id, storage_path, markup jsonb, kind, capture_source: live|file, captured_at, created_at, taken_by)
 - `cleaning_coordinators` (user_id, added_by, added_at): the planning tag
+
+Guest Recovery:
+- `recovery_menu_items` (id, name, family, category, sort, active): the recovery menu; `family` groups sizes for reporting
+- `guest_recoveries` (id, submission_id unique, token unique, guest_name, guest_email, guest_phone, order_number, note, status: owed|given|void, sms_consent, logged_by, created_at, given_at, given_by, voided_at, voided_by)
+- `guest_recovery_items` (id, recovery_id, menu_item_id, name, family, qty): name and family are snapshots so a renamed menu item does not rewrite history
+- `guest_recovery_sends` (id, recovery_id, channel: email|sms, kind: initial|resend, status: sending|sent|failed|skipped, error, sent_at, created_at): written only by the server; one initial send per channel
+- `guest_sms_optouts` (phone, opted_out_at): numbers the carrier reported as opted out; never texted again
 - `cleaning_slot_caps` (weekday 1-6, half: am|pm, max_variables, default 2)
 - `cleaning_weeks` (id, week_start unique Monday, build_started_at, built_at, published_at)
 - `cleaning_assignments` (id, week_start, item_id, date, half: am|pm, origin: constant|auto|manual|carry_over|redo, carried_from_id, status: planned|done|not_needed|skipped|missed, skip_reason, owner_user_id, completed_by, completed_at, photo_path, rejected_by, rejected_at, reject_note): unique (item_id, date, half)
@@ -611,6 +649,12 @@ Discord:
 | `/cleaning/settings` | Slot caps, zones on the board, coordinator tags (planners) |
 | `/cleaning/finds` | Found-and-fixed log: post a photo, area and note; planners add a find to the master list |
 | `/cleaning/stats` | Cleaning metrics by month: shift leaders, areas, most overdue, store trend (leaders) |
+| `/guest-recovery` | Guest Recovery list: still owed, recently handed over; search |
+| `/guest-recovery/new` | Log a guest's missing items and send them the link and QR |
+| `/guest-recovery/[id]` | Redeem screen: items, receipt reminder, Given and Void; resend |
+| `/guest-recovery/reporting` | Guest Recovery stats (`guest_recovery.manage`) |
+| `/guest-recovery/menu` | The recovery menu: add and hide items (`guest_recovery.manage`) |
+| `/recover/[token]` | Public guest page: items and QR code; leaders are sent to the redeem screen |
 | `/cleaning/items` | Cleaning master list by zone with due dots; planners review walkthrough drafts |
 | `/cleaning/walkthrough` | Walkthrough camera: photograph items, tag zone and cadence |
 | `/setups` | Setup board (visual layout or list) by date/day-part; auto-place suggestions; create/assign/post; shift notes |

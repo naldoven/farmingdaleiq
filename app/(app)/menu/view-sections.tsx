@@ -19,6 +19,7 @@ import {
   Users,
   UtensilsCrossed,
   SprayCan,
+  HeartHandshake,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -54,6 +55,7 @@ const VIEW_ICONS: Record<MenuViewIconName, LucideIcon> = {
   maintenance: Wrench,
   cleaning: SprayCan,
   catering: UtensilsCrossed,
+  "guest-recovery": HeartHandshake,
   reporting: BarChart3,
   notifications: Bell,
 };

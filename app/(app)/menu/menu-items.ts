@@ -69,6 +69,7 @@ export type MenuViewIconName =
   | "maintenance"
   | "cleaning"
   | "catering"
+  | "guest-recovery"
   | "reporting"
   | "notifications";
 
@@ -181,6 +182,7 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "maintenance", label: "Maintenance", href: "/maintenance", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
   { key: "equipment", label: "Equipment", href: "/maintenance/equipment", icon: "maintenance", iconTone: "neutral", section: "Maintenance" },
   { key: "catering", label: "Catering", href: "/catering", icon: "catering", iconTone: "neutral", section: "Daily Ops" },
+  { key: "guest-recovery", label: "Guest Recovery", href: "/guest-recovery", icon: "guest-recovery", iconTone: "neutral", section: "Daily Ops" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
 ];

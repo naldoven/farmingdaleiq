@@ -91,6 +91,7 @@ describe("visibleViewItems", () => {
       "vendors.view": true,
       "maintenance.request": true,
       "catering.view": true,
+      "guest_recovery.log": true,
       "reports.view": true,
       "notifications.view": true,
     } as const;
@@ -134,6 +135,7 @@ describe("menu data", () => {
       "maintenance",
       "equipment",
       "catering",
+      "guest-recovery",
       "reporting",
       "notifications",
     ]);
@@ -149,6 +151,10 @@ describe("menu data", () => {
     expect(VIEW_ITEMS.find((item) => item.key === "catering")?.section).toBe(
       "Daily Ops",
     );
+  });
+
+  it("puts Guest Recovery with the daily operating tools", () => {
+    expect(VIEW_ITEMS.find((item) => item.key === "guest-recovery")?.section).toBe("Daily Ops");
   });
 
   it("puts every Cleaning screen under its own Cleaning section with the same icon", () => {
