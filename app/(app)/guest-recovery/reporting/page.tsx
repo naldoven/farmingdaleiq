@@ -4,7 +4,7 @@ import { buildGuestRecoveryReport, type ReportRow } from "@/app/(app)/guest-reco
 import { ReportingView } from "@/components/guest-recovery/reporting-view";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { storeLocalDate } from "@/lib/time";
+import { storeDateTimeInputToIso, storeLocalDate } from "@/lib/time";
 
 /**
  * /guest-recovery/reporting (ARCHITECTURE.md "Guest Recovery"). Leaders with
@@ -53,21 +53,27 @@ export default async function GuestRecoveryReportingPage({
   since.setUTCDate(since.getUTCDate() - 1);
 
   const supabase = await createClient();
-  const [recoveriesRes, oldOwedRes, dayPartsRes] = await Promise.all([
+  // First instant of the chosen month and of the next, in store time (DST-safe).
+  const fromIso = storeDateTimeInputToIso(`${month}-01T00:00`);
+  const toIso = storeDateTimeInputToIso(`${shiftMonth(month, 1)}-01T00:00`);
+  const [recoveriesRes, oldOwedRes, dayPartsRes, repeatRes] = await Promise.all([
     supabase
       .from("guest_recoveries")
-      .select("id, status, created_at, given_at, logged_by")
+      .select("id, status, created_at, given_at, logged_by, reason")
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
       .limit(ROW_CAP),
     // Anything still owed from before the window counts toward the follow-up warning.
     supabase
       .from("guest_recoveries")
-      .select("id, status, created_at, given_at, logged_by")
+      .select("id, status, created_at, given_at, logged_by, reason")
       .eq("status", "owed")
       .lt("created_at", since.toISOString())
       .limit(ROW_CAP),
     supabase.from("day_parts").select("name, start_time, end_time, sort").order("sort"),
+    fromIso && toIso
+      ? supabase.rpc("guest_recovery_repeat_summary", { p_from: fromIso, p_to: toIso })
+      : Promise.resolve(null),
   ]);
   if (recoveriesRes.error || oldOwedRes.error || dayPartsRes.error) {
     throw new Error("Could not load guest recovery stats");
@@ -124,6 +130,7 @@ export default async function GuestRecoveryReportingPage({
       givenAt: r.given_at,
       loggedBy: r.logged_by,
       loggedByName: names.get(r.logged_by) ?? "Former team member",
+      reason: r.reason ?? null,
       items: itemsByRecovery.get(r.id) ?? [],
       firstSendAt: sends?.first ?? null,
       emailSent: sends?.email ?? false,
@@ -131,7 +138,13 @@ export default async function GuestRecoveryReportingPage({
     };
   });
 
-  const report = buildGuestRecoveryReport(rows, { month, now, dayParts: dayPartsRes.data ?? [] });
+  // A failed summary only hides the repeat line; it never fails the page.
+  const repeatRow = repeatRes && !repeatRes.error ? repeatRes.data?.[0] : undefined;
+  const repeat = repeatRow
+    ? { recoveries: repeatRow.repeat_recoveries, guests: repeatRow.repeat_guests }
+    : null;
+
+  const report = buildGuestRecoveryReport(rows, { month, now, dayParts: dayPartsRes.data ?? [], repeat });
 
   return (
     <ReportingView

@@ -1,5 +1,12 @@
 import type { SendChannel } from "@/app/(app)/guest-recovery/constants";
-import { buildEmail, buildSms, recoveryLink, type MessageItem } from "@/lib/guest-recovery/messages";
+import {
+  buildEmail,
+  buildSms,
+  buildSpotlightEmail,
+  buildSpotlightSms,
+  recoveryLink,
+  type MessageItem,
+} from "@/lib/guest-recovery/messages";
 
 /**
  * The send rules for a guest's email and text, with every outside call passed
@@ -27,6 +34,10 @@ export interface SendRecovery {
   guestPhone: string | null;
   orderNumber: string | null;
   smsConsent: boolean;
+  /** spotlight guests get the short "reward within 48 hours" message and no link or QR. */
+  path: "standard" | "spotlight";
+  /** "Good until Feb 1, 2027", added to the standard message. */
+  goodUntil?: string;
   items: MessageItem[];
 }
 
@@ -40,7 +51,7 @@ export interface SendDeps {
   emailConfigured: boolean;
   smsConfigured: boolean;
   /** Returns the new send row's id, or null when this send must not go out. */
-  claim(recoveryId: string, channel: SendChannel, kind: "initial" | "resend"): Promise<string | null>;
+  claim(recoveryId: string, channel: SendChannel, kind: SendKind): Promise<string | null>;
   finish(
     sendId: string,
     patch: { status: "sent" | "failed" | "skipped"; error?: string | null; sentAt?: string },
@@ -59,6 +70,9 @@ export interface SendDeps {
   }): Promise<EmailResult>;
   sendSms(args: { to: string; body: string; idempotencyKey: string }): Promise<SmsResult>;
 }
+
+/** switch: a Spotlight guest whose app account did not come up gets the normal message, once. */
+export type SendKind = "initial" | "resend" | "switch";
 
 export type SendOutcome = {
   channel: SendChannel;
@@ -90,13 +104,17 @@ async function finishQuietly(deps: SendDeps, sendId: string, patch: Parameters<S
 async function sendOne(
   recovery: SendRecovery,
   channel: SendChannel,
-  kind: "initial" | "resend",
+  kind: SendKind,
   deps: SendDeps,
 ): Promise<SendOutcome> {
   const to = channel === "email" ? recovery.guestEmail : recovery.guestPhone;
   if (!to) return { channel, result: "skipped", reason: channel === "email" ? "no_email" : "no_phone" };
   if (channel === "sms" && !recovery.smsConsent) return { channel, result: "skipped", reason: "no_consent" };
-  if (!deps.baseUrl) return { channel, result: "failed", reason: "App address is not set up (NEXT_PUBLIC_APP_URL)." };
+  const spotlight = recovery.path === "spotlight";
+  // A Spotlight message has no link, so it does not need the app address.
+  if (!spotlight && !deps.baseUrl) {
+    return { channel, result: "failed", reason: "App address is not set up (NEXT_PUBLIC_APP_URL)." };
+  }
 
   let sendId: string | null;
   try {
@@ -104,7 +122,7 @@ async function sendOne(
   } catch (error) {
     return { channel, result: "failed", reason: safeError(error instanceof Error ? error.message : "Could not start the send.") };
   }
-  if (!sendId) return { channel, result: kind === "initial" ? "already_sent" : "too_soon" };
+  if (!sendId) return { channel, result: kind === "resend" ? "too_soon" : "already_sent" };
 
   const configured = channel === "email" ? deps.emailConfigured : deps.smsConfigured;
   if (channel === "sms" && !deps.smsEnabled) {
@@ -133,18 +151,28 @@ async function sendOne(
     }
   }
 
-  const link = recoveryLink(deps.baseUrl, recovery.token);
-  const message = { guestName: recovery.guestName, orderNumber: recovery.orderNumber, items: recovery.items, link };
+  const link = spotlight || !deps.baseUrl ? "" : recoveryLink(deps.baseUrl, recovery.token);
+  const message = {
+    guestName: recovery.guestName,
+    orderNumber: recovery.orderNumber,
+    items: recovery.items,
+    link,
+    goodUntil: recovery.goodUntil,
+  };
 
   try {
     if (channel === "email") {
       let qr: Buffer | null = null;
-      try {
-        qr = await deps.qrPng(link);
-      } catch {
-        qr = null; // the email still carries the button and the link
+      if (!spotlight) {
+        try {
+          qr = await deps.qrPng(link);
+        } catch {
+          qr = null; // the email still carries the button and the link
+        }
       }
-      const built = buildEmail({ ...message, qrContentId: qr ? QR_CONTENT_ID : undefined });
+      const built = spotlight
+        ? buildSpotlightEmail(message)
+        : buildEmail({ ...message, qrContentId: qr ? QR_CONTENT_ID : undefined });
       const result = await deps.sendEmail({
         to,
         subject: built.subject,
@@ -163,7 +191,8 @@ async function sendOne(
       return { channel, result: "failed", reason: error };
     }
 
-    const result = await deps.sendSms({ to, body: buildSms(message), idempotencyKey: sendId });
+    const body = spotlight ? buildSpotlightSms(message) : buildSms(message);
+    const result = await deps.sendSms({ to, body, idempotencyKey: sendId });
     if (result.ok) {
       await finishQuietly(deps, sendId, { status: "sent", sentAt: new Date().toISOString() });
       return { channel, result: "sent" };
@@ -192,7 +221,7 @@ async function sendOne(
  */
 export async function runSends(
   recovery: SendRecovery,
-  kind: "initial" | "resend",
+  kind: SendKind,
   deps: SendDeps,
   channels: SendChannel[] = ["email", "sms"],
 ): Promise<SendOutcome[]> {

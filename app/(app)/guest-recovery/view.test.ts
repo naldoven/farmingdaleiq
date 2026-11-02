@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { RecoverySendView } from "@/app/(app)/guest-recovery/types";
 import {
+  assigneeLine,
   daysOwed,
+  ordinal,
+  reasonLabel,
+  repeatLabel,
   matchesSearch,
   nothingReachedGuest,
   outcomeMessage,
@@ -103,5 +107,37 @@ describe("matchesSearch", () => {
     expect(matchesSearch(recovery, "8407")).toBe(true);
     expect(matchesSearch(recovery, "zzz")).toBe(false);
     expect(matchesSearch(recovery, "  ")).toBe(true);
+  });
+});
+
+describe("ordinal and repeatLabel", () => {
+  it("writes 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st", () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 103].map(ordinal)).toEqual([
+      "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "103rd",
+    ]);
+  });
+
+  it("flags only guests who have had an earlier recovery in the window", () => {
+    expect(repeatLabel(0)).toBeNull();
+    expect(repeatLabel(1)).toBe("2nd recovery in 90 days");
+    expect(repeatLabel(2)).toBe("3rd recovery in 90 days");
+  });
+});
+
+describe("reasonLabel", () => {
+  it("shows the plain label, and Not recorded for old rows", () => {
+    expect(reasonLabel("wrong_item")).toBe("Wrong item");
+    expect(reasonLabel("too_slow")).toBe("Took too long");
+    expect(reasonLabel(null)).toBe("Not recorded");
+    expect(reasonLabel("something_new")).toBe("Not recorded");
+  });
+});
+
+describe("assigneeLine", () => {
+  it("says who has a Spotlight recovery, and when nobody does", () => {
+    expect(assigneeLine("spotlight", "Ryan", "owed")).toBe("Reward to send: Ryan");
+    expect(assigneeLine("spotlight", null, "owed")).toBe("Reward to send: nobody assigned");
+    expect(assigneeLine("spotlight", "Ryan", "given")).toBeNull();
+    expect(assigneeLine("standard", null, "owed")).toBeNull();
   });
 });

@@ -31,3 +31,35 @@ export const STALE_OWED_DAYS = 7;
 
 /** The store name guests see in the email and the text. */
 export const STORE_NAME = "Chick-fil-A Farmingdale";
+
+/** Why the guest called. One tap on the log form; also what Stats groups by. */
+export const REASONS = ["missing_item", "wrong_item", "quality", "too_slow", "other"] as const;
+export type Reason = (typeof REASONS)[number];
+
+export const REASON_LABELS: Record<Reason, string> = {
+  missing_item: "Missing item",
+  wrong_item: "Wrong item",
+  quality: "Quality problem",
+  too_slow: "Took too long",
+  other: "Other",
+};
+
+/** Recoveries logged before reasons existed carry none. */
+export const NO_REASON_LABEL = "Not recorded";
+
+/**
+ * standard: the guest gets the email, text and QR. spotlight: the guest has the
+ * Chick-fil-A app, gets a short "reward within 48 hours" message instead, and
+ * the overseer sends the reward by hand.
+ */
+export const PATHS = ["standard", "spotlight"] as const;
+export type RecoveryPath = (typeof PATHS)[number];
+
+export const SPOTLIGHT_PROMISE_HOURS = 48;
+
+export const DEFAULT_EXPIRY_DAYS = 90;
+export const MIN_EXPIRY_DAYS = 7;
+export const MAX_EXPIRY_DAYS = 365;
+
+/** A recovery is a repeat when the same phone or email had another one this many days earlier. */
+export const REPEAT_WINDOW_DAYS = 90;

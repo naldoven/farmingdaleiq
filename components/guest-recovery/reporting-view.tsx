@@ -191,6 +191,22 @@ export function ReportingView({
         />
       </SectionCard>
 
+      <SectionCard title="Why guests called">
+        <BarList
+          rows={report.reasons.map((x) => ({ label: x.label, count: x.recoveries }))}
+          empty="No recoveries this month."
+          tone="warning"
+        />
+        {report.repeatGuests ? (
+          <p className="mt-4 border-t border-line pt-3 text-[15px] text-ink">
+            <span className="font-semibold">Repeat guests:</span> {report.repeatGuests.recoveries}{" "}
+            {plural(report.repeatGuests.recoveries, "recovery was a repeat guest", "recoveries were repeat guests")} (
+            {report.repeatGuests.guests} {plural(report.repeatGuests.guests, "guest", "guests")}). A repeat is the same
+            phone or email within 90 days.
+          </p>
+        ) : null}
+      </SectionCard>
+
       <SectionCard title="When it happens">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">

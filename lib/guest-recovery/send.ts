@@ -2,7 +2,8 @@ import type { SendChannel } from "@/app/(app)/guest-recovery/constants";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { qrPng } from "@/lib/guest-recovery/qr";
 import { readConfig, sendGuestEmail, sendTwilioSms } from "@/lib/guest-recovery/providers";
-import { runSends, type SendDeps, type SendOutcome, type SendRecovery } from "@/lib/guest-recovery/send-core";
+import { runSends, type SendDeps, type SendKind, type SendOutcome, type SendRecovery } from "@/lib/guest-recovery/send-core";
+import { goodUntilLabel } from "@/app/(app)/guest-recovery/expiry";
 
 /**
  * Sends a saved recovery's email and text. Server only, and only after the
@@ -53,7 +54,7 @@ function makeDeps(client: ServiceClient): SendDeps {
 async function loadSendRecovery(client: ServiceClient, recoveryId: string): Promise<SendRecovery | null> {
   const { data: row, error: rowError } = await client
     .from("guest_recoveries")
-    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status")
+    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status, path, expires_at")
     .eq("id", recoveryId)
     .maybeSingle();
   if (rowError) throw new Error(rowError.message);
@@ -76,6 +77,8 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
     guestPhone: row.guest_phone,
     orderNumber: row.order_number,
     smsConsent: row.sms_consent,
+    path: row.path === "spotlight" ? "spotlight" : "standard",
+    goodUntil: goodUntilLabel(row.expires_at),
     items: (items ?? []).map((item) => ({ name: item.name, qty: item.qty })),
   };
 }
@@ -88,7 +91,7 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
  */
 export async function sendRecoveryMessages(
   recoveryId: string,
-  kind: "initial" | "resend",
+  kind: SendKind,
   channels?: SendChannel[],
 ): Promise<SendOutcome[]> {
   try {

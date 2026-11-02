@@ -3,10 +3,14 @@ import { z } from "zod";
 import {
   GUEST_NAME_MAX,
   ITEM_NAME_MAX,
+  MAX_EXPIRY_DAYS,
   MAX_ITEMS,
   MAX_QTY,
+  MIN_EXPIRY_DAYS,
   NOTE_MAX,
   ORDER_NUMBER_MAX,
+  PATHS,
+  REASONS,
 } from "@/app/(app)/guest-recovery/constants";
 
 /**
@@ -69,6 +73,8 @@ export const logRecoverySchema = z
       .optional()
       .transform((value) => (value ? value : null)),
     smsConsent: z.boolean().default(false),
+    reason: z.enum(REASONS, { message: "Pick a reason" }),
+    path: z.enum(PATHS, { message: "Pick whether the guest has the Chick-fil-A app" }),
     items: z.array(itemSchema).min(1, "Pick at least one missing item").max(MAX_ITEMS, `Up to ${MAX_ITEMS} items`),
   })
   .superRefine((value, ctx) => {
@@ -89,6 +95,8 @@ export const logRecoverySchema = z
       orderNumber: value.orderNumber,
       note: value.note,
       smsConsent: value.smsConsent,
+      reason: value.reason,
+      path: value.path,
       items: value.items,
     };
   });
@@ -103,3 +111,24 @@ export const menuItemInputSchema = z.object({
   family: z.string().trim().min(1, "Name the group").max(ITEM_NAME_MAX, "That group name is too long"),
   category: z.string().trim().min(1, "Pick a category").max(40, "That category name is too long"),
 });
+
+export const assignSchema = z.object({
+  id: z.uuid("That recovery is not valid"),
+  assigneeId: z.uuid("Pick who to hand it to"),
+});
+
+export const settingsSchema = z
+  .object({
+    expiryDays: z
+      .number()
+      .int("Use a whole number of days")
+      .min(MIN_EXPIRY_DAYS, `At least ${MIN_EXPIRY_DAYS} days`)
+      .max(MAX_EXPIRY_DAYS, `At most ${MAX_EXPIRY_DAYS} days`),
+    overseerId: z.uuid("Pick the overseer").nullable(),
+    backupId: z.uuid("Pick the backup").nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.overseerId && value.overseerId === value.backupId) {
+      ctx.addIssue({ code: "custom", path: ["backupId"], message: "The backup must be a different person" });
+    }
+  });

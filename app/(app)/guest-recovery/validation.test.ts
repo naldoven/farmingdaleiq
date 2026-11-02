@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { logRecoverySchema, normalizeUsPhone } from "@/app/(app)/guest-recovery/validation";
+import { logRecoverySchema, normalizeUsPhone, settingsSchema } from "@/app/(app)/guest-recovery/validation";
 
 const MENU_ID = "3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b";
 const SUBMISSION_ID = "9d8c7b6a-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
@@ -13,6 +13,8 @@ const valid = {
   orderNumber: " 8407578 ",
   note: " Chicken sandwich missing, called at 8 PM ",
   smsConsent: true,
+  reason: "missing_item",
+  path: "standard",
   items: [{ menuItemId: MENU_ID, qty: 1 }],
 };
 
@@ -35,6 +37,43 @@ describe("normalizeUsPhone", () => {
   it("rejects an area code that starts with 0 or 1", () => {
     expect(normalizeUsPhone("131-555-0142")).toBeNull();
     expect(normalizeUsPhone("031-555-0142")).toBeNull();
+  });
+});
+
+describe("logRecoverySchema reason and path", () => {
+  it("needs a reason from the list", () => {
+    for (const reason of ["missing_item", "wrong_item", "quality", "too_slow", "other"]) {
+      expect(logRecoverySchema.safeParse({ ...valid, reason }).success, reason).toBe(true);
+    }
+    const missing = logRecoverySchema.safeParse({ ...valid, reason: undefined });
+    expect(missing.success).toBe(false);
+    if (!missing.success) expect(missing.error.issues[0].message).toBe("Pick a reason");
+    expect(logRecoverySchema.safeParse({ ...valid, reason: "late" }).success).toBe(false);
+  });
+
+  it("needs the path: with the app (spotlight) or without (standard)", () => {
+    expect(logRecoverySchema.parse({ ...valid, path: "spotlight" }).path).toBe("spotlight");
+    expect(logRecoverySchema.safeParse({ ...valid, path: undefined }).success).toBe(false);
+    expect(logRecoverySchema.safeParse({ ...valid, path: "vip" }).success).toBe(false);
+  });
+});
+
+describe("settingsSchema", () => {
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+
+  it("keeps expiry between 7 and 365 whole days", () => {
+    expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: B }).success).toBe(true);
+    expect(settingsSchema.safeParse({ expiryDays: 6, overseerId: A, backupId: B }).success).toBe(false);
+    expect(settingsSchema.safeParse({ expiryDays: 366, overseerId: A, backupId: B }).success).toBe(false);
+    expect(settingsSchema.safeParse({ expiryDays: 30.5, overseerId: A, backupId: B }).success).toBe(false);
+  });
+
+  it("lets the people be unset but never the same person twice", () => {
+    expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: null, backupId: null }).success).toBe(true);
+    const same = settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: A });
+    expect(same.success).toBe(false);
+    if (!same.success) expect(same.error.issues[0].message).toMatch(/different person/i);
   });
 });
 

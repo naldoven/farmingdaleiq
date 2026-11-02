@@ -188,6 +188,7 @@ export const VIEW_ITEMS: MenuViewItem[] = [
   { key: "guest-recovery-scan", label: "Scan a code", href: "/guest-recovery/scan", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
   { key: "guest-recovery-stats", label: "Stats", href: "/guest-recovery/reporting", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
   { key: "guest-recovery-menu", label: "Recovery menu", href: "/guest-recovery/menu", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
+  { key: "guest-recovery-settings", label: "Recovery settings", href: "/guest-recovery/settings", icon: "guest-recovery", iconTone: "neutral", section: "Guest Recovery" },
   { key: "reporting", label: "Reporting", href: "/reports", icon: "reporting", iconTone: "neutral", section: "Admin" },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: "notifications", iconTone: "neutral", section: "Admin" },
 ];

@@ -141,6 +141,7 @@ describe("menu data", () => {
       "guest-recovery-scan",
       "guest-recovery-stats",
       "guest-recovery-menu",
+      "guest-recovery-settings",
       "reporting",
       "notifications",
     ]);
@@ -166,6 +167,7 @@ describe("menu data", () => {
       ["Scan a code", "/guest-recovery/scan"],
       ["Stats", "/guest-recovery/reporting"],
       ["Recovery menu", "/guest-recovery/menu"],
+      ["Recovery settings", "/guest-recovery/settings"],
     ]);
     for (const item of items) expect(item.section).toBe("Guest Recovery");
   });
@@ -175,6 +177,7 @@ describe("menu data", () => {
     expect(keys).toEqual(expect.arrayContaining(["guest-recovery", "guest-recovery-new", "guest-recovery-scan"]));
     expect(keys).not.toContain("guest-recovery-stats");
     expect(keys).not.toContain("guest-recovery-menu");
+    expect(keys).not.toContain("guest-recovery-settings");
   });
 
   it("puts every Cleaning screen under its own Cleaning section with the same icon", () => {

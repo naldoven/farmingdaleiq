@@ -97,4 +97,45 @@ describe("the public guest page", () => {
     vi.mocked(createClient).mockResolvedValue({ from: vi.fn(() => builder) } as never);
     await expect(render(TOKEN)).rejects.toThrow("NEXT_REDIRECT:/guest-recovery/11111111-1111-4111-8111-111111111111");
   });
+
+  it("shows the date the code is good until", async () => {
+    serviceReturning(
+      {
+        id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard",
+        created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z",
+      },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("Good until Feb 1, 2099");
+    expect(html).not.toMatch(/expired/i);
+  });
+
+  it("never errors on an expired code: it still shows the items, under a red expired notice", async () => {
+    serviceReturning(
+      {
+        id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard",
+        created_at: "2026-01-22T19:00:00.000Z", given_at: null, expires_at: "2026-04-22T19:00:00.000Z",
+      },
+      [{ name: "Cobb Salad", qty: 2 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toMatch(/expired/i);
+    expect(html).toContain("2 x Cobb Salad");
+    expect(html).toContain("Nolan");
+  });
+
+  it("tells a Spotlight guest the reward is coming within 48 hours, with no code to scan", async () => {
+    serviceReturning(
+      {
+        id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "spotlight",
+        created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z",
+      },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toMatch(/within 48 hours/);
+    expect(html).not.toContain("data:image/svg+xml");
+    expect(html).not.toMatch(/scan/i);
+  });
 });

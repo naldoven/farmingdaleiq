@@ -9,15 +9,25 @@ vi.mock("@/lib/auth/permissions", async () => {
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/guest-recovery/send", () => ({ sendRecoveryMessages: vi.fn() }));
+vi.mock("@/lib/guest-recovery/notify", () => ({ notifySpotlightAssignee: vi.fn() }));
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { notifySpotlightAssignee } from "@/lib/guest-recovery/notify";
 import { sendRecoveryMessages } from "@/lib/guest-recovery/send";
-import { giveRecovery, logRecovery, resendRecovery, voidRecovery } from "@/app/(app)/guest-recovery/actions";
+import {
+  assignRecovery,
+  giveRecovery,
+  logRecovery,
+  resendRecovery,
+  switchToStandard,
+  voidRecovery,
+} from "@/app/(app)/guest-recovery/actions";
 
 const mockRequirePermission = vi.mocked(requirePermission);
 const mockCreateClient = vi.mocked(createClient);
 const mockSend = vi.mocked(sendRecoveryMessages);
+const mockNotify = vi.mocked(notifySpotlightAssignee);
 
 const RECOVERY_ID = "44444444-4444-4444-8444-444444444444";
 const MENU_ID = "3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b";
@@ -31,10 +41,12 @@ const input = {
   orderNumber: "8407578",
   note: "Chicken sandwich missing",
   smsConsent: true,
+  reason: "missing_item" as const,
+  path: "standard" as const,
   items: [{ menuItemId: MENU_ID, qty: 2 }],
 };
 
-function useRpc(result: { data?: unknown; error?: { message: string } | null }) {
+function mockRpc(result: { data?: unknown; error?: { message: string } | null }) {
   const rpc = vi.fn(async () => ({ data: result.data ?? null, error: result.error ?? null }));
   mockCreateClient.mockResolvedValue({ rpc } as never);
   return rpc;
@@ -44,12 +56,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRequirePermission.mockResolvedValue(undefined);
   mockSend.mockResolvedValue([]);
+  mockNotify.mockResolvedValue(true);
 });
 
 describe("permission", () => {
   it("refuses a caller without guest_recovery.log before touching the database or sending", async () => {
     mockRequirePermission.mockRejectedValue(new PermissionError("guest_recovery.log"));
-    const rpc = useRpc({});
+    const rpc = mockRpc({});
     expect(await logRecovery(input)).toEqual(DENIED);
     expect(await resendRecovery({ id: RECOVERY_ID })).toEqual(DENIED);
     expect(await giveRecovery({ id: RECOVERY_ID })).toEqual(DENIED);
@@ -62,7 +75,7 @@ describe("permission", () => {
 
 describe("logRecovery", () => {
   it("saves through the database function with a normalized phone, then sends the first messages", async () => {
-    const rpc = useRpc({ data: [{ out_id: RECOVERY_ID, out_created: true }] });
+    const rpc = mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true }] });
     mockSend.mockResolvedValue([
       { channel: "email", result: "sent" },
       { channel: "sms", result: "sent" },
@@ -76,6 +89,8 @@ describe("logRecovery", () => {
         p_guest_email: "nolan@example.com",
         p_sms_consent: true,
         p_items: [{ menu_item_id: MENU_ID, name: null, qty: 2 }],
+        p_reason: "missing_item",
+        p_path: "standard",
       }),
     );
     expect(mockSend).toHaveBeenCalledWith(RECOVERY_ID, "initial");
@@ -84,7 +99,7 @@ describe("logRecovery", () => {
   });
 
   it("is safe to submit twice: the second call finds the first recovery and the sends stay claimed", async () => {
-    useRpc({ data: [{ out_id: RECOVERY_ID, out_created: false }] });
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: false }] });
     mockSend.mockResolvedValue([
       { channel: "email", result: "already_sent" },
       { channel: "sms", result: "already_sent" },
@@ -95,7 +110,7 @@ describe("logRecovery", () => {
   });
 
   it("keeps the recovery and says what to do when a send fails", async () => {
-    useRpc({ data: [{ out_id: RECOVERY_ID, out_created: true }] });
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true }] });
     mockSend.mockResolvedValue([{ channel: "email", result: "failed", reason: "bad key" }]);
     const result = await logRecovery(input);
     expect(result.ok).toBe(true);
@@ -103,7 +118,7 @@ describe("logRecovery", () => {
   });
 
   it("rejects bad input with a plain message and never calls the database", async () => {
-    const rpc = useRpc({});
+    const rpc = mockRpc({});
     const result = await logRecovery({ ...input, items: [] });
     expect(result).toEqual({ ok: false, error: "Pick at least one missing item" });
     expect(rpc).not.toHaveBeenCalled();
@@ -111,7 +126,7 @@ describe("logRecovery", () => {
   });
 
   it("does not send when the save fails", async () => {
-    useRpc({ error: { message: "That menu item is not available" } });
+    mockRpc({ error: { message: "That menu item is not available" } });
     const result = await logRecovery(input);
     expect(result).toEqual({ ok: false, error: "That menu item is not available" });
     expect(mockSend).not.toHaveBeenCalled();
@@ -120,7 +135,7 @@ describe("logRecovery", () => {
 
 describe("resendRecovery", () => {
   it("sends a resend on the chosen channel", async () => {
-    useRpc({});
+    mockRpc({});
     mockSend.mockResolvedValue([{ channel: "email", result: "sent" }]);
     const result = await resendRecovery({ id: RECOVERY_ID, channels: ["email"] });
     expect(mockSend).toHaveBeenCalledWith(RECOVERY_ID, "resend", ["email"]);
@@ -128,21 +143,21 @@ describe("resendRecovery", () => {
   });
 
   it("answers a double tap with a wait message, not an error page", async () => {
-    useRpc({});
+    mockRpc({});
     mockSend.mockResolvedValue([{ channel: "email", result: "too_soon" }]);
     const result = await resendRecovery({ id: RECOVERY_ID, channels: ["email"] });
     expect(result).toEqual({ ok: false, error: "Just sent. Give it a minute before sending again." });
   });
 
   it("says so when the recovery is no longer owed", async () => {
-    useRpc({});
+    mockRpc({});
     mockSend.mockResolvedValue([]);
     const result = await resendRecovery({ id: RECOVERY_ID });
     expect(result).toEqual({ ok: false, error: "That recovery is not owed any more, so nothing was sent." });
   });
 
   it("rejects an id that is not a uuid", async () => {
-    useRpc({});
+    mockRpc({});
     expect((await resendRecovery({ id: "abc" })).ok).toBe(false);
     expect(mockSend).not.toHaveBeenCalled();
   });
@@ -150,11 +165,11 @@ describe("resendRecovery", () => {
 
 describe("giveRecovery and voidRecovery", () => {
   it("hands over once and calls a second scan harmless", async () => {
-    const rpc = useRpc({ data: "given" });
+    const rpc = mockRpc({ data: "given" });
     expect(await giveRecovery({ id: RECOVERY_ID })).toMatchObject({ ok: true, data: { message: "Marked as handed over." } });
     expect(rpc).toHaveBeenCalledWith("give_guest_recovery", { p_id: RECOVERY_ID });
 
-    useRpc({ data: "already_given" });
+    mockRpc({ data: "already_given" });
     expect(await giveRecovery({ id: RECOVERY_ID })).toMatchObject({
       ok: true,
       data: { message: "Already handed over. Nothing changed." },
@@ -162,26 +177,181 @@ describe("giveRecovery and voidRecovery", () => {
   });
 
   it("will not hand over a voided recovery", async () => {
-    useRpc({ data: "void" });
+    mockRpc({ data: "void" });
     const result = await giveRecovery({ id: RECOVERY_ID });
     expect(result.ok).toBe(false);
   });
 
   it("will not void one that was already handed over", async () => {
-    useRpc({ data: "given" });
+    mockRpc({ data: "given" });
     const result = await voidRecovery({ id: RECOVERY_ID });
     expect(result).toEqual({ ok: false, error: "This was already handed over, so it cannot be voided." });
   });
 
   it("voids an owed recovery", async () => {
-    const rpc = useRpc({ data: "void" });
+    const rpc = mockRpc({ data: "void" });
     expect(await voidRecovery({ id: RECOVERY_ID })).toMatchObject({ ok: true });
     expect(rpc).toHaveBeenCalledWith("void_guest_recovery", { p_id: RECOVERY_ID });
   });
 
   it("reports a database permission refusal as a permission message", async () => {
-    useRpc({ error: { message: "You do not have permission to hand over a recovery" } });
+    mockRpc({ error: { message: "You do not have permission to hand over a recovery" } });
     const result = await giveRecovery({ id: RECOVERY_ID });
     expect(result).toEqual({ ok: false, error: "You do not have permission to hand over a recovery" });
+  });
+});
+
+describe("logRecovery: Spotlight", () => {
+  const OVERSEER = "55555555-5555-4555-8555-555555555555";
+  const spotlight = { ...input, path: "spotlight" as const };
+
+  it("notifies the assignee once when a Spotlight recovery is created, with no guest details", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true, out_assigned_to: OVERSEER }] });
+    mockSend.mockResolvedValue([{ channel: "email", result: "sent" }]);
+    const result = await logRecovery(spotlight);
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledWith(OVERSEER);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.message).not.toMatch(/notif/i);
+  });
+
+  it("does not notify again on a repeat submit", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: false, out_assigned_to: OVERSEER }] });
+    await logRecovery(spotlight);
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("does not notify for a standard recovery", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true, out_assigned_to: null }] });
+    await logRecovery(input);
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("says plainly when nobody is set up to send the reward", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true, out_assigned_to: null }] });
+    const result = await logRecovery(spotlight);
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.message).toMatch(/nobody is set to send|nobody was notified/i);
+  });
+
+  it("does not claim someone was notified when the notice failed to write", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true, out_assigned_to: OVERSEER }] });
+    mockNotify.mockResolvedValueOnce(false);
+    const result = await logRecovery(spotlight);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.message).toMatch(/could not tell|tell them/i);
+  });
+
+  it("still logs and sends when the notice cannot be delivered", async () => {
+    mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true, out_assigned_to: OVERSEER }] });
+    mockNotify.mockRejectedValueOnce(new Error("events down"));
+    const result = await logRecovery(spotlight);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a missing reason before touching the database", async () => {
+    const rpc = mockRpc({});
+    const { reason: _reason, ...noReason } = input;
+    void _reason;
+    const result = await logRecovery(noReason as never);
+    expect(result).toEqual({ ok: false, error: "Pick a reason" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("switchToStandard", () => {
+  it("switches, then sends the normal message once under the switch kind", async () => {
+    const rpc = mockRpc({ data: "switched" });
+    mockSend.mockResolvedValue([
+      { channel: "email", result: "sent" },
+      { channel: "sms", result: "sent" },
+    ]);
+    const result = await switchToStandard({ id: RECOVERY_ID });
+    expect(rpc).toHaveBeenCalledWith("switch_guest_recovery_to_standard", { p_id: RECOVERY_ID });
+    expect(mockSend).toHaveBeenCalledWith(RECOVERY_ID, "switch");
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.data.message).toMatch(/emailed and texted/i);
+  });
+
+  it("never sends a second normal message to a recovery that was standard from the start", async () => {
+    mockRpc({ data: "already_standard" });
+    const result = await switchToStandard({ id: RECOVERY_ID });
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("finishes the send on a retry when it was switched but the message never went", async () => {
+    mockRpc({ data: "already_switched" });
+    mockSend.mockResolvedValue([
+      { channel: "email", result: "sent" },
+      { channel: "sms", result: "already_sent" },
+    ]);
+    const result = await switchToStandard({ id: RECOVERY_ID });
+    expect(mockSend).toHaveBeenCalledWith(RECOVERY_ID, "switch");
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.data.message).toMatch(/emailed/i);
+  });
+
+  it("says plainly when the retry had nothing left to send", async () => {
+    mockRpc({ data: "already_switched" });
+    mockSend.mockResolvedValue([
+      { channel: "email", result: "already_sent" },
+      { channel: "sms", result: "already_sent" },
+    ]);
+    const result = await switchToStandard({ id: RECOVERY_ID });
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.data.message).toMatch(/already/i);
+  });
+
+  it("refuses a recovery that is no longer owed or not found", async () => {
+    mockRpc({ data: "not_owed" });
+    expect((await switchToStandard({ id: RECOVERY_ID })).ok).toBe(false);
+    mockRpc({ data: "not_found" });
+    expect((await switchToStandard({ id: RECOVERY_ID })).ok).toBe(false);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("refuses a caller without the permission", async () => {
+    mockRequirePermission.mockRejectedValue(new PermissionError("guest_recovery.log"));
+    mockRpc({});
+    expect(await switchToStandard({ id: RECOVERY_ID })).toEqual(DENIED);
+  });
+});
+
+describe("assignRecovery", () => {
+  const NEW_ASSIGNEE = "66666666-6666-4666-8666-666666666666";
+
+  it("tags someone in and tells them", async () => {
+    const rpc = mockRpc({ data: "assigned" });
+    const result = await assignRecovery({ id: RECOVERY_ID, assigneeId: NEW_ASSIGNEE });
+    expect(rpc).toHaveBeenCalledWith("assign_guest_recovery", { p_id: RECOVERY_ID, p_assignee: NEW_ASSIGNEE });
+    expect(mockNotify).toHaveBeenCalledWith(NEW_ASSIGNEE);
+    expect(result).toMatchObject({ ok: true, data: { message: "Handed over. They have been notified." } });
+  });
+
+  it("tells the leader to speak to them when the notice could not be written", async () => {
+    mockRpc({ data: "assigned" });
+    mockNotify.mockResolvedValueOnce(false);
+    const result = await assignRecovery({ id: RECOVERY_ID, assigneeId: NEW_ASSIGNEE });
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.data.message).toMatch(/could not|tell them/i);
+  });
+
+  it("explains each refusal in plain words and notifies nobody", async () => {
+    for (const code of ["not_allowed", "bad_assignee", "not_spotlight", "not_owed", "not_found"]) {
+      mockRpc({ data: code });
+      const result = await assignRecovery({ id: RECOVERY_ID, assigneeId: NEW_ASSIGNEE });
+      expect(result.ok, code).toBe(false);
+      if (!result.ok) expect(result.error.length, code).toBeGreaterThan(10);
+    }
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("rejects ids that are not uuids and checks permission first", async () => {
+    mockRpc({});
+    expect((await assignRecovery({ id: "abc", assigneeId: NEW_ASSIGNEE })).ok).toBe(false);
+    mockRequirePermission.mockRejectedValue(new PermissionError("guest_recovery.log"));
+    expect(await assignRecovery({ id: RECOVERY_ID, assigneeId: NEW_ASSIGNEE })).toEqual(DENIED);
   });
 });

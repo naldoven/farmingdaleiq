@@ -1,4 +1,4 @@
-import type { RecoveryStatus, SendChannel, SendStatus } from "@/app/(app)/guest-recovery/constants";
+import type { RecoveryPath, RecoveryStatus, SendChannel, SendStatus } from "@/app/(app)/guest-recovery/constants";
 
 /** One missing item on a recovery. name and family are snapshots from when it was logged. */
 export interface RecoveryItemView {
@@ -39,6 +39,15 @@ export interface RecoveryView {
   createdAt: string;
   givenAt: string | null;
   voidedAt: string | null;
+  /** Why the guest called; null for recoveries logged before reasons existed. */
+  reason: string | null;
+  path: RecoveryPath;
+  /** When the guest's code stops being good. Past it, the screens show a red EXPIRED banner. */
+  expiresAt: string;
+  assignedTo: string | null;
+  assignedToName: string | null;
+  /** Earlier recoveries for the same phone or email in the 90 days before this one. */
+  priorCount: number;
   items: RecoveryItemView[];
   sends: RecoverySendView[];
 }
@@ -51,4 +60,10 @@ export interface MenuItemView {
   category: string;
   sort: number;
   active: boolean;
+}
+
+/** Someone who can work Guest Recovery: who a Spotlight recovery can be handed to. */
+export interface WorkerView {
+  id: string;
+  name: string;
 }

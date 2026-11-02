@@ -10,6 +10,8 @@ const recovery: SendRecovery = {
   guestPhone: "+16315550142",
   orderNumber: "8407578",
   smsConsent: true,
+  path: "standard",
+  goodUntil: "Good until Feb 1, 2027",
   items: [{ name: "Cobb Salad", qty: 1 }],
 };
 
@@ -183,5 +185,69 @@ describe("safeError", () => {
     expect(cleaned).not.toContain("nolan@example.com");
     expect(cleaned).not.toContain("6315550142");
     expect(cleaned.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("runSends: Spotlight path", () => {
+  const spotlight = { ...recovery, path: "spotlight" as const };
+
+  it("sends the 48-hour message with no link and no QR", async () => {
+    const deps = makeDeps();
+    const outcomes = await runSends(spotlight, "initial", deps);
+    expect(outcomes.map((o) => o.result)).toEqual(["sent", "sent"]);
+    const email = deps.sendEmail.mock.calls[0][0];
+    expect(email.html + email.text).toMatch(/within 48 hours/);
+    expect(email.html + email.text).not.toContain("/recover/");
+    expect(email.qrPng).toBeNull();
+    expect(deps.qrPng).not.toHaveBeenCalled();
+    const sms = deps.sendSms.mock.calls[0][0];
+    expect(sms.body).toMatch(/within 48 hours/);
+    expect(sms.body).not.toContain("/recover/");
+  });
+
+  it("does not need the app address, since there is no link to build", async () => {
+    const deps = makeDeps({ baseUrl: null });
+    const outcomes = await runSends(spotlight, "initial", deps);
+    expect(outcomes.map((o) => o.result)).toEqual(["sent", "sent"]);
+  });
+
+  it("keeps every text rule: consent, opt-out, switched off", async () => {
+    const noConsent = makeDeps();
+    expect((await runSends({ ...spotlight, smsConsent: false }, "initial", noConsent))[1]).toEqual({
+      channel: "sms", result: "skipped", reason: "no_consent",
+    });
+    const optedOut = makeDeps({ isOptedOut: vi.fn(async () => true) });
+    expect((await runSends(spotlight, "initial", optedOut))[1].reason).toBe("opted_out");
+    const off = makeDeps({ smsEnabled: false });
+    expect((await runSends(spotlight, "initial", off))[1].reason).toBe("sms_off");
+  });
+});
+
+describe("runSends: switching a Spotlight guest to the normal message", () => {
+  it("claims a switch send and sends the code message with the link and QR", async () => {
+    const deps = makeDeps();
+    const outcomes = await runSends(recovery, "switch", deps);
+    expect(deps.claim).toHaveBeenCalledWith(recovery.id, "email", "switch");
+    expect(deps.claim).toHaveBeenCalledWith(recovery.id, "sms", "switch");
+    expect(outcomes.map((o) => o.result)).toEqual(["sent", "sent"]);
+    const email = deps.sendEmail.mock.calls[0][0];
+    expect(email.html + email.text).toContain("/recover/");
+    expect(email.qrPng).not.toBeNull();
+  });
+
+  it("reports a second switch as already sent, not as too soon", async () => {
+    const deps = makeDeps({ claim: vi.fn(async () => null) });
+    const outcomes = await runSends(recovery, "switch", deps);
+    expect(outcomes.map((o) => o.result)).toEqual(["already_sent", "already_sent"]);
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("runSends: the expiry date", () => {
+  it("goes into the standard message", async () => {
+    const deps = makeDeps();
+    await runSends(recovery, "initial", deps);
+    expect(deps.sendEmail.mock.calls[0][0].text).toContain("Good until Feb 1, 2027");
+    expect(deps.sendSms.mock.calls[0][0].body).toContain("Good until Feb 1, 2027");
   });
 });

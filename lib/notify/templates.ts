@@ -48,6 +48,8 @@ export const NOTIFIABLE_EVENT_KEYS: EventKey[] = enabledEventKeys([
   // Cleaning coordinators only (recipients set by app/api/cron/cleaning).
   "cleaning_misses",
   "cleaning_plan_reminder",
+  // The Spotlight overseer (or whoever was tagged in).
+  "guest_recovery_spotlight",
 ]);
 
 /**
@@ -86,6 +88,7 @@ const DEFAULT_TITLES: Partial<Record<EventKey, string>> = {
   catering_driver_assigned: "You're delivering a catering order",
   cleaning_misses: "Cleans were missed",
   cleaning_plan_reminder: "Plan next week's cleaning",
+  guest_recovery_spotlight: "A Spotlight reward is waiting",
 };
 
 const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
@@ -110,6 +113,7 @@ const DEFAULT_LINKS: Partial<Record<EventKey, string>> = {
   catering_driver_assigned: "/",
   cleaning_misses: "/cleaning/week",
   cleaning_plan_reminder: "/cleaning/week",
+  guest_recovery_spotlight: "/guest-recovery",
 };
 
 /**
