@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readConfig, sendResendEmail, sendTwilioSms } from "@/lib/guest-recovery/providers";
+const sendMail = vi.fn();
+const close = vi.fn();
+const createTransport = vi.fn(() => ({ sendMail, close }));
+vi.mock("nodemailer", () => ({ default: { createTransport: (options: unknown) => (createTransport as unknown as (o: unknown) => unknown)(options) } }));
+
+import {
+  readConfig,
+  sendGmailEmail,
+  sendGuestEmail,
+  sendResendEmail,
+  sendTwilioSms,
+} from "@/lib/guest-recovery/providers";
 
 const emailArgs = {
   to: "nolan@example.com",
@@ -160,5 +171,71 @@ describe("sendTwilioSms", () => {
     const result = await sendTwilioSms({ to: "+16315550142", body: "hello", idempotencyKey: "k" }, env);
     expect(result).toMatchObject({ ok: false });
     if (!result.ok) expect(result.optedOut).toBeFalsy();
+  });
+});
+
+describe("Gmail sender", () => {
+  const env = { GMAIL_USER: "store@gmail.com", GMAIL_APP_PASSWORD: "abcd efgh ijkl mnop" };
+
+  afterEach(() => {
+    sendMail.mockReset();
+    close.mockReset();
+    createTransport.mockClear();
+  });
+
+  it("counts Gmail as email being set up", () => {
+    expect(readConfig(env).emailConfigured).toBe(true);
+    expect(readConfig({ GMAIL_USER: "store@gmail.com" }).emailConfigured).toBe(false);
+  });
+
+  it("sends over SMTP with the QR inline and replies going to the store", async () => {
+    sendMail.mockResolvedValue({});
+    const result = await sendGmailEmail(emailArgs, env);
+    expect(result).toEqual({ ok: true });
+    expect(createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: "store@gmail.com", pass: "abcd efgh ijkl mnop" },
+      }),
+    );
+    const message = sendMail.mock.calls[0][0];
+    expect(message.to).toBe("nolan@example.com");
+    expect(message.from).toEqual({ name: "Chick-fil-A Farmingdale", address: "store@gmail.com" });
+    expect(message.replyTo).toBe("store@gmail.com");
+    expect(message.attachments[0]).toMatchObject({ cid: "recovery-qr", contentType: "image/png" });
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("reports a refusal and a bad login in plain words, never the password", async () => {
+    sendMail.mockRejectedValueOnce(Object.assign(new Error("550 no such user abcd efgh"), { responseCode: 550 }));
+    const refused = await sendGmailEmail(emailArgs, env);
+    expect(refused).toEqual({ ok: false, error: "Gmail refused the message (550)." });
+
+    sendMail.mockRejectedValueOnce(Object.assign(new Error("Invalid login"), { code: "EAUTH" }));
+    const login = await sendGmailEmail(emailArgs, env);
+    expect(login.ok).toBe(false);
+    if (!login.ok) expect(login.error).not.toContain("abcd");
+  });
+
+  it("lets an unclear failure throw, so the send is recorded as unknown and not retried blindly", async () => {
+    sendMail.mockRejectedValueOnce(new Error("socket hang up"));
+    await expect(sendGmailEmail(emailArgs, env)).rejects.toThrow("socket hang up");
+  });
+
+  it("fails clearly when Gmail is not set up", async () => {
+    expect((await sendGmailEmail(emailArgs, {})).ok).toBe(false);
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  it("uses Resend when both are set up, Gmail otherwise", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
+    sendMail.mockResolvedValue({});
+    await sendGuestEmail(emailArgs, { ...env, RESEND_API_KEY: "re_key", GUEST_EMAIL_FROM: "S <r@example.com>" });
+    expect(fetch).toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
+    await sendGuestEmail(emailArgs, env);
+    expect(sendMail).toHaveBeenCalledTimes(1);
   });
 });

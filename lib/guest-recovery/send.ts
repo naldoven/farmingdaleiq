@@ -1,7 +1,7 @@
 import type { SendChannel } from "@/app/(app)/guest-recovery/constants";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { qrPng } from "@/lib/guest-recovery/qr";
-import { readConfig, sendResendEmail, sendTwilioSms } from "@/lib/guest-recovery/providers";
+import { readConfig, sendGuestEmail, sendTwilioSms } from "@/lib/guest-recovery/providers";
 import { runSends, type SendDeps, type SendOutcome, type SendRecovery } from "@/lib/guest-recovery/send-core";
 
 /**
@@ -45,7 +45,7 @@ function makeDeps(client: ServiceClient): SendDeps {
       await client.from("guest_sms_optouts").upsert({ phone }, { onConflict: "phone", ignoreDuplicates: true });
     },
     qrPng,
-    sendEmail: (args) => sendResendEmail(args),
+    sendEmail: (args) => sendGuestEmail(args),
     sendSms: (args) => sendTwilioSms(args),
   };
 }

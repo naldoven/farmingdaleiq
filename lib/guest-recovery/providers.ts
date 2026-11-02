@@ -1,9 +1,13 @@
+import nodemailer from "nodemailer";
+
+import { STORE_NAME } from "@/app/(app)/guest-recovery/constants";
 import type { EmailResult, SmsResult } from "@/lib/guest-recovery/send-core";
 
 /**
- * Real email and text providers for Guest Recovery, over plain fetch (no SDK).
- * Email goes through Resend from a store-owned domain; text goes through
- * Twilio. The rules about when to send live in send-core.ts; this file only
+ * Real email and text providers for Guest Recovery. Email goes through Resend
+ * from a store-owned domain (the lasting setup) or, for a beta, through the
+ * store's Gmail account with an app password; text goes through Twilio. Resend
+ * and Twilio use plain fetch, Gmail uses SMTP. The rules about when to send live in send-core.ts; this file only
  * knows how to talk to each service, so swapping a provider later (GoHighLevel
  * for texts, say) means writing one more function with the same shape.
  *
@@ -27,7 +31,9 @@ export function readConfig(env: Env = process.env): GuestMessagingConfig {
   const rawBase = explicit || (vercel ? `https://${vercel}` : "");
   return {
     baseUrl: rawBase ? rawBase.replace(/\/+$/, "") : null,
-    emailConfigured: Boolean(env.RESEND_API_KEY && env.GUEST_EMAIL_FROM),
+    emailConfigured: Boolean(
+      (env.RESEND_API_KEY && env.GUEST_EMAIL_FROM) || (env.GMAIL_USER && env.GMAIL_APP_PASSWORD),
+    ),
     smsConfigured: Boolean(
       env.TWILIO_ACCOUNT_SID &&
         env.TWILIO_AUTH_TOKEN &&
@@ -38,6 +44,75 @@ export function readConfig(env: Env = process.env): GuestMessagingConfig {
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
+
+type EmailArgs = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  qrPng: Buffer | null;
+  qrContentId: string;
+  idempotencyKey: string;
+};
+
+/**
+ * Sends through Resend when it is set up, otherwise through Gmail. Resend wins
+ * so adding a verified domain later switches over with no code change.
+ */
+export function sendGuestEmail(args: EmailArgs, env: Env = process.env): Promise<EmailResult> {
+  if (env.RESEND_API_KEY && env.GUEST_EMAIL_FROM) return sendResendEmail(args, env);
+  return sendGmailEmail(args, env);
+}
+
+/**
+ * Beta sender: the store's Gmail account over SMTP with an app password (not
+ * the account password). Gmail caps around 500 messages a day and shows the
+ * Gmail address as the sender, which is fine for a small beta. SMTP has no
+ * idempotency key; the once-only guarantee comes from the claim row.
+ */
+export async function sendGmailEmail(args: EmailArgs, env: Env = process.env): Promise<EmailResult> {
+  const user = env.GMAIL_USER;
+  const pass = env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return { ok: false, error: "Email is not set up yet." };
+
+  const transport = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user, pass },
+    connectionTimeout: REQUEST_TIMEOUT_MS,
+    socketTimeout: REQUEST_TIMEOUT_MS,
+  });
+
+  try {
+    await transport.sendMail({
+      from: { name: STORE_NAME, address: user },
+      to: args.to,
+      replyTo: env.GUEST_EMAIL_REPLY_TO || user,
+      subject: args.subject,
+      html: args.html,
+      text: args.text,
+      attachments: args.qrPng
+        ? [{ filename: "your-code.png", content: args.qrPng, cid: args.qrContentId, contentType: "image/png" }]
+        : undefined,
+    });
+    return { ok: true };
+  } catch (error) {
+    // The message may or may not have reached Gmail. send-core treats a thrown
+    // error as unknown, so only a clear refusal is returned; anything else is
+    // rethrown.
+    const info = (error as { responseCode?: number; code?: string }) ?? {};
+    if (info.code === "EAUTH") {
+      return { ok: false, error: "Gmail rejected the login. Check the app password." };
+    }
+    if (info.responseCode && info.responseCode >= 400 && info.responseCode < 600) {
+      return { ok: false, error: `Gmail refused the message (${info.responseCode}).` };
+    }
+    throw error;
+  } finally {
+    transport.close();
+  }
+}
 
 export async function sendResendEmail(
   args: {

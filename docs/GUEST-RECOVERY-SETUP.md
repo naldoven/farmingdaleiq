@@ -11,6 +11,21 @@ ships: nothing reads its tables until the screens do. It creates the tables, the
 menu (seeded), and gives `guest_recovery.log` to Team Leader and above and
 `guest_recovery.manage` to Shift Supervisor and above.
 
+## 2a. Email for a beta: the store's Gmail
+
+Quick start while there is no store domain. Emails show the Gmail address as
+the sender, and Gmail allows about 500 a day, which is plenty for a beta.
+
+1. Sign in to the store Gmail account. Turn on 2-Step Verification
+   (Google Account, Security).
+2. Create an app password: Google Account, Security, 2-Step Verification, App
+   passwords. Name it "FarmingdaleIQ". Copy the 16 letters Google shows.
+3. In Vercel (Production, and Preview if you test there), set `GMAIL_USER` to
+   the Gmail address and `GMAIL_APP_PASSWORD` to the 16 letters. Redeploy.
+
+When a domain and Resend are set up (below), Resend is used automatically
+and Gmail is ignored.
+
 ## 2. Email (Resend)
 
 1. Buy a store domain (for example one that mirrors Avondale's). Keep it separate
