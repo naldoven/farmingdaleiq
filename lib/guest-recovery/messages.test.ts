@@ -42,7 +42,7 @@ describe("recoveryLink", () => {
 describe("buildEmail", () => {
   it("names the guest, the order, the items and carries the link", () => {
     const email = buildEmail(base);
-    expect(email.subject).toMatch(/Chick-fil-A Farmingdale order/);
+    expect(email.subject).toBe("We are sorry, Nolan. Here is your code");
     for (const part of [email.html, email.text]) {
       expect(part).toContain("Nolan");
       expect(part).toContain("8407578");
@@ -131,6 +131,24 @@ describe("email look (red page, white card)", () => {
     expect(buildSpotlightEmail({ ...spot, sentBy: "<b>x</b>" }).html).not.toContain("<b>x</b>");
   });
 
+  it("opens both subjects with the apology and the guest's first name, short enough for a phone", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan Patrick", orderNumber: null, items });
+    expect(spot.subject).toBe("We are sorry, Nolan. Your reward is on its way");
+    for (const subject of [buildEmail(base).subject, spot.subject]) {
+      expect(subject.length).toBeLessThanOrEqual(50);
+      expect(subject).not.toContain("—");
+    }
+  });
+
+  it("puts the store address in both emails, linked to a map in the html", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items });
+    for (const email of [buildEmail(base), spot]) {
+      expect(email.text).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+      expect(email.html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+      expect(email.html).toContain("https://www.google.com/maps/search/?api=1&amp;query=");
+    }
+  });
+
   it("keeps the code button and the plain link", () => {
     const email = buildEmail(base);
     expect(email.html).toContain("Show my code");
@@ -182,7 +200,8 @@ describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
     for (const part of [email.text, email.html, sms]) {
       expect(part).toContain("Nolan");
       expect(part).toMatch(/within 48 hours/);
-      expect(part).not.toMatch(/https?:\/\//);
+      // No guest code link. The email footer may link the store address to a map.
+      expect(part).not.toContain("/recover/");
       expect(part).not.toContain("cid:");
     }
     expect(email.text).toContain("8407578");

@@ -131,6 +131,16 @@ describe("the public guest page", () => {
     expect(html).toContain("Nolan");
   });
 
+  it("shows the store address, linked to a map", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+    expect(html).toContain("google.com/maps/search");
+  });
+
   it("says sorry first, in the same words as the email", async () => {
     serviceReturning(
       { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },

@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { MapPin, QrCode, Receipt } from "lucide-react";
 
-import { SPOTLIGHT_PROMISE_HOURS, STORE_NAME, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import {
+  SPOTLIGHT_PROMISE_HOURS,
+  STORE_ADDRESS,
+  STORE_MAP_URL,
+  STORE_NAME,
+  TOKEN_PATTERN,
+} from "@/app/(app)/guest-recovery/constants";
 import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -211,6 +217,11 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
               .
             </>
           )}
+        </p>
+        <p className="mt-1.5 text-center text-[12px] leading-relaxed">
+          <a href={STORE_MAP_URL} className="underline">
+            {STORE_ADDRESS}
+          </a>
         </p>
       </div>
     </main>

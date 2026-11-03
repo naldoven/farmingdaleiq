@@ -1,4 +1,9 @@
-import { SPOTLIGHT_PROMISE_HOURS, STORE_NAME } from "@/app/(app)/guest-recovery/constants";
+import {
+  SPOTLIGHT_PROMISE_HOURS,
+  STORE_ADDRESS,
+  STORE_MAP_URL,
+  STORE_NAME,
+} from "@/app/(app)/guest-recovery/constants";
 
 /**
  * The words a guest reads: the email and the text. Plain short sentences, no
@@ -88,6 +93,7 @@ ${parts.card}
 <tr><td align="center" style="padding:22px 6px 0;color:#ffffff;font-size:13px;line-height:1.6">
 <p style="margin:0;font-size:15px;font-weight:800">My pleasure to serve you again.</p>
 <p style="margin:6px 0 0">${escapeHtml(parts.questions)}</p>
+<p style="margin:6px 0 0"><a href="${escapeHtml(STORE_MAP_URL)}" style="color:#ffffff;text-decoration:underline">${escapeHtml(STORE_ADDRESS)}</a></p>
 </td></tr>
 </table>
 </td></tr>
@@ -118,7 +124,8 @@ function questionsLine(storePhone: string | null | undefined): string {
 export function buildEmail(input: MessageInput & { qrContentId?: string }): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
-  const subject = `Your ${STORE_NAME} order: how we will make it right`;
+  // The store name is already the sender's display name, so the subject can lead with the apology.
+  const subject = `We are sorry, ${first}. Here is your code`;
   const questions = questionsLine(input.storePhone);
 
   const text = [
@@ -129,7 +136,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     `Come back and we will make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
     input.link,
     "",
-    `Good at ${STORE_NAME} only. Bring your receipt.`,
+    `Good at ${STORE_NAME} only: ${STORE_ADDRESS}. Bring your receipt.`,
     ...(input.goodUntil ? [input.goodUntil + "."] : []),
     "",
     questions,
@@ -189,7 +196,7 @@ export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "i
 export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
-  const subject = `Your ${STORE_NAME} order: your reward is on its way`;
+  const subject = `We are sorry, ${first}. Your reward is on its way`;
   const questions = questionsLine(input.storePhone);
   const sender = input.sentBy?.trim() || null;
   const reward = `We are sending you a reward to make it right. It will be added to your Chick-fil-A One account within ${SPOTLIGHT_PROMISE_HOURS} hours, and Chick-fil-A will email you when it is there.`;
@@ -206,6 +213,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
     ...(sender ? ["", "All the best,", sender, STORE_NAME] : []),
     "",
     questions,
+    STORE_ADDRESS,
     "My pleasure to serve you again.",
   ].join("\n");
 
