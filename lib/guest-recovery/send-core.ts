@@ -161,6 +161,7 @@ async function sendOne(
     link,
     goodUntil: recovery.goodUntil,
     storePhone: deps.storePhone ?? null,
+    logoUrl: deps.baseUrl ? `${deps.baseUrl.replace(/\/+$/, "")}/icons/cfa-mark-white.png` : null,
   };
 
   try {
