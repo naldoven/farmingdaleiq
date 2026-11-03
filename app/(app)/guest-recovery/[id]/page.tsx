@@ -1,22 +1,32 @@
 import { notFound } from "next/navigation";
 
-import { TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
-import { loadRecovery } from "@/app/(app)/guest-recovery/queries";
-import { daysOwed, statusLabel, summarizeChannel } from "@/app/(app)/guest-recovery/view";
+import { SPOTLIGHT_PROMISE_HOURS, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
+import { loadRecovery, loadWorkers } from "@/app/(app)/guest-recovery/queries";
+import {
+  assigneeLine,
+  daysOwed,
+  reasonLabel,
+  repeatLabel,
+  statusLabel,
+  summarizeChannel,
+} from "@/app/(app)/guest-recovery/view";
 import { RecoveryActions } from "@/components/guest-recovery/recovery-actions";
 import { SectionCard, StatusBadge } from "@/components/mobile";
 import { hasPermission } from "@/lib/auth/permissions";
-import { buildSms, formatItems, recoveryLink } from "@/lib/guest-recovery/messages";
 import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
+import { buildSms, formatItems, recoveryLink } from "@/lib/guest-recovery/messages";
 import { createClient } from "@/lib/supabase/server";
-import { formatStoreDateTime } from "@/lib/time";
+import { formatStoreDate, formatStoreDateTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 /**
  * The redeem screen: where a scanned code lands for a signed-in leader. It says
  * plainly what the guest is owed, to ask for the receipt, and whether it was
- * already handed over, so a second scan explains itself.
+ * already handed over, so a second scan explains itself. An expired code never
+ * errors: it shows the same guest and items under a large red EXPIRED banner,
+ * and handing it over takes a second confirming tap.
  */
 export default async function GuestRecoveryDetailPage({
   params,
@@ -36,15 +46,36 @@ export default async function GuestRecoveryDetailPage({
 
   const now = new Date();
   const owed = recovery.status === "owed";
+  const spotlight = recovery.path === "spotlight";
+  // A Spotlight guest has no code, so there is nothing to expire.
+  const expired = owed && !spotlight && isExpired(recovery.expiresAt, now);
+
+  const [workers, manager, userResult] = await Promise.all([
+    spotlight && owed ? loadWorkers(supabase) : Promise.resolve([]),
+    hasPermission("guest_recovery.manage"),
+    supabase.auth.getUser(),
+  ]);
+  const userId = userResult.data.user?.id ?? null;
+  const canAssign = spotlight && owed && (manager || recovery.assignedTo === null || recovery.assignedTo === userId);
+
   const baseUrl = await resolveBaseUrl();
-  const link = baseUrl && TOKEN_PATTERN.test(recovery.token) ? recoveryLink(baseUrl, recovery.token) : null;
+  const link =
+    !spotlight && baseUrl && TOKEN_PATTERN.test(recovery.token) ? recoveryLink(baseUrl, recovery.token) : null;
   const smsText =
     link && recovery.guestPhone
-      ? buildSms({ guestName: recovery.guestName, orderNumber: recovery.orderNumber, items: recovery.items, link })
+      ? buildSms({
+          guestName: recovery.guestName,
+          orderNumber: recovery.orderNumber,
+          items: recovery.items,
+          link,
+          goodUntil: `Good until ${formatStoreDate(recovery.expiresAt)}`,
+        })
       : null;
 
   const email = summarizeChannel("email", recovery.sends, Boolean(recovery.guestEmail), now);
   const text = summarizeChannel("sms", recovery.sends, Boolean(recovery.guestPhone), now);
+  const repeat = repeatLabel(recovery.priorCount);
+  const owner = assigneeLine(recovery.path, recovery.assignedToName, recovery.status);
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
@@ -52,6 +83,14 @@ export default async function GuestRecoveryDetailPage({
         <p role="status" className="rounded-xl bg-info-soft p-3 text-[15px] font-medium text-ink">
           {notice.slice(0, 200)}
         </p>
+      )}
+
+      {expired && (
+        <div role="alert" className="rounded-xl border-2 border-danger bg-danger-soft p-4 text-center">
+          <p className="text-[28px] font-extrabold leading-none tracking-wide text-danger">EXPIRED</p>
+          <p className="mt-1 text-[15px] font-semibold text-danger">{expiryLine(recovery.expiresAt, now)}</p>
+          <p className="mt-1 text-[14px] text-ink">Check with a manager before handing it over.</p>
+        </div>
       )}
 
       {!owed && (
@@ -76,6 +115,11 @@ export default async function GuestRecoveryDetailPage({
             {statusLabel(recovery.status)}
           </StatusBadge>
         </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {spotlight && <StatusBadge tone="info">Chick-fil-A app guest</StatusBadge>}
+          <StatusBadge tone="neutral">{reasonLabel(recovery.reason)}</StatusBadge>
+          {repeat && <StatusBadge tone="warning">{repeat}</StatusBadge>}
+        </div>
         <p className="mt-3 text-[13px] text-muted-ink">Owed</p>
         <ul className="mt-1 space-y-1">
           {recovery.items.map((item) => (
@@ -84,9 +128,15 @@ export default async function GuestRecoveryDetailPage({
             </li>
           ))}
         </ul>
-        {owed && (
+        {owed && !spotlight && (
           <p className="mt-4 rounded-lg bg-warning-soft p-3 text-[14px] font-semibold">
             Ask for the receipt. Redeemable at this store only.
+          </p>
+        )}
+        {owed && spotlight && (
+          <p className="mt-4 rounded-lg bg-info-soft p-3 text-[14px] font-semibold">
+            Send this guest their reward in the Chick-fil-A app. They were told it comes within{" "}
+            {SPOTLIGHT_PROMISE_HOURS} hours. {owner}.
           </p>
         )}
         <dl className="mt-4 space-y-2 text-[15px]">
@@ -109,6 +159,12 @@ export default async function GuestRecoveryDetailPage({
               {owed && daysOwed(recovery.createdAt, now) >= 7 ? " (over a week ago)" : ""}
             </dd>
           </div>
+          {owed && !spotlight && !expired && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-ink">Code</dt>
+              <dd className="text-right">{expiryLine(recovery.expiresAt, now)}</dd>
+            </div>
+          )}
         </dl>
       </SectionCard>
 
@@ -146,10 +202,16 @@ export default async function GuestRecoveryDetailPage({
       <RecoveryActions
         id={recovery.id}
         owed={owed}
+        path={recovery.path}
+        expired={expired}
+        expiredOn={formatStoreDate(recovery.expiresAt)}
         canEmail={Boolean(recovery.guestEmail)}
         canText={Boolean(recovery.guestPhone) && recovery.smsConsent}
         link={link}
         smsText={smsText}
+        workers={workers}
+        assignedTo={recovery.assignedTo}
+        canAssign={canAssign}
       />
     </div>
   );

@@ -1,4 +1,12 @@
-import type { RecoveryStatus, SendChannel } from "@/app/(app)/guest-recovery/constants";
+import {
+  NO_REASON_LABEL,
+  REASON_LABELS,
+  REPEAT_WINDOW_DAYS,
+  type Reason,
+  type RecoveryPath,
+  type RecoveryStatus,
+  type SendChannel,
+} from "@/app/(app)/guest-recovery/constants";
 import type { SendOutcome } from "@/lib/guest-recovery/send-core";
 import type { RecoverySendView, RecoveryView } from "@/app/(app)/guest-recovery/types";
 
@@ -125,4 +133,28 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
 /** Whole days a recovery has been waiting, for the "over a week" flag. */
 export function daysOwed(iso: string, now: Date = new Date()): number {
   return Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000);
+}
+
+/** 1st, 2nd, 3rd, 4th, 11th, 21st. */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  const suffix = ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+/** The flag on a card for a guest who had earlier recoveries in the window; null for a first one. */
+export function repeatLabel(prior: number): string | null {
+  if (!prior || prior < 1) return null;
+  return `${ordinal(prior + 1)} recovery in ${REPEAT_WINDOW_DAYS} days`;
+}
+
+export function reasonLabel(reason: string | null): string {
+  return reason && reason in REASON_LABELS ? REASON_LABELS[reason as Reason] : NO_REASON_LABEL;
+}
+
+/** Who has a Spotlight reward to send. Null once it is closed or for a normal recovery. */
+export function assigneeLine(path: RecoveryPath, assigneeName: string | null, status: RecoveryStatus): string | null {
+  if (path !== "spotlight" || status !== "owed") return null;
+  return `Reward to send: ${assigneeName ?? "nobody assigned"}`;
 }
