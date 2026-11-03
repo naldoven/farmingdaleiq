@@ -69,6 +69,16 @@ describe("settingsSchema", () => {
     expect(settingsSchema.safeParse({ expiryDays: 30.5, overseerId: A, backupId: B }).success).toBe(false);
   });
 
+  it("takes an optional store phone number: digits and punctuation only, blank clears it", () => {
+    const ok = settingsSchema.parse({ expiryDays: 90, overseerId: A, backupId: B, storePhone: " (631) 777-1926 " });
+    expect(ok.storePhone).toBe("(631) 777-1926");
+    expect(settingsSchema.parse({ expiryDays: 90, overseerId: A, backupId: B, storePhone: "" }).storePhone).toBeNull();
+    expect(settingsSchema.parse({ expiryDays: 90, overseerId: A, backupId: B }).storePhone).toBeNull();
+    expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: B, storePhone: "call us" }).success).toBe(false);
+    expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: B, storePhone: "12345" }).success).toBe(false);
+    expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: B, storePhone: "1".repeat(31) }).success).toBe(false);
+  });
+
   it("lets the people be unset but never the same person twice", () => {
     expect(settingsSchema.safeParse({ expiryDays: 90, overseerId: null, backupId: null }).success).toBe(true);
     const same = settingsSchema.safeParse({ expiryDays: 90, overseerId: A, backupId: A });

@@ -21,6 +21,7 @@ export async function saveRecoverySettings(input: {
   expiryDays: number;
   overseerId: string | null;
   backupId: string | null;
+  storePhone?: string;
 }): Promise<ActionResult> {
   try {
     await requirePermission("guest_recovery.manage");
@@ -31,6 +32,7 @@ export async function saveRecoverySettings(input: {
       p_expiry_days: parsed.expiryDays,
       p_overseer: parsed.overseerId,
       p_backup: parsed.backupId,
+      p_store_phone: parsed.storePhone,
     });
     if (error) return { ok: false, error: error.message };
     if (data === "bad_person") {

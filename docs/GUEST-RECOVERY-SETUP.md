@@ -37,8 +37,10 @@ and Gmail is ignored.
    - `GUEST_EMAIL_FROM`, for example `Chick-fil-A Farmingdale <recovery@yourdomain>`
    - `GUEST_EMAIL_REPLY_TO`, the store inbox that should get guest replies
    - `NEXT_PUBLIC_APP_URL`, the address guests' links open (no trailing slash)
-   - `GUEST_STORE_PHONE`, the store number shown to app guests as the number to
-     call (optional; the message says "reply to this email" without it)
+   - The store number shown to app guests is a setting, not a Vercel variable:
+     Menu & settings > Settings > "Store phone number for app guests". Without
+     one the message says "reply to this email". (`GUEST_STORE_PHONE` still works
+     as a fallback when no number is saved.)
 
 ## 3. Texts (Twilio)
 
