@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation";
 
 import { DEFAULT_EXPIRY_DAYS } from "@/app/(app)/guest-recovery/constants";
+import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { SettingsForm, type PersonOption } from "@/components/guest-recovery/settings-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * /guest-recovery/settings: managers choose how long a guest's code is good
+ * /guest-recovery/menu/settings: managers choose how long a guest's code is good
  * for and who sends the Spotlight rewards (overseer and backup).
  */
 export const metadata = { title: "Recovery settings" };
@@ -44,6 +45,7 @@ export default async function RecoverySettingsPage() {
 
   return (
     <div className="mx-auto max-w-[480px] space-y-4">
+      <GuestRecoveryTabs group="setup" />
       <p className="text-[15px] text-muted-ink">
         Spotlight guests have the Chick-fil-A app. Their reward is sent by hand by the overseer.
       </p>

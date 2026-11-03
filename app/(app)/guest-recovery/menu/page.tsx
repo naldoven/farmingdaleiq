@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import type { MenuItemView } from "@/app/(app)/guest-recovery/types";
+import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { MenuManager } from "@/components/guest-recovery/menu-manager";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -27,6 +28,7 @@ export default async function RecoveryMenuPage() {
 
   return (
     <div className="mx-auto max-w-[480px] space-y-4 px-4 pb-8 pt-4">
+      <GuestRecoveryTabs group="setup" />
       <p className="text-[15px] text-muted-ink">
         These are the items a leader can pick when logging a missing order. Hide an item to take it
         off the list. Old recoveries keep their items.

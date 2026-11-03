@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { loadRecoveryList, loadRecoverySettings } from "@/app/(app)/guest-recovery/queries";
+import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { OverseerToggle } from "@/components/guest-recovery/overseer-toggle";
 import { RecoveryList } from "@/components/guest-recovery/recovery-list";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -29,6 +30,7 @@ export default async function GuestRecoveryPage() {
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
+      <GuestRecoveryTabs group="recoveries" />
       {(settings.overseerId || manager) && (
         <OverseerToggle
           overseerName={settings.overseerName}

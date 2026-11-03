@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Plus } from "lucide-react";
 
 import type { RecoveryView } from "@/app/(app)/guest-recovery/types";
 import { matchesSearch } from "@/app/(app)/guest-recovery/view";
@@ -36,14 +34,6 @@ export function RecoveryList({
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/guest-recovery/new"
-        className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-base font-semibold text-white"
-      >
-        <Plus className="size-5" aria-hidden />
-        Log a missing order
-      </Link>
-
       <SearchBar
         label="Search by guest or order number"
         placeholder="Search by guest or order number"

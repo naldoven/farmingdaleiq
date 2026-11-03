@@ -411,8 +411,9 @@ hands over what was missed.
 - **Scan** (`/guest-recovery/scan`, `guest_recovery.log`): scan a guest's QR in the app, or
   paste their link or code. Only the 64-character token is taken from what was scanned, and
   the app opens `/recover/<token>` itself, so a QR holding some other address goes nowhere.
-  On the Menu hub Guest Recovery is its own section (Recoveries, Log a missing order, Scan a
-  code, Stats, Recovery menu), like Cleaning and Maintenance.
+  On the Menu hub Guest Recovery is its own section with three rows, like Cleaning and
+  Maintenance: Recoveries (tabs Current, Log, Scan), Stats, and Menu & settings (tabs Menu
+  items, Settings).
 - **Reason and path** (required on the log form): one tap for why they called (Missing item,
   Wrong item, Quality problem, Took too long, Other), and whether the guest has the Chick-fil-A
   app. No app is the normal flow. App guests ("Spotlight") get an instant email and text saying
@@ -425,7 +426,7 @@ hands over what was missed.
   90 days; changing the setting affects new recoveries only). The guest page and the messages
   show the date. An expired code never errors: the guest page and the redeem screen still show
   the items under a large red EXPIRED banner, and Given takes a second confirming tap.
-- **Settings** (`/guest-recovery/settings`, `guest_recovery.manage`): expiry days, overseer,
+- **Settings** (`/guest-recovery/menu/settings`, `guest_recovery.manage`): expiry days, overseer,
   backup. The overseer can mark themselves off from the list screen.
 - **Repeat guests**: another recovery for the same phone or email within 90 days. Cards show
   "2nd recovery in 90 days"; Stats shows how many recoveries were repeats and how many guests.
@@ -679,7 +680,7 @@ Discord:
 | `/guest-recovery/scan` | Scan a guest's QR in the app, or paste their link or code |
 | `/guest-recovery/[id]` | Redeem screen: items, receipt reminder, Given and Void; resend |
 | `/guest-recovery/reporting` | Guest Recovery stats (`guest_recovery.manage`) |
-| `/guest-recovery/settings` | Expiry days, Spotlight overseer and backup (`guest_recovery.manage`) |
+| `/guest-recovery/menu/settings` | Expiry days, Spotlight overseer and backup (`guest_recovery.manage`) |
 | `/guest-recovery/menu` | The recovery menu: add and hide items (`guest_recovery.manage`) |
 | `/recover/[token]` | Public guest page: items and QR code; leaders are sent to the redeem screen |
 | `/cleaning/items` | Cleaning master list by zone with due dots; planners review walkthrough drafts |
