@@ -127,6 +127,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
   // The store name is already the sender's display name, so the subject can lead with the apology.
   const subject = `We are sorry, ${first}. Here is your code`;
   const questions = questionsLine(input.storePhone);
+  const sender = input.sentBy?.trim() || null;
 
   const text = [
     `Hi ${first}, we are sorry about your order. Let us make it right.`,
@@ -138,10 +139,16 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     "",
     `Good at ${STORE_NAME} only: ${STORE_ADDRESS}. Bring your receipt.`,
     ...(input.goodUntil ? [input.goodUntil + "."] : []),
+    ...(sender ? ["", "All the best,", sender, STORE_NAME] : []),
     "",
     questions,
     "My pleasure to serve you again.",
   ].join("\n");
+
+  const signOff = sender
+    ? `
+<p style="margin:18px 0 0;font-size:16px;line-height:1.6">All the best,<br><strong>${escapeHtml(sender)}</strong><br>${escapeHtml(STORE_NAME)}</p>`
+    : "";
 
   const qr = input.qrContentId
     ? `<p style="margin:0;text-align:center"><img src="cid:${escapeHtml(input.qrContentId)}" width="160" height="160" alt="Your code" style="display:inline-block"></p>`
@@ -153,7 +160,7 @@ ${itemsBox(input.items)}
 <p style="margin:22px 0 0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;padding:14px 40px;border-radius:999px">Show my code</a></p>
 <p style="margin:24px 0 16px;border-top:2px dotted #d3d6db;font-size:0;line-height:0">&nbsp;</p>
 ${qr}
-<p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>
+<p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>${signOff}
 <p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
 
   return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
