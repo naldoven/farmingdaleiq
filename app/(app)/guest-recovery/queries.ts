@@ -190,12 +190,13 @@ export interface RecoverySettingsView {
   backupId: string | null;
   overseerOff: boolean;
   overseerName: string | null;
+  storePhone: string | null;
 }
 
 export async function loadRecoverySettings(supabase: Client): Promise<RecoverySettingsView> {
   const { data, error } = await supabase
     .from("guest_recovery_settings")
-    .select("expiry_days, overseer_id, backup_id, overseer_off")
+    .select("expiry_days, overseer_id, backup_id, overseer_off, store_phone")
     .eq("id", true)
     .maybeSingle();
   if (error) throw new Error(`Could not load settings: ${error.message}`);
@@ -211,5 +212,6 @@ export async function loadRecoverySettings(supabase: Client): Promise<RecoverySe
     backupId: data?.backup_id ?? null,
     overseerOff: data?.overseer_off ?? false,
     overseerName,
+    storePhone: data?.store_phone ?? null,
   };
 }

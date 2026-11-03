@@ -126,6 +126,15 @@ export const settingsSchema = z
       .max(MAX_EXPIRY_DAYS, `At most ${MAX_EXPIRY_DAYS} days`),
     overseerId: z.uuid("Pick the overseer").nullable(),
     backupId: z.uuid("Pick the backup").nullable(),
+    // Shown to app guests as the number to call. Blank clears it.
+    storePhone: z
+      .string()
+      .trim()
+      .max(30, "That number is too long")
+      .regex(/^[0-9()+.\s-]*$/, "Use digits, spaces, dashes and parentheses")
+      .refine((v) => v === "" || v.replace(/\D/g, "").length >= 7, "Enter the full phone number")
+      .transform((v) => (v === "" ? null : v))
+      .default(null),
   })
   .superRefine((value, ctx) => {
     if (value.overseerId && value.overseerId === value.backupId) {

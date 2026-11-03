@@ -2206,6 +2206,7 @@ export type Database = {
           id: boolean
           overseer_id: string | null
           overseer_off: boolean
+          store_phone: string | null
           updated_at: string
           updated_by: string | null
         }
@@ -2215,6 +2216,7 @@ export type Database = {
           id?: boolean
           overseer_id?: string | null
           overseer_off?: boolean
+          store_phone?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -2224,6 +2226,7 @@ export type Database = {
           id?: boolean
           overseer_id?: string | null
           overseer_off?: boolean
+          store_phone?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -4657,7 +4660,12 @@ export type Database = {
         Returns: { out_id: string; out_created: boolean; out_assigned_to: string | null }[]
       }
       save_guest_recovery_settings: {
-        Args: { p_expiry_days: number; p_overseer: string | null; p_backup: string | null }
+        Args: {
+          p_expiry_days: number
+          p_overseer: string | null
+          p_backup: string | null
+          p_store_phone?: string | null
+        }
         Returns: string
       }
       set_guest_recovery_overseer_off: { Args: { p_off: boolean }; Returns: string }

@@ -430,7 +430,9 @@ hands over what was missed.
   show the date. An expired code never errors: the guest page and the redeem screen still show
   the items under a large red EXPIRED banner, and Given takes a second confirming tap.
 - **Settings** (`/guest-recovery/menu/settings`, `guest_recovery.manage`): expiry days, overseer,
-  backup. The overseer can mark themselves off from the list screen.
+  backup, and the store phone number shown to app guests (blank clears it; the
+  `GUEST_STORE_PHONE` variable is only a fallback). The overseer can mark themselves off
+  from the list screen.
 - **Repeat guests**: another recovery for the same phone or email within 90 days. Cards show
   "2nd recovery in 90 days"; Stats shows how many recoveries were repeats and how many guests.
 - **Redeem** (`/guest-recovery/<id>`): guest, items, receipt reminder, Given and Void.

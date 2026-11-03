@@ -19,7 +19,7 @@ export default async function RecoverySettingsPage() {
 
   const { data: settings, error: settingsError } = await supabase
     .from("guest_recovery_settings")
-    .select("expiry_days, overseer_id, backup_id")
+    .select("expiry_days, overseer_id, backup_id, store_phone")
     .eq("id", true)
     .maybeSingle();
   if (settingsError) throw new Error(`Could not load the settings: ${settingsError.message}`);
@@ -54,6 +54,7 @@ export default async function RecoverySettingsPage() {
         expiryDays={settings?.expiry_days ?? DEFAULT_EXPIRY_DAYS}
         overseerId={settings?.overseer_id ?? null}
         backupId={settings?.backup_id ?? null}
+        storePhone={settings?.store_phone ?? null}
       />
     </div>
   );

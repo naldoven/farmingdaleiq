@@ -14,12 +14,27 @@ import { goodUntilLabel } from "@/app/(app)/guest-recovery/expiry";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
-function makeDeps(client: ServiceClient): SendDeps {
+/**
+ * The store phone number shown to app guests: the manager's setting, or the
+ * GUEST_STORE_PHONE variable when none is saved. A failed read is not an error:
+ * the message just says "reply to this email" instead of giving a number.
+ */
+async function loadStorePhone(client: ServiceClient): Promise<string | null> {
+  const fallback = readConfig().storePhone;
+  try {
+    const { data } = await client.from("guest_recovery_settings").select("store_phone").eq("id", true).maybeSingle();
+    return data?.store_phone?.trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function makeDeps(client: ServiceClient, storePhone: string | null): SendDeps {
   const config = readConfig();
   return {
     baseUrl: config.baseUrl,
     smsEnabled: config.smsEnabled,
-    storePhone: config.storePhone,
+    storePhone,
     emailConfigured: config.emailConfigured,
     smsConfigured: config.smsConfigured,
     async claim(recoveryId, channel, kind) {
@@ -99,7 +114,7 @@ export async function sendRecoveryMessages(
     const client = createServiceRoleClient();
     const recovery = await loadSendRecovery(client, recoveryId);
     if (!recovery) return [];
-    return await runSends(recovery, kind, makeDeps(client), channels);
+    return await runSends(recovery, kind, makeDeps(client, await loadStorePhone(client)), channels);
   } catch {
     const reason = "Could not reach the database. Nothing was sent. Try again.";
     return (channels ?? ["email", "sms"]).map((channel) => ({ channel, result: "failed" as const, reason }));

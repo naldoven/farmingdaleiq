@@ -74,10 +74,32 @@ describe("saveRecoverySettings", () => {
       p_expiry_days: 60,
       p_overseer: A,
       p_backup: null,
+      p_store_phone: null,
     });
     expect(result).toEqual({ ok: true, data: undefined });
     expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery/menu/settings");
     expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery");
+  });
+
+  it("passes the store phone number through, trimmed, and clears it when blank", async () => {
+    const rpc = useRpc({ data: "saved" });
+    await saveRecoverySettings({ expiryDays: 60, overseerId: A, backupId: null, storePhone: "  (631) 777-1926 " });
+    expect(rpc).toHaveBeenLastCalledWith(
+      "save_guest_recovery_settings",
+      expect.objectContaining({ p_store_phone: "(631) 777-1926" }),
+    );
+    await saveRecoverySettings({ expiryDays: 60, overseerId: A, backupId: null, storePhone: "   " });
+    expect(rpc).toHaveBeenLastCalledWith(
+      "save_guest_recovery_settings",
+      expect.objectContaining({ p_store_phone: null }),
+    );
+  });
+
+  it("rejects a phone number with letters or too few digits before calling the database", async () => {
+    const rpc = useRpc({ data: "saved" });
+    expect((await saveRecoverySettings({ expiryDays: 60, overseerId: A, backupId: null, storePhone: "call us" })).ok).toBe(false);
+    expect((await saveRecoverySettings({ expiryDays: 60, overseerId: A, backupId: null, storePhone: "777-19" })).ok).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("explains bad_person in plain words", async () => {

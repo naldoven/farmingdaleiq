@@ -22,11 +22,13 @@ export function SettingsForm({
   expiryDays,
   overseerId,
   backupId,
+  storePhone,
 }: {
   people: PersonOption[];
   expiryDays: number;
   overseerId: string | null;
   backupId: string | null;
+  storePhone: string | null;
 }) {
   const router = useRouter();
   const formId = useId();
@@ -34,6 +36,7 @@ export function SettingsForm({
   const [days, setDays] = useState(String(expiryDays));
   const [overseer, setOverseer] = useState(overseerId ?? "");
   const [backup, setBackup] = useState(backupId ?? "");
+  const [phone, setPhone] = useState(storePhone ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -46,6 +49,7 @@ export function SettingsForm({
         expiryDays: Number(days),
         overseerId: overseer || null,
         backupId: backup || null,
+        storePhone: phone,
       });
       if (!result.ok) {
         setError(result.error);
@@ -112,6 +116,26 @@ export function SettingsForm({
             <option value="">None</option>
             {options}
           </select>
+        </div>
+        <div>
+          <label htmlFor={`${formId}-phone`} className={LABEL}>
+            Store phone number for app guests
+          </label>
+          <input
+            id={`${formId}-phone`}
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
+            className={FIELD}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(631) 555-0100"
+            maxLength={30}
+          />
+          <p className="mt-1 text-sm text-muted-ink">
+            Shown in the email and text to guests who have the Chick-fil-A app, as the number to
+            call. Leave blank to say &quot;reply to this email&quot; instead.
+          </p>
         </div>
         {error && (
           <p role="alert" className="text-sm font-medium text-danger">
