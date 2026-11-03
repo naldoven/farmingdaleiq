@@ -38,7 +38,7 @@ export async function saveRecoverySettings(input: {
     }
     if (data !== "saved") return { ok: false, error: "Could not save the settings." };
 
-    revalidatePath("/guest-recovery/settings");
+    revalidatePath("/guest-recovery/menu/settings");
     revalidatePath("/guest-recovery");
     return { ok: true, data: undefined };
   } catch (error) {

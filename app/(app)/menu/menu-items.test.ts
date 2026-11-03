@@ -137,11 +137,8 @@ describe("menu data", () => {
       "equipment",
       "catering",
       "guest-recovery",
-      "guest-recovery-new",
-      "guest-recovery-scan",
       "guest-recovery-stats",
       "guest-recovery-menu",
-      "guest-recovery-settings",
       "reporting",
       "notifications",
     ]);
@@ -159,25 +156,21 @@ describe("menu data", () => {
     );
   });
 
-  it("gives Guest Recovery its own section, like Cleaning and Maintenance, with the scan screen in it", () => {
+  it("gives Guest Recovery its own section with three rows: Recoveries (Current, Log, Scan tabs), Stats, Menu & settings", () => {
     const items = VIEW_ITEMS.filter((item) => item.key.startsWith("guest-recovery"));
     expect(items.map((item) => [item.label, item.href])).toEqual([
       ["Recoveries", "/guest-recovery"],
-      ["Log a missing order", "/guest-recovery/new"],
-      ["Scan a code", "/guest-recovery/scan"],
       ["Stats", "/guest-recovery/reporting"],
-      ["Recovery menu", "/guest-recovery/menu"],
-      ["Recovery settings", "/guest-recovery/settings"],
+      ["Menu & settings", "/guest-recovery/menu"],
     ]);
     for (const item of items) expect(item.section).toBe("Guest Recovery");
   });
 
-  it("shows a Team Leader the log and scan rows but not the manager-only ones", () => {
+  it("shows a Team Leader the Recoveries row but not the manager-only ones", () => {
     const keys = visibleViewItems(VIEW_ITEMS, { "guest_recovery.log": true }).map((i) => i.key);
-    expect(keys).toEqual(expect.arrayContaining(["guest-recovery", "guest-recovery-new", "guest-recovery-scan"]));
+    expect(keys).toContain("guest-recovery");
     expect(keys).not.toContain("guest-recovery-stats");
     expect(keys).not.toContain("guest-recovery-menu");
-    expect(keys).not.toContain("guest-recovery-settings");
   });
 
   it("puts every Cleaning screen under its own Cleaning section with the same icon", () => {

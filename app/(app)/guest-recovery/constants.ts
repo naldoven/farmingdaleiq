@@ -57,6 +57,20 @@ export type RecoveryPath = (typeof PATHS)[number];
 
 export const SPOTLIGHT_PROMISE_HOURS = 48;
 
+/** Spotlight's Respond form takes at most this many rewards per send. */
+export const SPOTLIGHT_REWARD_LIMIT = 5;
+
+/**
+ * The email template to pick in Spotlight's Respond form, suggested from the
+ * reason. A delivery-service order uses the Third-Party template instead, which
+ * we do not track, so the redeem screen says so.
+ */
+export function spotlightTemplateFor(reason: string | null): string {
+  return reason === "missing_item" || reason === "wrong_item" || reason === "quality"
+    ? "Order Complaint with Offer"
+    : "Service & Staff Complaint with Offer";
+}
+
 export const DEFAULT_EXPIRY_DAYS = 90;
 export const MIN_EXPIRY_DAYS = 7;
 export const MAX_EXPIRY_DAYS = 365;

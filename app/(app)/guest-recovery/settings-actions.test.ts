@@ -76,7 +76,7 @@ describe("saveRecoverySettings", () => {
       p_backup: null,
     });
     expect(result).toEqual({ ok: true, data: undefined });
-    expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery/settings");
+    expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery/menu/settings");
     expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery");
   });
 

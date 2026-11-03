@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
 
-import { SPOTLIGHT_PROMISE_HOURS, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import {
+  SPOTLIGHT_PROMISE_HOURS,
+  SPOTLIGHT_REWARD_LIMIT,
+  TOKEN_PATTERN,
+  spotlightTemplateFor,
+} from "@/app/(app)/guest-recovery/constants";
 import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecovery, loadWorkers } from "@/app/(app)/guest-recovery/queries";
 import {
@@ -135,8 +140,18 @@ export default async function GuestRecoveryDetailPage({
         )}
         {owed && spotlight && (
           <p className="mt-4 rounded-lg bg-info-soft p-3 text-[14px] font-semibold">
-            Send this guest their reward in the Chick-fil-A app. They were told it comes within{" "}
-            {SPOTLIGHT_PROMISE_HOURS} hours. {owner}.
+            Send this guest their reward from Spotlight (Care, then Respond). They were told it
+            comes within {SPOTLIGHT_PROMISE_HOURS} hours. {owner}.
+            <span className="mt-2 block font-normal">
+              Email template to pick: {spotlightTemplateFor(recovery.reason)}. If it was a delivery
+              service order, pick Third-Party Order Complaint with Offer instead.
+            </span>
+            {recovery.items.length > SPOTLIGHT_REWARD_LIMIT && (
+              <span className="mt-2 block font-normal">
+                Spotlight sends up to {SPOTLIGHT_REWARD_LIMIT} rewards at a time. This guest is owed{" "}
+                {recovery.items.length} items, so send the rest in a second round.
+              </span>
+            )}
           </p>
         )}
         <dl className="mt-4 space-y-2 text-[15px]">
