@@ -12,7 +12,7 @@ import {
 import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { hasPermission } from "@/lib/auth/permissions";
-import { firstNameOf, recoveryLink } from "@/lib/guest-recovery/messages";
+import { firstNameOf, reasonCopy, recoveryLink } from "@/lib/guest-recovery/messages";
 import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
 import { readConfig } from "@/lib/guest-recovery/providers";
 import { qrSvg } from "@/lib/guest-recovery/qr";
@@ -59,7 +59,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
   const service = createServiceRoleClient();
   const { data: recovery } = await service
     .from("guest_recoveries")
-    .select("id, guest_name, status, created_at, given_at, path, expires_at, assigned_to, logged_by")
+    .select("id, guest_name, status, created_at, given_at, path, expires_at, assigned_to, logged_by, reason")
     .eq("token", token)
     .maybeSingle();
   if (!recovery) notFound();
@@ -106,7 +106,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
         <h1 className="mt-6 text-[38px] font-extrabold leading-[1.05]">
           We are sorry, {firstNameOf(recovery.guest_name)}. Let us make it right.
         </h1>
-        <p className="mt-3 text-[16px] leading-snug">Here is what we owe you from your recent order.</p>
+        <p className="mt-3 text-[16px] leading-snug">{reasonCopy(recovery.reason, null).problem}</p>
 
         {owed && expired && (
           <div role="alert" className="mt-6 rounded-2xl bg-card p-4 text-center text-ink">
@@ -122,7 +122,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
                 {goodUntil}
               </p>
             )}
-            <p className="text-[13px] text-muted-ink">We owe you</p>
+            <p className="text-[13px] text-muted-ink">On us</p>
             <ul className="mt-3 space-y-2.5">
               {rows.map((item) => (
                 <li key={item.name} className="flex items-center gap-3">

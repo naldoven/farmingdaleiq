@@ -40,6 +40,8 @@ export interface SendRecovery {
   goodUntil?: string;
   /** Name of the team member sending an app guest's reward, signed at the end of their email. */
   sentBy?: string | null;
+  /** Why the guest called; changes the wording of the messages. */
+  reason?: string | null;
   items: MessageItem[];
 }
 
@@ -164,6 +166,7 @@ async function sendOne(
     goodUntil: recovery.goodUntil,
     storePhone: deps.storePhone ?? null,
     sentBy: recovery.sentBy ?? null,
+    reason: recovery.reason ?? null,
     logoUrl: deps.baseUrl ? `${deps.baseUrl.replace(/\/+$/, "")}/icons/cfa-mark-white.png` : null,
   };
 

@@ -141,6 +141,18 @@ describe("the public guest page", () => {
     expect(html).toContain("google.com/maps/search");
   });
 
+  it("says what went wrong in words that fit the reason, and calls the gift 'on us' not 'owed'", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", reason: "quality", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("Something in your recent order was not up to our standard.");
+    expect(html).toContain("On us");
+    expect(html).not.toMatch(/owe/i);
+    expect(html).not.toContain("was missing");
+  });
+
   it("says sorry first, in the same words as the email", async () => {
     serviceReturning(
       { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },

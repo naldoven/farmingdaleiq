@@ -70,7 +70,7 @@ function makeDeps(client: ServiceClient, storePhone: string | null): SendDeps {
 async function loadSendRecovery(client: ServiceClient, recoveryId: string): Promise<SendRecovery | null> {
   const { data: row, error: rowError } = await client
     .from("guest_recoveries")
-    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status, path, expires_at, assigned_to, logged_by")
+    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status, path, expires_at, assigned_to, logged_by, reason")
     .eq("id", recoveryId)
     .maybeSingle();
   if (rowError) throw new Error(rowError.message);
@@ -106,6 +106,7 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
     path: row.path === "spotlight" ? "spotlight" : "standard",
     goodUntil: goodUntilLabel(row.expires_at),
     sentBy,
+    reason: row.reason,
     items: (items ?? []).map((item) => ({ name: item.name, qty: item.qty })),
   };
 }

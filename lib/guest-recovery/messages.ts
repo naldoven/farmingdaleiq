@@ -30,6 +30,8 @@ export interface MessageInput {
   logoUrl?: string | null;
   /** The team member sending the app guest's reward, named at the end of the message. Left out when absent. */
   sentBy?: string | null;
+  /** Why the guest called (missing_item, wrong_item, quality, too_slow, other). Changes the wording. */
+  reason?: string | null;
 }
 
 /** "2 x Medium Mac & Cheese, Spicy Deluxe Sandwich". A count shows only above one. */
@@ -55,8 +57,41 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function orderPhrase(orderNumber: string | null): string {
-  return orderNumber ? `Your order #${orderNumber} was missing:` : "Your recent order was missing:";
+/**
+ * What we say depends on why the guest called, because "was missing" is wrong
+ * for cold food or a long wait, and "owe" sounds like a debt. `problem` names
+ * what went wrong, `gift` introduces what we would like to give. A recovery
+ * with no reason (logged before reasons existed) reads as a missing item.
+ */
+export function reasonCopy(
+  reason: string | null | undefined,
+  orderNumber: string | null,
+): { problem: string; gift: string } {
+  const ref = orderNumber ? `order #${orderNumber}` : "recent order";
+  switch (reason) {
+    case "wrong_item":
+      return { problem: `Your ${ref} had the wrong item.`, gift: "We would like to make it right with:" };
+    case "quality":
+      return {
+        problem: `Something in your ${ref} was not up to our standard.`,
+        gift: "We would like to replace it, on us:",
+      };
+    case "too_slow":
+      return { problem: `Your ${ref} took longer than it should have.`, gift: "Please enjoy this one on us:" };
+    case "other":
+      return {
+        problem: `Thank you for telling us about your ${ref}.`,
+        gift: "Here is what we would like to give you:",
+      };
+    default:
+      return { problem: `Your ${ref} was missing items.`, gift: "We would like to replace what you did not get:" };
+  }
+}
+
+/** The problem and the offer, as the two short paragraphs that sit above the items. */
+function problemHtml(copy: { problem: string; gift: string }): string {
+  return `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(copy.problem)}</p>
+<p style="margin:12px 0 0;font-size:16px;line-height:1.6;font-weight:700">${escapeHtml(copy.gift)}</p>`;
 }
 
 export interface BuiltEmail {
@@ -124,6 +159,7 @@ function questionsLine(storePhone: string | null | undefined): string {
 export function buildEmail(input: MessageInput & { qrContentId?: string }): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
+  const copy = reasonCopy(input.reason, input.orderNumber);
   // The store name is already the sender's display name, so the subject can lead with the apology.
   const subject = `We are sorry, ${first}. Here is your code`;
   const questions = questionsLine(input.storePhone);
@@ -132,7 +168,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
   const text = [
     `Hi ${first}, we are sorry about your order. Let us make it right.`,
     "",
-    `${orderPhrase(input.orderNumber)} ${items}`,
+    `${copy.problem} ${copy.gift} ${items}`,
     "",
     `Come back and we will make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
     input.link,
@@ -154,7 +190,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     ? `<p style="margin:0;text-align:center"><img src="cid:${escapeHtml(input.qrContentId)}" width="160" height="160" alt="Your code" style="display:inline-block"></p>`
     : "";
 
-  const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
+  const card = `${problemHtml(copy)}
 ${itemsBox(input.items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">Come back and we will make it right. Bring your receipt and show this email or the code below on your next visit.</p>
 <p style="margin:22px 0 0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;padding:14px 40px;border-radius:999px">Show my code</a></p>
@@ -175,7 +211,7 @@ const SMS_MAX = 480;
  */
 export function buildSms(input: MessageInput): string {
   const first = firstNameOf(input.guestName);
-  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We owe you: `;
+  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We would like to give you: `;
   const until = input.goodUntil ? ` ${input.goodUntil}.` : "";
   const tail = `. On your next visit, show this link to a team member and bring your receipt: ${input.link}${until} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;
@@ -195,7 +231,7 @@ export function buildSms(input: MessageInput): string {
  * right away that we know about the problem and that a team member will send
  * their reward within 48 hours. No link, no QR, no promotion.
  */
-export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil" | "logoUrl" | "sentBy"> & {
+export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil" | "logoUrl" | "sentBy" | "reason"> & {
   /** The store's phone number for questions (GUEST_STORE_PHONE). Left out when absent. */
   storePhone?: string | null;
 };
@@ -203,6 +239,7 @@ export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "i
 export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
+  const copy = reasonCopy(input.reason, input.orderNumber);
   const subject = `We are sorry, ${first}. Your reward is on its way`;
   const questions = questionsLine(input.storePhone);
   const sender = input.sentBy?.trim() || null;
@@ -212,7 +249,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const text = [
     `Hi ${first}, we are sorry about your order. Let us make it right.`,
     "",
-    `${orderPhrase(input.orderNumber)} ${items}`,
+    `${copy.problem} ${copy.gift} ${items}`,
     "",
     reward,
     "",
@@ -229,7 +266,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
 <p style="margin:18px 0 0;font-size:16px;line-height:1.6">All the best,<br><strong>${escapeHtml(sender)}</strong><br>${escapeHtml(STORE_NAME)}</p>`
     : "";
 
-  const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
+  const card = `${problemHtml(copy)}
 ${itemsBox(input.items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">${escapeHtml(reward)}</p>
 <p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>${signOff}`;
@@ -239,7 +276,7 @@ ${itemsBox(input.items)}
 
 export function buildSpotlightSms(input: SpotlightInput): string {
   const first = firstNameOf(input.guestName);
-  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We owe you: `;
+  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We would like to give you: `;
   const phone = input.storePhone?.trim();
   const tail = `. Your reward will show in the Chick-fil-A app under Rewards within ${SPOTLIGHT_PROMISE_HOURS} hours.${input.goodUntil ? ` ${input.goodUntil}.` : ""}${phone ? ` Questions? Call ${phone}.` : ""} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;

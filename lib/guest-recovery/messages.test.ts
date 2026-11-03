@@ -7,6 +7,7 @@ import {
   buildSpotlightSms,
   firstNameOf,
   formatItems,
+  reasonCopy,
   recoveryLink,
 } from "@/lib/guest-recovery/messages";
 
@@ -80,6 +81,47 @@ describe("buildEmail", () => {
     for (const part of [email.subject, email.html, email.text]) {
       expect(part).not.toContain("—");
       expect(part).not.toMatch(/\b(unlock|leverage|delve)\b/i);
+    }
+  });
+});
+
+describe("wording follows why the guest called", () => {
+  it("says what went wrong in terms that fit the reason", () => {
+    expect(reasonCopy("missing_item", "8407578").problem).toBe("Your order #8407578 was missing items.");
+    expect(reasonCopy("wrong_item", "8407578").problem).toBe("Your order #8407578 had the wrong item.");
+    expect(reasonCopy("quality", "8407578").problem).toBe("Something in your order #8407578 was not up to our standard.");
+    expect(reasonCopy("too_slow", "8407578").problem).toBe("Your order #8407578 took longer than it should have.");
+    expect(reasonCopy("other", "8407578").problem).toBe("Thank you for telling us about your order #8407578.");
+  });
+
+  it("reads as a missing item when there is no reason, and drops the number when there is none", () => {
+    expect(reasonCopy(null, null).problem).toBe("Your recent order was missing items.");
+    expect(reasonCopy(undefined, "1").problem).toBe("Your order #1 was missing items.");
+    expect(reasonCopy("not_a_reason", null).problem).toBe("Your recent order was missing items.");
+    expect(reasonCopy("quality", null).problem).toBe("Something in your recent order was not up to our standard.");
+  });
+
+  it("never says the order was missing something for cold food or a long wait", () => {
+    for (const reason of ["quality", "too_slow", "wrong_item", "other"]) {
+      const email = buildEmail({ ...base, reason });
+      expect(email.text).not.toMatch(/was missing/i);
+      expect(email.html).not.toMatch(/was missing/i);
+    }
+    expect(buildEmail({ ...base, reason: "missing_item" }).text).toMatch(/was missing/i);
+  });
+
+  it("uses the reason in the app guest's email too", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items, reason: "quality" });
+    expect(spot.text).toContain("Something in your recent order was not up to our standard.");
+    expect(spot.text).toContain("We would like to replace it, on us:");
+  });
+
+  it("never says we owe the guest anything, in any message, for any reason", () => {
+    for (const reason of ["missing_item", "wrong_item", "quality", "too_slow", "other", null]) {
+      const std = buildEmail({ ...base, reason });
+      const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: "1", items, reason });
+      const parts = [std.text, std.html, spot.text, spot.html, buildSms({ ...base, reason }), buildSpotlightSms({ guestName: "Nolan", orderNumber: "1", items })];
+      for (const part of parts) expect(part).not.toMatch(/owe/i);
     }
   });
 });
