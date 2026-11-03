@@ -47,6 +47,11 @@ const PUBLIC_PATHS = [
   // And for the found-and-fixed photo post: a redirected fetch() would read the
   // login page as a saved find. The route answers 401 JSON itself.
   "/api/cleaning/finds",
+  // The guest's Guest Recovery link. A guest has no account; the 64-character
+  // token in the address is the only key, and the page shows nothing else
+  // (app/recover/[token]/page.tsx). A signed-in leader who opens it is sent on
+  // to the redeem screen.
+  "/recover",
 ];
 
 export function isPublicPath(pathname: string) {

@@ -45,6 +45,7 @@ export type NavIconName =
   | "checklists"
   | "tasks"
   | "cleaning"
+  | "guest_recovery"
   | "setups"
   | "ratings"
   | "waste"
@@ -226,6 +227,47 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Slot caps, which zones are on the board, and cleaning coordinators.",
         owner: "Cleaning",
         hidden: true,
+      },
+    ],
+  },
+  {
+    label: "Guest Recovery",
+    icon: "guest_recovery",
+    items: [
+      {
+        href: "/guest-recovery",
+        permission: "guest_recovery.log",
+        label: "Recoveries",
+        description: "Guests owed missing items: who, what, and whether they were reached.",
+        owner: "Guest Recovery",
+      },
+      {
+        href: "/guest-recovery/new",
+        permission: "guest_recovery.log",
+        label: "Log a missing order",
+        description: "A guest called: pick what was missing and send them the link and QR.",
+        owner: "Guest Recovery",
+      },
+      {
+        href: "/guest-recovery/scan",
+        permission: "guest_recovery.log",
+        label: "Scan a code",
+        description: "Scan a guest's QR code with the camera, or paste their link, to hand over what they are owed.",
+        owner: "Guest Recovery",
+      },
+      {
+        href: "/guest-recovery/reporting",
+        permission: "guest_recovery.manage",
+        label: "Stats",
+        description: "Recoveries by month, what goes missing, when, who logged them, follow-through.",
+        owner: "Guest Recovery",
+      },
+      {
+        href: "/guest-recovery/menu",
+        permission: "guest_recovery.manage",
+        label: "Recovery menu",
+        description: "The items leaders pick from: add new ones, hide old ones.",
+        owner: "Guest Recovery",
       },
     ],
   },

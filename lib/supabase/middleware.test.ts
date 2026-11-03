@@ -21,6 +21,14 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/cleaning/finds")).toBe(true);
   });
 
+  it("opens the guest's recovery link, and only that, to logged-out guests", () => {
+    expect(isPublicPath(`/recover/${"a".repeat(64)}`)).toBe(true);
+    // The leader screens hold guest names, emails and phones.
+    expect(isPublicPath("/guest-recovery")).toBe(false);
+    expect(isPublicPath("/guest-recovery/new")).toBe(false);
+    expect(isPublicPath("/recovery")).toBe(false);
+  });
+
   it("keeps private app routes behind authentication", () => {
     expect(isPublicPath("/maintenance")).toBe(false);
     expect(isPublicPath("/cleaning/walkthrough")).toBe(false);

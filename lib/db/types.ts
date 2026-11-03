@@ -2077,6 +2077,169 @@ export type Database = {
           },
         ]
       }
+      guest_recoveries: {
+        Row: {
+          created_at: string
+          given_at: string | null
+          given_by: string | null
+          guest_email: string | null
+          guest_name: string
+          guest_phone: string | null
+          id: string
+          logged_by: string
+          note: string | null
+          order_number: string | null
+          sms_consent: boolean
+          status: string
+          submission_id: string
+          token: string
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          given_at?: string | null
+          given_by?: string | null
+          guest_email?: string | null
+          guest_name: string
+          guest_phone?: string | null
+          id?: string
+          logged_by?: string
+          note?: string | null
+          order_number?: string | null
+          sms_consent?: boolean
+          status?: string
+          submission_id: string
+          token?: string
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          given_at?: string | null
+          given_by?: string | null
+          guest_email?: string | null
+          guest_name?: string
+          guest_phone?: string | null
+          id?: string
+          logged_by?: string
+          note?: string | null
+          order_number?: string | null
+          sms_consent?: boolean
+          status?: string
+          submission_id?: string
+          token?: string
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_recoveries_logged_by_fkey"
+            columns: ["logged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_recovery_items: {
+        Row: {
+          family: string
+          id: string
+          menu_item_id: string | null
+          name: string
+          qty: number
+          recovery_id: string
+        }
+        Insert: {
+          family: string
+          id?: string
+          menu_item_id?: string | null
+          name: string
+          qty?: number
+          recovery_id: string
+        }
+        Update: {
+          family?: string
+          id?: string
+          menu_item_id?: string | null
+          name?: string
+          qty?: number
+          recovery_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_recovery_items_recovery_id_fkey"
+            columns: ["recovery_id"]
+            isOneToOne: false
+            referencedRelation: "guest_recoveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_recovery_items_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "recovery_menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_recovery_sends: {
+        Row: {
+          channel: string
+          created_at: string
+          error: string | null
+          id: string
+          kind: string
+          recovery_id: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          kind: string
+          recovery_id: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          kind?: string
+          recovery_id?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_recovery_sends_recovery_id_fkey"
+            columns: ["recovery_id"]
+            isOneToOne: false
+            referencedRelation: "guest_recoveries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_sms_optouts: {
+        Row: {
+          opted_out_at: string
+          phone: string
+        }
+        Insert: {
+          opted_out_at?: string
+          phone: string
+        }
+        Update: {
+          opted_out_at?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       infraction_types: {
         Row: {
           active: boolean
@@ -2978,6 +3141,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      recovery_menu_items: {
+        Row: {
+          active: boolean
+          category: string
+          family: string
+          id: string
+          name: string
+          sort: number
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          family: string
+          id?: string
+          name: string
+          sort?: number
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          family?: string
+          id?: string
+          name?: string
+          sort?: number
+        }
+        Relationships: []
       }
       rerate_prompts: {
         Row: {
@@ -4392,6 +4582,25 @@ export type Database = {
         Returns: string
       }
       current_store_id: { Args: never; Returns: string }
+      claim_guest_recovery_send: {
+        Args: { p_recovery_id: string; p_channel: string; p_kind: string }
+        Returns: string | null
+      }
+      give_guest_recovery: { Args: { p_id: string }; Returns: string }
+      log_guest_recovery: {
+        Args: {
+          p_submission_id: string
+          p_guest_name: string
+          p_guest_email: string | null
+          p_guest_phone: string | null
+          p_order_number: string | null
+          p_note: string | null
+          p_sms_consent: boolean
+          p_items: Json
+        }
+        Returns: { out_id: string; out_created: boolean }[]
+      }
+      void_guest_recovery: { Args: { p_id: string }; Returns: string }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
       reject_cleaning_assignment: {
         Args: { p_assignment_id: string; p_note: string; p_redo_date: string; p_redo_half: string }

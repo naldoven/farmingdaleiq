@@ -91,6 +91,8 @@ describe("visibleViewItems", () => {
       "vendors.view": true,
       "maintenance.request": true,
       "catering.view": true,
+      "guest_recovery.log": true,
+      "guest_recovery.manage": true,
       "reports.view": true,
       "notifications.view": true,
     } as const;
@@ -134,6 +136,11 @@ describe("menu data", () => {
       "maintenance",
       "equipment",
       "catering",
+      "guest-recovery",
+      "guest-recovery-new",
+      "guest-recovery-scan",
+      "guest-recovery-stats",
+      "guest-recovery-menu",
       "reporting",
       "notifications",
     ]);
@@ -149,6 +156,25 @@ describe("menu data", () => {
     expect(VIEW_ITEMS.find((item) => item.key === "catering")?.section).toBe(
       "Daily Ops",
     );
+  });
+
+  it("gives Guest Recovery its own section, like Cleaning and Maintenance, with the scan screen in it", () => {
+    const items = VIEW_ITEMS.filter((item) => item.key.startsWith("guest-recovery"));
+    expect(items.map((item) => [item.label, item.href])).toEqual([
+      ["Recoveries", "/guest-recovery"],
+      ["Log a missing order", "/guest-recovery/new"],
+      ["Scan a code", "/guest-recovery/scan"],
+      ["Stats", "/guest-recovery/reporting"],
+      ["Recovery menu", "/guest-recovery/menu"],
+    ]);
+    for (const item of items) expect(item.section).toBe("Guest Recovery");
+  });
+
+  it("shows a Team Leader the log and scan rows but not the manager-only ones", () => {
+    const keys = visibleViewItems(VIEW_ITEMS, { "guest_recovery.log": true }).map((i) => i.key);
+    expect(keys).toEqual(expect.arrayContaining(["guest-recovery", "guest-recovery-new", "guest-recovery-scan"]));
+    expect(keys).not.toContain("guest-recovery-stats");
+    expect(keys).not.toContain("guest-recovery-menu");
   });
 
   it("puts every Cleaning screen under its own Cleaning section with the same icon", () => {
@@ -236,7 +262,8 @@ describe("groupViewItems", () => {
 
   it("turns the module list into a handful of headings", () => {
     const grouped = groupViewItems(VIEW_ITEMS);
-    expect(grouped.length).toBeLessThanOrEqual(6);
+    // Seven since Guest Recovery got its own heading (Naldo, 2026-11-02).
+    expect(grouped.length).toBeLessThanOrEqual(7);
   });
 
   it("drops a section whose modules are all gated away", () => {

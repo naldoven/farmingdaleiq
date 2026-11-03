@@ -92,6 +92,12 @@ export const ALL_PERMISSION_KEYS = [
   "cleaning.complete",
   "cleaning.view_reports",
 
+  // Guest Recovery. `log` is logging a guest's missing items, resending, and
+  // handing them over (Team Leader and above); `manage` is the recovery menu
+  // and the stats (Shift Supervisor and above).
+  "guest_recovery.log",
+  "guest_recovery.manage",
+
   // Reporting
   "reports.view",
 
