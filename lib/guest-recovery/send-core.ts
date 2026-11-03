@@ -38,6 +38,8 @@ export interface SendRecovery {
   path: "standard" | "spotlight";
   /** "Good until Feb 1, 2027", added to the standard message. */
   goodUntil?: string;
+  /** Name of the team member sending an app guest's reward, signed at the end of their email. */
+  sentBy?: string | null;
   items: MessageItem[];
 }
 
@@ -161,6 +163,7 @@ async function sendOne(
     link,
     goodUntil: recovery.goodUntil,
     storePhone: deps.storePhone ?? null,
+    sentBy: recovery.sentBy ?? null,
     logoUrl: deps.baseUrl ? `${deps.baseUrl.replace(/\/+$/, "")}/icons/cfa-mark-white.png` : null,
   };
 

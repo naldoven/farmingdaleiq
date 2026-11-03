@@ -120,6 +120,17 @@ describe("email look (red page, white card)", () => {
     expect(buildSms(base)).not.toMatch(/thanks for telling us/);
   });
 
+  it("signs an app guest's email with the person sending the reward, only when there is one", () => {
+    const spot = { guestName: "Nolan", orderNumber: null, items };
+    const signed = buildSpotlightEmail({ ...spot, sentBy: "Ryan Smith" });
+    expect(signed.text).toContain("All the best,\nRyan Smith\nChick-fil-A Farmingdale");
+    expect(signed.html).toContain("<strong>Ryan Smith</strong>");
+    const unsigned = buildSpotlightEmail(spot);
+    expect(unsigned.text).not.toContain("All the best");
+    expect(unsigned.html).not.toContain("All the best");
+    expect(buildSpotlightEmail({ ...spot, sentBy: "<b>x</b>" }).html).not.toContain("<b>x</b>");
+  });
+
   it("keeps the code button and the plain link", () => {
     const email = buildEmail(base);
     expect(email.html).toContain("Show my code");

@@ -70,7 +70,7 @@ function makeDeps(client: ServiceClient, storePhone: string | null): SendDeps {
 async function loadSendRecovery(client: ServiceClient, recoveryId: string): Promise<SendRecovery | null> {
   const { data: row, error: rowError } = await client
     .from("guest_recoveries")
-    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status, path, expires_at")
+    .select("id, token, guest_name, guest_email, guest_phone, order_number, sms_consent, status, path, expires_at, assigned_to")
     .eq("id", recoveryId)
     .maybeSingle();
   if (rowError) throw new Error(rowError.message);
@@ -85,6 +85,13 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
     .order("name");
   if (itemsError) throw new Error(itemsError.message);
 
+  // An app guest's reward comes from the person it is assigned to: name them.
+  let sentBy: string | null = null;
+  if (row.path === "spotlight" && row.assigned_to) {
+    const { data: person } = await client.from("profiles").select("name").eq("id", row.assigned_to).maybeSingle();
+    sentBy = person?.name?.trim() || null;
+  }
+
   return {
     id: row.id,
     token: row.token,
@@ -95,6 +102,7 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
     smsConsent: row.sms_consent,
     path: row.path === "spotlight" ? "spotlight" : "standard",
     goodUntil: goodUntilLabel(row.expires_at),
+    sentBy,
     items: (items ?? []).map((item) => ({ name: item.name, qty: item.qty })),
   };
 }

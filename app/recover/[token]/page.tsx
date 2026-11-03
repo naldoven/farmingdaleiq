@@ -33,7 +33,8 @@ const STEPS = [
  * Recovery"). Public, and the only thing that unlocks it is the 64-character
  * token in the address. It shows the guest's first name, what they are owed
  * and a QR of this same address, and nothing else: no email, phone, order
- * number, other guests or staff names. A signed-in leader who opens it (by
+ * number or other guests. The one staff name is the person sending an app
+ * guest's reward, signed at the end like their email. A signed-in leader who opens it (by
  * scanning the guest's QR) goes to the redeem screen instead.
  *
  * It matches the emails: the store's red page, one white card, and the words
@@ -52,10 +53,18 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
   const service = createServiceRoleClient();
   const { data: recovery } = await service
     .from("guest_recoveries")
-    .select("id, guest_name, status, created_at, given_at, path, expires_at")
+    .select("id, guest_name, status, created_at, given_at, path, expires_at, assigned_to")
     .eq("token", token)
     .maybeSingle();
   if (!recovery) notFound();
+
+  // An app guest's reward comes from the person it is assigned to: the page
+  // names them, as the email does. Their name only, nothing else about them.
+  let sentBy: string | null = null;
+  if (recovery.path === "spotlight" && recovery.status === "owed" && recovery.assigned_to) {
+    const { data: person } = await service.from("profiles").select("name").eq("id", recovery.assigned_to).maybeSingle();
+    sentBy = person?.name?.trim() || null;
+  }
 
   const { data: items } = await service
     .from("guest_recovery_items")
@@ -130,6 +139,15 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
                   To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order.
                   The reward applies on its own.
                 </p>
+                {sentBy && (
+                  <p className="mt-3">
+                    All the best,
+                    <br />
+                    <span className="font-extrabold">{sentBy}</span>
+                    <br />
+                    {STORE_NAME}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-4">

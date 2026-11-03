@@ -409,8 +409,10 @@ hands over what was missed.
   Twilio sends its own STOP and HELP confirmations, so the route answers with an empty message.
 - **The link** (`/recover/<token>`, public): a random 64-character token, never an id.
   Shows the guest's first name, the items and "This store only, receipt required". A signed-in
-  leader who opens it is sent to the leader screen instead. Nothing else about the recovery
-  or other guests is readable without signing in.
+  leader who opens it is sent to the leader screen instead. For an app guest it also names
+  the team member the reward is assigned to ("All the best, <name>"), as that guest's email
+  does; no other staff detail is shown. Nothing else about the recovery or other guests is
+  readable without signing in.
 - **Scan** (`/guest-recovery/scan`, `guest_recovery.log`): scan a guest's QR in the app, or
   paste their link or code. Only the 64-character token is taken from what was scanned, and
   the app opens `/recover/<token>` itself, so a QR holding some other address goes nowhere.

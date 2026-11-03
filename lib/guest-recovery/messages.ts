@@ -23,6 +23,8 @@ export interface MessageInput {
   storePhone?: string | null;
   /** Full address of the logo image for the email header. Left out when absent. */
   logoUrl?: string | null;
+  /** The team member sending the app guest's reward, named at the end of the message. Left out when absent. */
+  sentBy?: string | null;
 }
 
 /** "2 x Medium Mac & Cheese, Spicy Deluxe Sandwich". A count shows only above one. */
@@ -179,7 +181,7 @@ export function buildSms(input: MessageInput): string {
  * right away that we know about the problem and that a team member will send
  * their reward within 48 hours. No link, no QR, no promotion.
  */
-export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil" | "logoUrl"> & {
+export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil" | "logoUrl" | "sentBy"> & {
   /** The store's phone number for questions (GUEST_STORE_PHONE). Left out when absent. */
   storePhone?: string | null;
 };
@@ -189,6 +191,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const items = formatItems(input.items);
   const subject = `Your ${STORE_NAME} order: your reward is on its way`;
   const questions = questionsLine(input.storePhone);
+  const sender = input.sentBy?.trim() || null;
   const reward = `We are sending you a reward to make it right. It will be added to your Chick-fil-A One account within ${SPOTLIGHT_PROMISE_HOURS} hours, and Chick-fil-A will email you when it is there.`;
   const redeem = `To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order. The reward applies on its own.${input.goodUntil ? ` ${input.goodUntil}.` : ""}`;
 
@@ -200,15 +203,21 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
     reward,
     "",
     redeem,
+    ...(sender ? ["", "All the best,", sender, STORE_NAME] : []),
     "",
     questions,
     "My pleasure to serve you again.",
   ].join("\n");
 
+  const signOff = sender
+    ? `
+<p style="margin:18px 0 0;font-size:16px;line-height:1.6">All the best,<br><strong>${escapeHtml(sender)}</strong><br>${escapeHtml(STORE_NAME)}</p>`
+    : "";
+
   const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
 ${itemsBox(input.items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">${escapeHtml(reward)}</p>
-<p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>`;
+<p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>${signOff}`;
 
   return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
 }
