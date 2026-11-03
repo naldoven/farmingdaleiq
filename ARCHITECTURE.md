@@ -416,9 +416,9 @@ hands over what was missed.
 - **Scan** (`/guest-recovery/scan`, `guest_recovery.log`): scan a guest's QR in the app, or
   paste their link or code. Only the 64-character token is taken from what was scanned, and
   the app opens `/recover/<token>` itself, so a QR holding some other address goes nowhere.
-  On the Menu hub Guest Recovery is its own section with three rows, like Cleaning and
-  Maintenance: Recoveries (tabs Current, Log, Scan), Stats, and Menu & settings (tabs Menu
-  items, Settings).
+  On the Menu hub Guest Recovery is its own section with four rows, like Cleaning and
+  Maintenance: Recoveries (tabs Current and Stats; Stats is for managers), Log a missing
+  order, Scan a code, and Menu & settings (tabs Menu items, Settings).
 - **Reason and path** (required on the log form): one tap for why they called (Missing item,
   Wrong item, Quality problem, Took too long, Other), and whether the guest has the Chick-fil-A
   app. No app is the normal flow. App guests ("Spotlight") get an instant email and text saying

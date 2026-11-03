@@ -30,7 +30,7 @@ export default async function GuestRecoveryPage() {
 
   return (
     <div className="mx-auto flex max-w-[480px] flex-col gap-4">
-      <GuestRecoveryTabs group="recoveries" />
+      <GuestRecoveryTabs group="recoveries" showStats={manager} />
       {(settings.overseerId || manager) && (
         <OverseerToggle
           overseerName={settings.overseerName}

@@ -14,8 +14,7 @@ interface Tab {
 const GROUPS = {
   recoveries: [
     { href: "/guest-recovery", label: "Current" },
-    { href: "/guest-recovery/new", label: "Log" },
-    { href: "/guest-recovery/scan", label: "Scan" },
+    { href: "/guest-recovery/reporting", label: "Stats" },
   ],
   setup: [
     { href: "/guest-recovery/menu", label: "Menu items" },
@@ -24,17 +23,27 @@ const GROUPS = {
 } satisfies Record<string, Tab[]>;
 
 /**
- * The tabs under the Guest Recovery rows in the menu: Recoveries holds Current,
- * Log and Scan; Menu & settings holds the item list and the settings. Real links
- * (not a client-side switch) so each tab keeps its own URL and permission check.
+ * The tabs under two of the Guest Recovery rows in the menu: Recoveries holds
+ * Current and Stats; Menu & settings holds the item list and the settings. Log
+ * and Scan are rows of their own. Real links (not a client-side switch) so each
+ * tab keeps its own URL and permission check. Stats is for managers, so a
+ * leader who cannot see it gets no tab row at all (one tab is not a choice).
  */
-export function GuestRecoveryTabs({ group }: { group: keyof typeof GROUPS }) {
+export function GuestRecoveryTabs({
+  group,
+  showStats = true,
+}: {
+  group: keyof typeof GROUPS;
+  showStats?: boolean;
+}) {
   const pathname = usePathname();
+  const tabs: Tab[] = GROUPS[group].filter((tab) => showStats || tab.label !== "Stats");
+  if (tabs.length < 2) return null;
 
   return (
     <nav aria-label="Guest Recovery sections">
       <ChipRow>
-        {GROUPS[group].map((tab) => {
+        {tabs.map((tab) => {
           const active = pathname === tab.href;
           return (
             <Link

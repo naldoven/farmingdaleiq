@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { buildGuestRecoveryReport, type ReportRow } from "@/app/(app)/guest-recovery/stats";
 import { ReportingView } from "@/components/guest-recovery/reporting-view";
+import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { storeDateTimeInputToIso, storeLocalDate } from "@/lib/time";
@@ -147,10 +148,13 @@ export default async function GuestRecoveryReportingPage({
   const report = buildGuestRecoveryReport(rows, { month, now, dayParts: dayPartsRes.data ?? [], repeat });
 
   return (
-    <ReportingView
-      report={report}
-      prevHref={`/guest-recovery/reporting?month=${shiftMonth(month, -1)}`}
-      nextHref={month < currentMonth ? `/guest-recovery/reporting?month=${shiftMonth(month, 1)}` : null}
-    />
+    <div className="space-y-4">
+      <GuestRecoveryTabs group="recoveries" />
+      <ReportingView
+        report={report}
+        prevHref={`/guest-recovery/reporting?month=${shiftMonth(month, -1)}`}
+        nextHref={month < currentMonth ? `/guest-recovery/reporting?month=${shiftMonth(month, 1)}` : null}
+      />
+    </div>
   );
 }

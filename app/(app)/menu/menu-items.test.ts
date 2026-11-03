@@ -137,7 +137,8 @@ describe("menu data", () => {
       "equipment",
       "catering",
       "guest-recovery",
-      "guest-recovery-stats",
+      "guest-recovery-new",
+      "guest-recovery-scan",
       "guest-recovery-menu",
       "reporting",
       "notifications",
@@ -156,11 +157,12 @@ describe("menu data", () => {
     );
   });
 
-  it("gives Guest Recovery its own section with three rows: Recoveries (Current, Log, Scan tabs), Stats, Menu & settings", () => {
+  it("gives Guest Recovery its own section with four rows: Recoveries (Current and Stats tabs), Log, Scan, Menu & settings", () => {
     const items = VIEW_ITEMS.filter((item) => item.key.startsWith("guest-recovery"));
     expect(items.map((item) => [item.label, item.href])).toEqual([
       ["Recoveries", "/guest-recovery"],
-      ["Stats", "/guest-recovery/reporting"],
+      ["Log a missing order", "/guest-recovery/new"],
+      ["Scan a code", "/guest-recovery/scan"],
       ["Menu & settings", "/guest-recovery/menu"],
     ]);
     for (const item of items) expect(item.section).toBe("Guest Recovery");
@@ -168,8 +170,7 @@ describe("menu data", () => {
 
   it("shows a Team Leader the Recoveries row but not the manager-only ones", () => {
     const keys = visibleViewItems(VIEW_ITEMS, { "guest_recovery.log": true }).map((i) => i.key);
-    expect(keys).toContain("guest-recovery");
-    expect(keys).not.toContain("guest-recovery-stats");
+    expect(keys).toEqual(expect.arrayContaining(["guest-recovery", "guest-recovery-new", "guest-recovery-scan"]));
     expect(keys).not.toContain("guest-recovery-menu");
   });
 
