@@ -23,6 +23,8 @@ export interface GuestMessagingConfig {
   smsConfigured: boolean;
   /** Texting stays off until carrier registration clears: GUEST_SMS_ENABLED must be exactly "true". */
   smsEnabled: boolean;
+  /** The store's phone number for guest questions (GUEST_STORE_PHONE), or null. */
+  storePhone: string | null;
 }
 
 export function readConfig(env: Env = process.env): GuestMessagingConfig {
@@ -40,6 +42,7 @@ export function readConfig(env: Env = process.env): GuestMessagingConfig {
         (env.TWILIO_FROM_NUMBER || env.TWILIO_MESSAGING_SERVICE_SID),
     ),
     smsEnabled: env.GUEST_SMS_ENABLED === "true",
+    storePhone: env.GUEST_STORE_PHONE?.trim() || null,
   };
 }
 

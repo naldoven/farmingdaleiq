@@ -48,6 +48,8 @@ export interface SendDeps {
   /** Public address of the app, e.g. https://app.example.com. Null means the guest link cannot be built. */
   baseUrl: string | null;
   smsEnabled: boolean;
+  /** Shown in the Spotlight message as the number to call. Optional. */
+  storePhone?: string | null;
   emailConfigured: boolean;
   smsConfigured: boolean;
   /** Returns the new send row's id, or null when this send must not go out. */
@@ -158,6 +160,7 @@ async function sendOne(
     items: recovery.items,
     link,
     goodUntil: recovery.goodUntil,
+    storePhone: deps.storePhone ?? null,
   };
 
   try {

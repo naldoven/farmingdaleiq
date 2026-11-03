@@ -138,21 +138,37 @@ export function buildSms(input: MessageInput): string {
  * right away that we know about the problem and that a team member will send
  * their reward within 48 hours. No link, no QR, no promotion.
  */
-export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items">;
+export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items"> & {
+  /** The store's phone number for questions (GUEST_STORE_PHONE). Left out when absent. */
+  storePhone?: string | null;
+};
+
+function spotlightQuestions(storePhone: string | null | undefined): string {
+  const phone = storePhone?.trim();
+  return phone
+    ? `Questions? Call the store at ${phone}, or reply to this email.`
+    : "Questions? Reply to this email and the store will see it.";
+}
 
 export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
   const subject = `Your ${STORE_NAME} order: your reward is on its way`;
+  const questions = spotlightQuestions(input.storePhone);
+  const reward = `We are sending you a reward to make it right. It will be added to your Chick-fil-A One account within ${SPOTLIGHT_PROMISE_HOURS} hours, and Chick-fil-A will email you when it is there.`;
+  const redeem =
+    "To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order. The reward applies on its own.";
 
   const text = [
-    `Hi ${first}, thank you for telling us about your order.`,
+    `Hi ${first}, we are sorry about your order.`,
     "",
     `${orderPhrase(input.orderNumber)} ${items}`,
     "",
-    `A team member is sending your reward. You will receive it within ${SPOTLIGHT_PROMISE_HOURS} hours.`,
+    reward,
     "",
-    "Questions? Reply to this email and the store will see it.",
+    redeem,
+    "",
+    questions,
   ].join("\n");
 
   const html = `<!doctype html>
@@ -163,11 +179,12 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;padding:28px">
 <tr><td>
 <p style="margin:0 0 8px;font-size:12px;letter-spacing:1px;font-weight:700;color:#e51636;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
-<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, thank you for telling us about your order.</h1>
+<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, we are sorry about your order.</h1>
 <p style="margin:0 0 8px;font-size:15px;line-height:1.5">${escapeHtml(orderPhrase(input.orderNumber))}</p>
 <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#9c0f28">${escapeHtml(items)}</p>
-<p style="margin:0;font-size:15px;line-height:1.5">A team member is sending your reward. You will receive it within ${SPOTLIGHT_PROMISE_HOURS} hours.</p>
-<p style="margin:20px 0 0;font-size:12px;color:#6b7280">Questions? Reply to this email and the store will see it.</p>
+<p style="margin:0 0 12px;font-size:15px;line-height:1.5">${escapeHtml(reward)}</p>
+<p style="margin:0;font-size:15px;line-height:1.5">${escapeHtml(redeem)}</p>
+<p style="margin:20px 0 0;font-size:12px;color:#6b7280">${escapeHtml(questions)}</p>
 </td></tr>
 </table>
 </td></tr>
@@ -180,8 +197,9 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
 
 export function buildSpotlightSms(input: SpotlightInput): string {
   const first = firstNameOf(input.guestName);
-  const head = `${STORE_NAME}: Hi ${first}, thanks for telling us about your order. We owe you: `;
-  const tail = `. Your reward will be sent within ${SPOTLIGHT_PROMISE_HOURS} hours. Reply STOP to opt out.`;
+  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We owe you: `;
+  const phone = input.storePhone?.trim();
+  const tail = `. Your reward will show in the Chick-fil-A app under Rewards within ${SPOTLIGHT_PROMISE_HOURS} hours.${phone ? ` Questions? Call ${phone}.` : ""} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;
 
   let shown = input.items.length;

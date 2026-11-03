@@ -19,6 +19,7 @@ function makeDeps(client: ServiceClient): SendDeps {
   return {
     baseUrl: config.baseUrl,
     smsEnabled: config.smsEnabled,
+    storePhone: config.storePhone,
     emailConfigured: config.emailConfigured,
     smsConfigured: config.smsConfigured,
     async claim(recoveryId, channel, kind) {

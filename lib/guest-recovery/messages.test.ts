@@ -155,5 +155,27 @@ describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
   it("keep the text short even with a long list", () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ name: `Item number ${i} with a long name`, qty: 1 }));
     expect(buildSpotlightSms({ ...spot, items: many }).length).toBeLessThanOrEqual(480);
+    expect(buildSpotlightSms({ ...spot, items: many, storePhone: "631-555-0100" }).length).toBeLessThanOrEqual(480);
+  });
+
+  it("apologize first, say where the reward shows up and how it is used", () => {
+    const email = buildSpotlightEmail(spot);
+    expect(email.text).toMatch(/we are sorry about your order/i);
+    expect(email.text).toContain("Chick-fil-A One account");
+    expect(email.text).toContain("tap Rewards");
+    expect(email.text).toMatch(/applies on its own/);
+    expect(email.text).toMatch(/Chick-fil-A will email you/);
+    expect(buildSpotlightSms(spot)).toMatch(/under Rewards/);
+  });
+
+  it("show the store phone number only when one is set", () => {
+    expect(buildSpotlightEmail(spot).text).toContain("Reply to this email and the store will see it");
+    expect(buildSpotlightEmail(spot).text).not.toMatch(/Call the store/);
+    expect(buildSpotlightSms(spot)).not.toMatch(/Call /);
+
+    const withPhone = { ...spot, storePhone: "631-555-0100" };
+    expect(buildSpotlightEmail(withPhone).text).toContain("Call the store at 631-555-0100");
+    expect(buildSpotlightEmail(withPhone).html).toContain("631-555-0100");
+    expect(buildSpotlightSms(withPhone)).toContain("Call 631-555-0100");
   });
 });
