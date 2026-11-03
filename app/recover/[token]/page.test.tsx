@@ -131,6 +131,28 @@ describe("the public guest page", () => {
     expect(html).toContain("Nolan");
   });
 
+  it("shows the store address, linked to a map", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+    expect(html).toContain("google.com/maps/search");
+  });
+
+  it("says what went wrong in words that fit the reason, and calls the gift 'on us' not 'owed'", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", reason: "quality", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("Something in your recent order was not up to our standard.");
+    expect(html).toContain("On us");
+    expect(html).not.toMatch(/owe/i);
+    expect(html).not.toContain("was missing");
+  });
+
   it("says sorry first, in the same words as the email", async () => {
     serviceReturning(
       { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
@@ -162,18 +184,29 @@ describe("the public guest page", () => {
     expect(html).not.toContain("ryan@example.com");
   });
 
-  it("signs nothing when the app guest's recovery has nobody assigned", async () => {
-    const recovery = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "spotlight", assigned_to: null, created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
+  it("signs nothing when no one can be named", async () => {
+    const recovery = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "spotlight", assigned_to: null, logged_by: null, created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
     serviceReturning(recovery, [{ name: "Cobb Salad", qty: 1 }], null, { name: "Ryan Smith" });
     const html = await render(TOKEN);
     expect(html).not.toContain("All the best,");
     expect(html).not.toContain("Ryan Smith");
   });
 
-  it("does not name a staff member on a standard guest's page", async () => {
-    const recovery = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", assigned_to: "p1", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
-    serviceReturning(recovery, [{ name: "Cobb Salad", qty: 1 }], null, { name: "Ryan Smith" });
-    expect(await render(TOKEN)).not.toContain("Ryan Smith");
+  it("names the leader who logged a standard guest's recovery, and nothing else about them", async () => {
+    const recovery = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", assigned_to: null, logged_by: "p1", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
+    serviceReturning(recovery, [{ name: "Cobb Salad", qty: 1 }], null, { name: "Jasmin Lee", email: "jasmin@example.com" });
+    const html = await render(TOKEN);
+    expect(html).toContain("All the best,");
+    expect(html).toContain("Jasmin Lee");
+    expect(html).not.toContain("jasmin@example.com");
+  });
+
+  it("signs an app guest's page with the overseer, or the leader who logged it when nobody is assigned", async () => {
+    const base = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "spotlight", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
+    serviceReturning({ ...base, assigned_to: "p1", logged_by: "p2" }, [{ name: "Cobb Salad", qty: 1 }], null, { name: "Ryan Smith" });
+    expect(await render(TOKEN)).toContain("Ryan Smith");
+    serviceReturning({ ...base, assigned_to: null, logged_by: "p2" }, [{ name: "Cobb Salad", qty: 1 }], null, { name: "Jasmin Lee" });
+    expect(await render(TOKEN)).toContain("Jasmin Lee");
   });
 
   it("tells a Spotlight guest the reward is coming within 48 hours, with no code to scan", async () => {

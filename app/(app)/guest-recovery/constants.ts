@@ -32,6 +32,12 @@ export const STALE_OWED_DAYS = 7;
 /** The store name guests see in the email and the text. */
 export const STORE_NAME = "Chick-fil-A Farmingdale";
 
+/** Where guests bring their code. Shown on the guest page and in the emails. */
+export const STORE_ADDRESS = "1991 Broadhollow Rd, Farmingdale, NY 11735";
+
+/** Opens the address in the guest's maps app. */
+export const STORE_MAP_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(STORE_ADDRESS)}`;
+
 /** Why the guest called. One tap on the log form; also what Stats groups by. */
 export const REASONS = ["missing_item", "wrong_item", "quality", "too_slow", "other"] as const;
 export type Reason = (typeof REASONS)[number];

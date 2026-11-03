@@ -7,6 +7,7 @@ import {
   buildSpotlightSms,
   firstNameOf,
   formatItems,
+  reasonCopy,
   recoveryLink,
 } from "@/lib/guest-recovery/messages";
 
@@ -42,7 +43,7 @@ describe("recoveryLink", () => {
 describe("buildEmail", () => {
   it("names the guest, the order, the items and carries the link", () => {
     const email = buildEmail(base);
-    expect(email.subject).toMatch(/Chick-fil-A Farmingdale order/);
+    expect(email.subject).toBe("We are sorry, Nolan. Here is your code");
     for (const part of [email.html, email.text]) {
       expect(part).toContain("Nolan");
       expect(part).toContain("8407578");
@@ -84,6 +85,47 @@ describe("buildEmail", () => {
   });
 });
 
+describe("wording follows why the guest called", () => {
+  it("says what went wrong in terms that fit the reason", () => {
+    expect(reasonCopy("missing_item", "8407578").problem).toBe("Your order #8407578 was missing items.");
+    expect(reasonCopy("wrong_item", "8407578").problem).toBe("Your order #8407578 had the wrong item.");
+    expect(reasonCopy("quality", "8407578").problem).toBe("Something in your order #8407578 was not up to our standard.");
+    expect(reasonCopy("too_slow", "8407578").problem).toBe("Your order #8407578 took longer than it should have.");
+    expect(reasonCopy("other", "8407578").problem).toBe("Thank you for telling us about your order #8407578.");
+  });
+
+  it("reads as a missing item when there is no reason, and drops the number when there is none", () => {
+    expect(reasonCopy(null, null).problem).toBe("Your recent order was missing items.");
+    expect(reasonCopy(undefined, "1").problem).toBe("Your order #1 was missing items.");
+    expect(reasonCopy("not_a_reason", null).problem).toBe("Your recent order was missing items.");
+    expect(reasonCopy("quality", null).problem).toBe("Something in your recent order was not up to our standard.");
+  });
+
+  it("never says the order was missing something for cold food or a long wait", () => {
+    for (const reason of ["quality", "too_slow", "wrong_item", "other"]) {
+      const email = buildEmail({ ...base, reason });
+      expect(email.text).not.toMatch(/was missing/i);
+      expect(email.html).not.toMatch(/was missing/i);
+    }
+    expect(buildEmail({ ...base, reason: "missing_item" }).text).toMatch(/was missing/i);
+  });
+
+  it("uses the reason in the app guest's email too", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items, reason: "quality" });
+    expect(spot.text).toContain("Something in your recent order was not up to our standard.");
+    expect(spot.text).toContain("We would like to replace it, on us:");
+  });
+
+  it("never says we owe the guest anything, in any message, for any reason", () => {
+    for (const reason of ["missing_item", "wrong_item", "quality", "too_slow", "other", null]) {
+      const std = buildEmail({ ...base, reason });
+      const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: "1", items, reason });
+      const parts = [std.text, std.html, spot.text, spot.html, buildSms({ ...base, reason }), buildSpotlightSms({ guestName: "Nolan", orderNumber: "1", items })];
+      for (const part of parts) expect(part).not.toMatch(/owe/i);
+    }
+  });
+});
+
 describe("email look (red page, white card)", () => {
   it("says sorry first in the same words as the guest page, in both emails", () => {
     for (const email of [buildEmail(base), buildSpotlightEmail({ guestName: base.guestName, orderNumber: "8407578", items })]) {
@@ -120,6 +162,14 @@ describe("email look (red page, white card)", () => {
     expect(buildSms(base)).not.toMatch(/thanks for telling us/);
   });
 
+  it("signs the standard email with the leader who logged it, only when there is one", () => {
+    const signed = buildEmail({ ...base, sentBy: "Jasmin Lee" });
+    expect(signed.text).toContain("All the best,\nJasmin Lee\nChick-fil-A Farmingdale");
+    expect(signed.html).toContain("<strong>Jasmin Lee</strong>");
+    expect(buildEmail(base).text).not.toContain("All the best");
+    expect(buildEmail({ ...base, sentBy: "<b>x</b>" }).html).not.toContain("<b>x</b>");
+  });
+
   it("signs an app guest's email with the person sending the reward, only when there is one", () => {
     const spot = { guestName: "Nolan", orderNumber: null, items };
     const signed = buildSpotlightEmail({ ...spot, sentBy: "Ryan Smith" });
@@ -129,6 +179,36 @@ describe("email look (red page, white card)", () => {
     expect(unsigned.text).not.toContain("All the best");
     expect(unsigned.html).not.toContain("All the best");
     expect(buildSpotlightEmail({ ...spot, sentBy: "<b>x</b>" }).html).not.toContain("<b>x</b>");
+  });
+
+  it("opens both subjects with the apology and the guest's first name, short enough for a phone", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan Patrick", orderNumber: null, items });
+    expect(spot.subject).toBe("We are sorry, Nolan. Your reward is on its way");
+    for (const subject of [buildEmail(base).subject, spot.subject]) {
+      expect(subject.length).toBeLessThanOrEqual(50);
+      expect(subject).not.toContain("—");
+    }
+  });
+
+  it("puts the store address in both emails, linked to a map in the html", () => {
+    const spot = buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items });
+    for (const email of [buildEmail(base), spot]) {
+      expect(email.text).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+      expect(email.html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+      expect(email.html).toContain("https://www.google.com/maps/search/?api=1&amp;query=");
+    }
+  });
+
+  it("fits a phone: viewport and light-only meta, fluid widths, and a wrapping link", () => {
+    for (const email of [buildEmail(base), buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items })]) {
+      expect(email.html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
+      expect(email.html).toContain('<meta name="color-scheme" content="light only">');
+      expect(email.html).toContain("<head>");
+      expect(email.html).toContain("max-width:520px");
+      expect(email.html).toContain("@media only screen and (max-width:480px)");
+    }
+    // The 64-character link cannot be allowed to widen the whole email.
+    expect(buildEmail(base).html).toMatch(/word-break:break-all[^>]*>If the button does not work/);
   });
 
   it("keeps the code button and the plain link", () => {
@@ -182,7 +262,8 @@ describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
     for (const part of [email.text, email.html, sms]) {
       expect(part).toContain("Nolan");
       expect(part).toMatch(/within 48 hours/);
-      expect(part).not.toMatch(/https?:\/\//);
+      // No guest code link. The email footer may link the store address to a map.
+      expect(part).not.toContain("/recover/");
       expect(part).not.toContain("cid:");
     }
     expect(email.text).toContain("8407578");

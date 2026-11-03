@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { MapPin, QrCode, Receipt } from "lucide-react";
 
-import { SPOTLIGHT_PROMISE_HOURS, STORE_NAME, TOKEN_PATTERN } from "@/app/(app)/guest-recovery/constants";
+import {
+  SPOTLIGHT_PROMISE_HOURS,
+  STORE_ADDRESS,
+  STORE_MAP_URL,
+  STORE_NAME,
+  TOKEN_PATTERN,
+} from "@/app/(app)/guest-recovery/constants";
 import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { hasPermission } from "@/lib/auth/permissions";
-import { firstNameOf, recoveryLink } from "@/lib/guest-recovery/messages";
+import { firstNameOf, reasonCopy, recoveryLink } from "@/lib/guest-recovery/messages";
 import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
 import { readConfig } from "@/lib/guest-recovery/providers";
 import { qrSvg } from "@/lib/guest-recovery/qr";
@@ -33,8 +39,8 @@ const STEPS = [
  * Recovery"). Public, and the only thing that unlocks it is the 64-character
  * token in the address. It shows the guest's first name, what they are owed
  * and a QR of this same address, and nothing else: no email, phone, order
- * number or other guests. The one staff name is the person sending an app
- * guest's reward, signed at the end like their email. A signed-in leader who opens it (by
+ * number or other guests. The one staff name is the team member the guest hears
+ * from, signed at the end like their email. A signed-in leader who opens it (by
  * scanning the guest's QR) goes to the redeem screen instead.
  *
  * It matches the emails: the store's red page, one white card, and the words
@@ -53,16 +59,18 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
   const service = createServiceRoleClient();
   const { data: recovery } = await service
     .from("guest_recoveries")
-    .select("id, guest_name, status, created_at, given_at, path, expires_at, assigned_to")
+    .select("id, guest_name, status, created_at, given_at, path, expires_at, assigned_to, logged_by, reason")
     .eq("token", token)
     .maybeSingle();
   if (!recovery) notFound();
 
-  // An app guest's reward comes from the person it is assigned to: the page
-  // names them, as the email does. Their name only, nothing else about them.
+  // The page names the team member the guest hears from, as the email does: for
+  // an app guest the person the reward is assigned to (or whoever logged it),
+  // for everyone else the leader who logged it. Their name only, nothing else.
+  const senderId = recovery.path === "spotlight" ? (recovery.assigned_to ?? recovery.logged_by) : recovery.logged_by;
   let sentBy: string | null = null;
-  if (recovery.path === "spotlight" && recovery.status === "owed" && recovery.assigned_to) {
-    const { data: person } = await service.from("profiles").select("name").eq("id", recovery.assigned_to).maybeSingle();
+  if (senderId && recovery.status === "owed") {
+    const { data: person } = await service.from("profiles").select("name").eq("id", senderId).maybeSingle();
     sentBy = person?.name?.trim() || null;
   }
 
@@ -98,7 +106,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
         <h1 className="mt-6 text-[38px] font-extrabold leading-[1.05]">
           We are sorry, {firstNameOf(recovery.guest_name)}. Let us make it right.
         </h1>
-        <p className="mt-3 text-[16px] leading-snug">Here is what we owe you from your recent order.</p>
+        <p className="mt-3 text-[16px] leading-snug">{reasonCopy(recovery.reason, null).problem}</p>
 
         {owed && expired && (
           <div role="alert" className="mt-6 rounded-2xl bg-card p-4 text-center text-ink">
@@ -114,7 +122,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
                 {goodUntil}
               </p>
             )}
-            <p className="text-[13px] text-muted-ink">We owe you</p>
+            <p className="text-[13px] text-muted-ink">On us</p>
             <ul className="mt-3 space-y-2.5">
               {rows.map((item) => (
                 <li key={item.name} className="flex items-center gap-3">
@@ -198,6 +206,16 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
           </ul>
         )}
 
+        {sentBy && owed && !spotlight && (
+          <p className="mt-7 text-center text-[14px] leading-snug">
+            All the best,
+            <br />
+            <span className="font-extrabold">{sentBy}</span>
+            <br />
+            {STORE_NAME}
+          </p>
+        )}
+
         <p className="mt-7 text-center text-[15px] font-extrabold">My pleasure to serve you again.</p>
         <p className="mt-1.5 text-center text-[12px] leading-relaxed">
           Good at {STORE_NAME} only.
@@ -211,6 +229,11 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
               .
             </>
           )}
+        </p>
+        <p className="mt-1.5 text-center text-[12px] leading-relaxed">
+          <a href={STORE_MAP_URL} className="underline">
+            {STORE_ADDRESS}
+          </a>
         </p>
       </div>
     </main>
