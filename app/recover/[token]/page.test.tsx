@@ -22,11 +22,15 @@ import RecoverPage from "@/app/recover/[token]/page";
 
 const TOKEN = "d".repeat(64);
 
-function serviceReturning(recovery: Record<string, unknown> | null, items: { name: string; qty: number }[] = []) {
+function serviceReturning(
+  recovery: Record<string, unknown> | null,
+  items: { name: string; qty: number }[] = [],
+  settings: Record<string, unknown> | null = null,
+) {
   const make = (table: string) => {
     const builder: Record<string, unknown> = {};
     for (const method of ["select", "eq", "order"]) builder[method] = vi.fn(() => builder);
-    builder.maybeSingle = vi.fn(async () => ({ data: recovery, error: null }));
+    builder.maybeSingle = vi.fn(async () => ({ data: table === "guest_recovery_settings" ? settings : recovery, error: null }));
     builder.then = (resolve: (v: unknown) => unknown) =>
       Promise.resolve({ data: table === "guest_recovery_items" ? items : [], error: null }).then(resolve);
     return builder;
@@ -62,7 +66,8 @@ describe("the public guest page", () => {
     const html = await render(TOKEN);
     expect(html).toContain("Nolan");
     expect(html).not.toContain("Patrick");
-    expect(html).toContain("2 x Cobb Salad");
+    expect(html).toContain("Cobb Salad");
+    expect(html).toMatch(/>2<\/span>/);
     expect(html).not.toContain("nolan@example.com");
     expect(html).not.toContain("6315550142");
     expect(html).not.toContain("8407578");
@@ -121,8 +126,30 @@ describe("the public guest page", () => {
     );
     const html = await render(TOKEN);
     expect(html).toMatch(/expired/i);
-    expect(html).toContain("2 x Cobb Salad");
+    expect(html).toContain("Cobb Salad");
     expect(html).toContain("Nolan");
+  });
+
+  it("says sorry first, in the same words as the email", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).toContain("We are sorry, Nolan. Let us make it right.");
+    expect(html).toContain("My pleasure to serve you again.");
+  });
+
+  it("shows the store phone number from the settings, and leaves it out when there is none", async () => {
+    const recovery = { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" };
+    serviceReturning(recovery, [{ name: "Cobb Salad", qty: 1 }], { store_phone: "(631) 777-1926" });
+    const withPhone = await render(TOKEN);
+    expect(withPhone).toContain("(631) 777-1926");
+    expect(withPhone).toContain('href="tel:6317771926"');
+
+    serviceReturning(recovery, [{ name: "Cobb Salad", qty: 1 }], null);
+    const without = await render(TOKEN);
+    expect(without).not.toContain("Questions? Call");
   });
 
   it("tells a Spotlight guest the reward is coming within 48 hours, with no code to scan", async () => {

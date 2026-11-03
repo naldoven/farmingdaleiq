@@ -84,6 +84,30 @@ describe("buildEmail", () => {
   });
 });
 
+describe("email look (red page, white card)", () => {
+  it("says sorry first in the same words as the guest page, in both emails", () => {
+    for (const email of [buildEmail(base), buildSpotlightEmail({ guestName: base.guestName, orderNumber: "8407578", items })]) {
+      expect(email.html).toContain("We are sorry, Nolan. Let us make it right.");
+      expect(email.html).toContain("background:#e51636");
+      expect(email.html).toContain("My pleasure to serve you again.");
+      expect(email.text).toContain("we are sorry about your order");
+    }
+  });
+
+  it("puts the store phone number in the standard email when one is set", () => {
+    expect(buildEmail(base).text).toContain("Reply to this email and the store will see it");
+    const withPhone = buildEmail({ ...base, storePhone: "(631) 777-1926" });
+    expect(withPhone.text).toContain("Call the store at (631) 777-1926");
+    expect(withPhone.html).toContain("(631) 777-1926");
+  });
+
+  it("keeps the code button and the plain link", () => {
+    const email = buildEmail(base);
+    expect(email.html).toContain("Show my code");
+    expect(email.html).toContain(`href="${LINK}"`);
+  });
+});
+
 describe("buildSms", () => {
   it("names the store, the items, the link and how to opt out", () => {
     const sms = buildSms(base);

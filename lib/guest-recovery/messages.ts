@@ -19,6 +19,8 @@ export interface MessageInput {
   link: string;
   /** "Good until Feb 1, 2027": how long the code works. Left out of the message when absent. */
   goodUntil?: string;
+  /** The store's phone number for questions. Left out of the email when absent. */
+  storePhone?: string | null;
 }
 
 /** "2 x Medium Mac & Cheese, Spicy Deluxe Sandwich". A count shows only above one. */
@@ -55,6 +57,48 @@ export interface BuiltEmail {
 }
 
 /**
+ * The look shared by both emails: the store's red page, the name and a big
+ * headline on it, one white card for what the guest needs, and a closing line.
+ * Table layout and inline styles only, because mail apps ignore the rest.
+ */
+function brandedEmail(parts: { first: string; card: string; questions: string }): string {
+  return `<!doctype html>
+<html lang="en">
+<body style="margin:0;background:#e51636;font-family:'Figtree',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e51636">
+<tr><td align="center" style="padding:28px 14px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+<tr><td align="center" style="color:#ffffff;padding:0 6px 22px">
+<p style="margin:0 0 14px;font-size:12px;letter-spacing:2px;font-weight:700;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
+<h1 style="margin:0;font-size:38px;line-height:1.08;font-weight:800">We are sorry, ${escapeHtml(parts.first)}. Let us make it right.</h1>
+</td></tr>
+<tr><td style="background:#ffffff;border-radius:24px;padding:26px 28px">
+${parts.card}
+</td></tr>
+<tr><td align="center" style="padding:22px 6px 0;color:#ffffff;font-size:13px;line-height:1.6">
+<p style="margin:0;font-size:15px;font-weight:800">My pleasure to serve you again.</p>
+<p style="margin:6px 0 0">${escapeHtml(parts.questions)}</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+function itemsBox(items: string): string {
+  return `<p style="margin:12px 0 0;background:#fde7eb;border-radius:16px;padding:14px 18px;font-size:19px;font-weight:800;line-height:1.5;color:#9c0f28">${escapeHtml(items)}</p>`;
+}
+
+/** The closing question line: the store's number when we have it, else "reply". */
+function questionsLine(storePhone: string | null | undefined): string {
+  const phone = storePhone?.trim();
+  return phone
+    ? `Questions? Call the store at ${phone}, or reply to this email.`
+    : "Questions? Reply to this email and the store will see it.";
+}
+
+/**
  * qrContentId, when set, points the page's QR image at an inline attachment
  * with that content id. Mail apps often block remote images and never show a
  * data: image, so the QR travels with the message instead.
@@ -63,50 +107,37 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
   const subject = `Your ${STORE_NAME} order: how we will make it right`;
+  const questions = questionsLine(input.storePhone);
 
   const text = [
-    `Hi ${first}, thank you for telling us about your order.`,
+    `Hi ${first}, we are sorry about your order. Let us make it right.`,
     "",
     `${orderPhrase(input.orderNumber)} ${items}`,
     "",
-    `We would like to make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
+    `Come back and we will make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
     input.link,
     "",
     `Good at ${STORE_NAME} only. Bring your receipt.`,
     ...(input.goodUntil ? [input.goodUntil + "."] : []),
     "",
-    "Questions? Reply to this email and the store will see it.",
+    questions,
+    "My pleasure to serve you again.",
   ].join("\n");
 
   const qr = input.qrContentId
-    ? `<p style="margin:20px 0 0;text-align:center"><img src="cid:${escapeHtml(input.qrContentId)}" width="180" height="180" alt="Your code" style="display:inline-block"></p>`
+    ? `<p style="margin:0;text-align:center"><img src="cid:${escapeHtml(input.qrContentId)}" width="160" height="160" alt="Your code" style="display:inline-block"></p>`
     : "";
 
-  const html = `<!doctype html>
-<html lang="en">
-<body style="margin:0;background:#f4f6f8;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 12px">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;padding:28px">
-<tr><td>
-<p style="margin:0 0 8px;font-size:12px;letter-spacing:1px;font-weight:700;color:#e51636;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
-<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, thank you for telling us about your order.</h1>
-<p style="margin:0 0 8px;font-size:15px;line-height:1.5">${escapeHtml(orderPhrase(input.orderNumber))}</p>
-<p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#9c0f28">${escapeHtml(items)}</p>
-<p style="margin:0 0 20px;font-size:15px;line-height:1.5">We would like to make it right. On your next visit, bring your receipt and show this code to any team member.</p>
-<p style="margin:0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px">View my code</a></p>
+  const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
+${itemsBox(items)}
+<p style="margin:14px 0 0;font-size:16px;line-height:1.6">Come back and we will make it right. Bring your receipt and show this email or the code below on your next visit.</p>
+<p style="margin:22px 0 0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;padding:14px 40px;border-radius:999px">Show my code</a></p>
+<p style="margin:24px 0 16px;border-top:2px dotted #d3d6db;font-size:0;line-height:0">&nbsp;</p>
 ${qr}
-<p style="margin:24px 0 0;padding:12px 14px;background:#fef3c7;border-radius:12px;font-size:13px;line-height:1.5"><strong>Good at ${escapeHtml(STORE_NAME)} only.</strong><br>Bring your receipt.${input.goodUntil ? `<br>${escapeHtml(input.goodUntil)}.` : ""}</p>
-<p style="margin:20px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>
-<p style="margin:12px 0 0;font-size:12px;color:#6b7280">Questions? Reply to this email and the store will see it.</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+<p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>
+<p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
 
-  return { subject, html, text };
+  return { subject, html: brandedEmail({ first, card, questions }), text };
 }
 
 const SMS_MAX = 480;
@@ -143,23 +174,16 @@ export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "i
   storePhone?: string | null;
 };
 
-function spotlightQuestions(storePhone: string | null | undefined): string {
-  const phone = storePhone?.trim();
-  return phone
-    ? `Questions? Call the store at ${phone}, or reply to this email.`
-    : "Questions? Reply to this email and the store will see it.";
-}
-
 export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const first = firstNameOf(input.guestName);
   const items = formatItems(input.items);
   const subject = `Your ${STORE_NAME} order: your reward is on its way`;
-  const questions = spotlightQuestions(input.storePhone);
+  const questions = questionsLine(input.storePhone);
   const reward = `We are sending you a reward to make it right. It will be added to your Chick-fil-A One account within ${SPOTLIGHT_PROMISE_HOURS} hours, and Chick-fil-A will email you when it is there.`;
   const redeem = `To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order. The reward applies on its own.${input.goodUntil ? ` ${input.goodUntil}.` : ""}`;
 
   const text = [
-    `Hi ${first}, we are sorry about your order.`,
+    `Hi ${first}, we are sorry about your order. Let us make it right.`,
     "",
     `${orderPhrase(input.orderNumber)} ${items}`,
     "",
@@ -168,30 +192,15 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
     redeem,
     "",
     questions,
+    "My pleasure to serve you again.",
   ].join("\n");
 
-  const html = `<!doctype html>
-<html lang="en">
-<body style="margin:0;background:#f4f6f8;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 12px">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;padding:28px">
-<tr><td>
-<p style="margin:0 0 8px;font-size:12px;letter-spacing:1px;font-weight:700;color:#e51636;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
-<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">Hi ${escapeHtml(first)}, we are sorry about your order.</h1>
-<p style="margin:0 0 8px;font-size:15px;line-height:1.5">${escapeHtml(orderPhrase(input.orderNumber))}</p>
-<p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#9c0f28">${escapeHtml(items)}</p>
-<p style="margin:0 0 12px;font-size:15px;line-height:1.5">${escapeHtml(reward)}</p>
-<p style="margin:0;font-size:15px;line-height:1.5">${escapeHtml(redeem)}</p>
-<p style="margin:20px 0 0;font-size:12px;color:#6b7280">${escapeHtml(questions)}</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+  const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
+${itemsBox(items)}
+<p style="margin:14px 0 0;font-size:16px;line-height:1.6">${escapeHtml(reward)}</p>
+<p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>`;
 
-  return { subject, html, text };
+  return { subject, html: brandedEmail({ first, card, questions }), text };
 }
 
 export function buildSpotlightSms(input: SpotlightInput): string {

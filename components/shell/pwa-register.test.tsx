@@ -6,12 +6,16 @@ vi.mock("@/lib/hooks/use-hydrated", () => ({
   useHydrated: () => true,
 }));
 
-import { PwaRegister } from "./pwa-register";
+let mockPathname = "/";
+vi.mock("next/navigation", () => ({ usePathname: () => mockPathname }));
+
+import { isGuestPath, PwaRegister } from "./pwa-register";
 
 const iosSafariUserAgent =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
 
 beforeEach(() => {
+  mockPathname = "/";
   window.localStorage.clear();
   Object.defineProperty(window.navigator, "userAgent", {
     configurable: true,
@@ -30,6 +34,34 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+});
+
+describe("guest pages", () => {
+  it("knows which paths are guest pages", () => {
+    expect(isGuestPath("/recover/abc123")).toBe(true);
+    expect(isGuestPath("/recover")).toBe(true);
+    expect(isGuestPath("/")).toBe(false);
+    expect(isGuestPath("/guest-recovery")).toBe(false);
+    expect(isGuestPath("/recovery-plan")).toBe(false);
+    expect(isGuestPath(null)).toBe(false);
+  });
+
+  it("never shows the install prompt on a guest page, even on iOS Safari", () => {
+    mockPathname = `/recover/${"d".repeat(64)}`;
+    render(<PwaRegister />);
+    expect(screen.queryByText(/Install FarmingdaleIQ/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tap Share, then/)).not.toBeInTheDocument();
+  });
+
+  it("does not keep the browser's install event on a guest page, but still stops the browser banner", () => {
+    mockPathname = `/recover/${"d".repeat(64)}`;
+    Object.defineProperty(window.navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Linux; Android 14) Chrome/130" });
+    render(<PwaRegister />);
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByText(/Install FarmingdaleIQ/)).not.toBeInTheDocument();
+  });
 });
 
 describe("PwaRegister mobile placement", () => {

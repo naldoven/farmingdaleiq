@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Download, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,14 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISSED_KEY = "fiq-install-prompt-dismissed";
+
+/**
+ * Pages guests open from a link (Guest Recovery's /recover/<code>). They are
+ * not staff and have no use for a staff app, so no install prompt shows there.
+ */
+export function isGuestPath(pathname: string | null): boolean {
+  return pathname === "/recover" || (pathname?.startsWith("/recover/") ?? false);
+}
 
 function isStandalone() {
   if (typeof window === "undefined") return false;
@@ -39,6 +48,7 @@ function isIOSSafari() {
  */
 export function PwaRegister() {
   const hydrated = useHydrated();
+  const guestPage = isGuestPath(usePathname());
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
     null,
   );
@@ -70,8 +80,10 @@ export function PwaRegister() {
     if (isStandalone() || dismissed) return;
 
     const handleBeforeInstallPrompt = (event: Event) => {
+      // Always stop the browser's own install banner. On a guest page that is
+      // all we do: the event is not kept, so our prompt never has anything to show.
       event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
+      if (!guestPage) setDeferredPrompt(event as BeforeInstallPromptEvent);
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -79,7 +91,7 @@ export function PwaRegister() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
-  }, [dismissed]);
+  }, [dismissed, guestPage]);
 
   const dismiss = () => {
     window.localStorage.setItem(DISMISSED_KEY, "1");
@@ -95,7 +107,7 @@ export function PwaRegister() {
     dismiss();
   };
 
-  if (dismissed) return null;
+  if (guestPage || dismissed) return null;
   if (!deferredPrompt && !showIOSInstructions) return null;
 
   return (
