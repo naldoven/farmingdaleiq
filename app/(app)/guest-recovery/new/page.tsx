@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 
 import { loadActiveMenu } from "@/app/(app)/guest-recovery/queries";
-import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { NewRecoveryForm } from "@/components/guest-recovery/new-recovery-form";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -15,8 +14,7 @@ export default async function NewGuestRecoveryPage() {
   const menu = await loadActiveMenu(supabase);
 
   return (
-    <div className="mx-auto flex max-w-[480px] flex-col gap-4">
-      <GuestRecoveryTabs group="recoveries" />
+    <div className="mx-auto max-w-[480px]">
       <NewRecoveryForm menu={menu} />
     </div>
   );

@@ -238,15 +238,31 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/guest-recovery",
         permission: "guest_recovery.log",
         label: "Recoveries",
-        description: "See who is owed, log a missing order, or scan a guest's QR code to hand it over.",
+        description: "Guests owed missing items: who, what, and whether they were reached. Managers also see Stats.",
         owner: "Guest Recovery",
       },
       {
+        href: "/guest-recovery/new",
+        permission: "guest_recovery.log",
+        label: "Log a missing order",
+        description: "A guest called: pick what was missing and send them the link and QR.",
+        owner: "Guest Recovery",
+      },
+      {
+        href: "/guest-recovery/scan",
+        permission: "guest_recovery.log",
+        label: "Scan a code",
+        description: "Scan a guest's QR code with the camera, or paste their link, to hand over what they are owed.",
+        owner: "Guest Recovery",
+      },
+      {
+        // A tab on Recoveries, not a row of its own, so it stays out of the menu.
         href: "/guest-recovery/reporting",
         permission: "guest_recovery.manage",
         label: "Stats",
         description: "Recoveries by month, what goes missing, when, who logged them, follow-through.",
         owner: "Guest Recovery",
+        hidden: true,
       },
       {
         href: "/guest-recovery/menu",
