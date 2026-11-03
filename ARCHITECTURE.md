@@ -404,6 +404,9 @@ hands over what was missed.
   can also be copied. Texting stays off until `GUEST_SMS_ENABLED` is set (carrier
   registration takes days); until then the card offers a copy-the-text button.
   No promos in these messages. First text names the store and says "Reply STOP to opt out".
+  Replies reach `/api/inbound/twilio-sms` (public path, checked by Twilio's request signature
+  and `TWILIO_AUTH_TOKEN`): STOP adds the number to `guest_sms_optouts`, START removes it.
+  Twilio sends its own STOP and HELP confirmations, so the route answers with an empty message.
 - **The link** (`/recover/<token>`, public): a random 64-character token, never an id.
   Shows the guest's first name, the items and "This store only, receipt required". A signed-in
   leader who opens it is sent to the leader screen instead. Nothing else about the recovery

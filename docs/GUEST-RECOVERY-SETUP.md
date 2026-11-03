@@ -37,6 +37,8 @@ and Gmail is ignored.
    - `GUEST_EMAIL_FROM`, for example `Chick-fil-A Farmingdale <recovery@yourdomain>`
    - `GUEST_EMAIL_REPLY_TO`, the store inbox that should get guest replies
    - `NEXT_PUBLIC_APP_URL`, the address guests' links open (no trailing slash)
+   - `GUEST_STORE_PHONE`, the store number shown to app guests as the number to
+     call (optional; the message says "reply to this email" without it)
 
 ## 3. Texts (Twilio)
 
@@ -51,7 +53,13 @@ Texting is off until `GUEST_SMS_ENABLED` is exactly `true`.
    terms.
 4. Buy a local 631 number. Set in Vercel: `TWILIO_ACCOUNT_SID`,
    `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
-5. When Twilio approves the campaign, set `GUEST_SMS_ENABLED=true`.
+5. In Twilio, open the number's messaging settings and set "A message comes in"
+   to a webhook (POST) at `NEXT_PUBLIC_APP_URL` plus `/api/inbound/twilio-sms`,
+   for example `https://farmingdaleiq.vercel.app/api/inbound/twilio-sms`. The
+   address must match exactly: Twilio signs the request with it. This is how a
+   STOP reply reaches the app's opt-out list. Twilio sends its own STOP and HELP
+   confirmations, so the app answers with nothing.
+6. When Twilio approves the campaign, set `GUEST_SMS_ENABLED=true`.
 
 Rules the app already follows: a text only goes to a guest who agreed to one,
 never to a number that replied STOP, and never carries a promotion. Have your
