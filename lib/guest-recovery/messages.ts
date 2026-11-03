@@ -94,8 +94,10 @@ ${parts.card}
 </html>`;
 }
 
-function itemsBox(items: string): string {
-  return `<p style="margin:12px 0 0;background:#fde7eb;border-radius:16px;padding:14px 18px;font-size:19px;font-weight:800;line-height:1.5;color:#9c0f28">${escapeHtml(items)}</p>`;
+/** One line per item, so a long order reads as a list and not a run-on sentence. */
+function itemsBox(items: MessageItem[]): string {
+  const lines = items.map((item) => escapeHtml(formatItems([item]))).join("<br>");
+  return `<p style="margin:12px 0 0;background:#fde7eb;border-radius:16px;padding:14px 18px;font-size:19px;font-weight:800;line-height:1.5;color:#9c0f28">${lines}</p>`;
 }
 
 /** The closing question line: the store's number when we have it, else "reply". */
@@ -137,7 +139,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     : "";
 
   const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
-${itemsBox(items)}
+${itemsBox(input.items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">Come back and we will make it right. Bring your receipt and show this email or the code below on your next visit.</p>
 <p style="margin:22px 0 0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;padding:14px 40px;border-radius:999px">Show my code</a></p>
 <p style="margin:24px 0 16px;border-top:2px dotted #d3d6db;font-size:0;line-height:0">&nbsp;</p>
@@ -157,7 +159,7 @@ const SMS_MAX = 480;
  */
 export function buildSms(input: MessageInput): string {
   const first = firstNameOf(input.guestName);
-  const head = `${STORE_NAME}: Hi ${first}, thanks for telling us about your order. We owe you: `;
+  const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We owe you: `;
   const until = input.goodUntil ? ` ${input.goodUntil}.` : "";
   const tail = `. On your next visit, show this link to a team member and bring your receipt: ${input.link}${until} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;
@@ -204,7 +206,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   ].join("\n");
 
   const card = `<p style="margin:0;font-size:16px;line-height:1.6">${escapeHtml(orderPhrase(input.orderNumber))}</p>
-${itemsBox(items)}
+${itemsBox(input.items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">${escapeHtml(reward)}</p>
 <p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>`;
 

@@ -108,6 +108,18 @@ describe("email look (red page, white card)", () => {
     expect(buildEmail(base).html).not.toContain("cfa-mark");
   });
 
+  it("lists each item on its own line in the item box", () => {
+    expect(buildEmail(base).html).toContain("2 x Medium Mac &amp; Cheese<br>Spicy Deluxe Sandwich");
+    expect(buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items }).html).toContain(
+      "2 x Medium Mac &amp; Cheese<br>Spicy Deluxe Sandwich",
+    );
+  });
+
+  it("opens the standard text with the same apology as the email", () => {
+    expect(buildSms(base)).toContain("we are sorry about your order");
+    expect(buildSms(base)).not.toMatch(/thanks for telling us/);
+  });
+
   it("keeps the code button and the plain link", () => {
     const email = buildEmail(base);
     expect(email.html).toContain("Show my code");
