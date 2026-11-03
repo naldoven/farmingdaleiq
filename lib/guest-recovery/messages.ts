@@ -64,10 +64,10 @@ export interface BuiltEmail {
  * Table layout and inline styles only, because mail apps ignore the rest.
  */
 function brandedEmail(parts: { first: string; card: string; questions: string; logoUrl?: string | null }): string {
-  // The mark is red, so it sits on a white circle. Mail apps that block images
-  // show nothing there and the store name below still says who it is from.
+  // The white version of the mark, made for a red page. Mail apps that block
+  // images show nothing there and the store name below still says who it is from.
   const logo = parts.logoUrl
-    ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto 14px"><tr><td style="background:#ffffff;border-radius:999px;padding:8px;line-height:0"><img src="${escapeHtml(parts.logoUrl)}" width="44" height="44" alt="" style="display:block;border:0"></td></tr></table>`
+    ? `<img src="${escapeHtml(parts.logoUrl)}" width="52" height="52" alt="" style="display:block;border:0;margin:0 auto 14px">`
     : "";
   return `<!doctype html>
 <html lang="en">

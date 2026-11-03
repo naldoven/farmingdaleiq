@@ -101,8 +101,8 @@ describe("email look (red page, white card)", () => {
     expect(withPhone.html).toContain("(631) 777-1926");
   });
 
-  it("shows the logo on a white circle only when an address is given", () => {
-    const url = "https://app.example.com/icons/cfa-mark.png";
+  it("shows the white logo only when an address is given", () => {
+    const url = "https://app.example.com/icons/cfa-mark-white.png";
     expect(buildEmail({ ...base, logoUrl: url }).html).toContain(`src="${url}"`);
     expect(buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items, logoUrl: url }).html).toContain(`src="${url}"`);
     expect(buildEmail(base).html).not.toContain("cfa-mark");
