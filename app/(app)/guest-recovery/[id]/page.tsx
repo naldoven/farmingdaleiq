@@ -146,6 +146,10 @@ export default async function GuestRecoveryDetailPage({
               Email template to pick: {spotlightTemplateFor(recovery.reason)}. If it was a delivery
               service order, pick Third-Party Order Complaint with Offer instead.
             </span>
+            <span className="mt-2 block font-normal">
+              Set the reward to expire on {formatStoreDate(recovery.expiresAt)}. The message the guest
+              got says it is good until that date.
+            </span>
             {recovery.items.length > SPOTLIGHT_REWARD_LIMIT && (
               <span className="mt-2 block font-normal">
                 Spotlight sends up to {SPOTLIGHT_REWARD_LIMIT} rewards at a time. This guest is owed{" "}

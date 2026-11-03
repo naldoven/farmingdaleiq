@@ -138,7 +138,7 @@ export function buildSms(input: MessageInput): string {
  * right away that we know about the problem and that a team member will send
  * their reward within 48 hours. No link, no QR, no promotion.
  */
-export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items"> & {
+export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil"> & {
   /** The store's phone number for questions (GUEST_STORE_PHONE). Left out when absent. */
   storePhone?: string | null;
 };
@@ -156,8 +156,7 @@ export function buildSpotlightEmail(input: SpotlightInput): BuiltEmail {
   const subject = `Your ${STORE_NAME} order: your reward is on its way`;
   const questions = spotlightQuestions(input.storePhone);
   const reward = `We are sending you a reward to make it right. It will be added to your Chick-fil-A One account within ${SPOTLIGHT_PROMISE_HOURS} hours, and Chick-fil-A will email you when it is there.`;
-  const redeem =
-    "To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order. The reward applies on its own.";
+  const redeem = `To find it, open the Chick-fil-A app and tap Rewards. To use it, add the item to your order. The reward applies on its own.${input.goodUntil ? ` ${input.goodUntil}.` : ""}`;
 
   const text = [
     `Hi ${first}, we are sorry about your order.`,
@@ -199,7 +198,7 @@ export function buildSpotlightSms(input: SpotlightInput): string {
   const first = firstNameOf(input.guestName);
   const head = `${STORE_NAME}: Hi ${first}, we are sorry about your order. We owe you: `;
   const phone = input.storePhone?.trim();
-  const tail = `. Your reward will show in the Chick-fil-A app under Rewards within ${SPOTLIGHT_PROMISE_HOURS} hours.${phone ? ` Questions? Call ${phone}.` : ""} Reply STOP to opt out.`;
+  const tail = `. Your reward will show in the Chick-fil-A app under Rewards within ${SPOTLIGHT_PROMISE_HOURS} hours.${input.goodUntil ? ` ${input.goodUntil}.` : ""}${phone ? ` Questions? Call ${phone}.` : ""} Reply STOP to opt out.`;
   const budget = SMS_MAX - head.length - tail.length;
 
   let shown = input.items.length;
