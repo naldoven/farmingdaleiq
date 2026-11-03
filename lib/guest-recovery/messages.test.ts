@@ -168,6 +168,17 @@ describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
     expect(buildSpotlightSms(spot)).toMatch(/under Rewards/);
   });
 
+  it("say how long the reward is good for only when a date is given", () => {
+    const withDate = { ...spot, goodUntil: "Good until Feb 1, 2027" };
+    expect(buildSpotlightEmail(withDate).text).toContain("Good until Feb 1, 2027.");
+    expect(buildSpotlightEmail(withDate).html).toContain("Good until Feb 1, 2027.");
+    expect(buildSpotlightSms(withDate)).toContain("Good until Feb 1, 2027.");
+    expect(buildSpotlightEmail(spot).text).not.toMatch(/Good until/);
+    expect(buildSpotlightSms(spot)).not.toMatch(/Good until/);
+    const many = Array.from({ length: 12 }, (_, i) => ({ name: `Item number ${i} with a long name`, qty: 1 }));
+    expect(buildSpotlightSms({ ...withDate, items: many, storePhone: "(631) 777-1926" }).length).toBeLessThanOrEqual(480);
+  });
+
   it("show the store phone number only when one is set", () => {
     expect(buildSpotlightEmail(spot).text).toContain("Reply to this email and the store will see it");
     expect(buildSpotlightEmail(spot).text).not.toMatch(/Call the store/);
