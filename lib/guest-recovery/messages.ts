@@ -21,6 +21,8 @@ export interface MessageInput {
   goodUntil?: string;
   /** The store's phone number for questions. Left out of the email when absent. */
   storePhone?: string | null;
+  /** Full address of the logo image for the email header. Left out when absent. */
+  logoUrl?: string | null;
 }
 
 /** "2 x Medium Mac & Cheese, Spicy Deluxe Sandwich". A count shows only above one. */
@@ -61,7 +63,12 @@ export interface BuiltEmail {
  * headline on it, one white card for what the guest needs, and a closing line.
  * Table layout and inline styles only, because mail apps ignore the rest.
  */
-function brandedEmail(parts: { first: string; card: string; questions: string }): string {
+function brandedEmail(parts: { first: string; card: string; questions: string; logoUrl?: string | null }): string {
+  // The mark is red, so it sits on a white circle. Mail apps that block images
+  // show nothing there and the store name below still says who it is from.
+  const logo = parts.logoUrl
+    ? `<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto 14px"><tr><td style="background:#ffffff;border-radius:999px;padding:8px;line-height:0"><img src="${escapeHtml(parts.logoUrl)}" width="44" height="44" alt="" style="display:block;border:0"></td></tr></table>`
+    : "";
   return `<!doctype html>
 <html lang="en">
 <body style="margin:0;background:#e51636;font-family:'Figtree',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
@@ -69,6 +76,7 @@ function brandedEmail(parts: { first: string; card: string; questions: string })
 <tr><td align="center" style="padding:28px 14px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
 <tr><td align="center" style="color:#ffffff;padding:0 6px 22px">
+${logo}
 <p style="margin:0 0 14px;font-size:12px;letter-spacing:2px;font-weight:700;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
 <h1 style="margin:0;font-size:38px;line-height:1.08;font-weight:800">We are sorry, ${escapeHtml(parts.first)}. Let us make it right.</h1>
 </td></tr>
@@ -137,7 +145,7 @@ ${qr}
 <p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>
 <p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
 
-  return { subject, html: brandedEmail({ first, card, questions }), text };
+  return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
 }
 
 const SMS_MAX = 480;
@@ -169,7 +177,7 @@ export function buildSms(input: MessageInput): string {
  * right away that we know about the problem and that a team member will send
  * their reward within 48 hours. No link, no QR, no promotion.
  */
-export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil"> & {
+export type SpotlightInput = Pick<MessageInput, "guestName" | "orderNumber" | "items" | "goodUntil" | "logoUrl"> & {
   /** The store's phone number for questions (GUEST_STORE_PHONE). Left out when absent. */
   storePhone?: string | null;
 };
@@ -200,7 +208,7 @@ ${itemsBox(items)}
 <p style="margin:14px 0 0;font-size:16px;line-height:1.6">${escapeHtml(reward)}</p>
 <p style="margin:12px 0 0;font-size:16px;line-height:1.6">${escapeHtml(redeem)}</p>`;
 
-  return { subject, html: brandedEmail({ first, card, questions }), text };
+  return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
 }
 
 export function buildSpotlightSms(input: SpotlightInput): string {

@@ -81,7 +81,11 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
       <div className="mx-auto flex max-w-[440px] flex-col">
         <div className="flex items-center justify-between">
           <p className="text-[12px] font-bold uppercase tracking-[0.2em]">{STORE_NAME}</p>
-          <span aria-hidden className="size-7 rounded-full bg-white" />
+          {/* The mark is red, so it sits on a white circle. */}
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/cfa-mark.png" alt="" width={36} height={36} className="size-9" />
+          </span>
         </div>
 
         <h1 className="mt-6 text-[38px] font-extrabold leading-[1.05]">
