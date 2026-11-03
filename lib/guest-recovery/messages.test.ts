@@ -199,6 +199,18 @@ describe("email look (red page, white card)", () => {
     }
   });
 
+  it("fits a phone: viewport and light-only meta, fluid widths, and a wrapping link", () => {
+    for (const email of [buildEmail(base), buildSpotlightEmail({ guestName: "Nolan", orderNumber: null, items })]) {
+      expect(email.html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
+      expect(email.html).toContain('<meta name="color-scheme" content="light only">');
+      expect(email.html).toContain("<head>");
+      expect(email.html).toContain("max-width:520px");
+      expect(email.html).toContain("@media only screen and (max-width:480px)");
+    }
+    // The 64-character link cannot be allowed to widen the whole email.
+    expect(buildEmail(base).html).toMatch(/word-break:break-all[^>]*>If the button does not work/);
+  });
+
   it("keeps the code button and the plain link", () => {
     const email = buildEmail(base);
     expect(email.html).toContain("Show my code");

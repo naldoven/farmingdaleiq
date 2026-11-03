@@ -111,18 +111,38 @@ function brandedEmail(parts: { first: string; card: string; questions: string; l
   const logo = parts.logoUrl
     ? `<img src="${escapeHtml(parts.logoUrl)}" width="52" height="52" alt="" style="display:block;border:0;margin:0 auto 14px">`
     : "";
+  // The head matters on a phone: without the viewport line iOS Mail lays the
+  // email out on a desktop-width canvas and the card ends up small and off to
+  // one side. "light only" keeps dark-mode mail apps from recoloring the card.
   return `<!doctype html>
-<html lang="en">
-<body style="margin:0;background:#e51636;font-family:'Figtree',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e51636">
-<tr><td align="center" style="padding:28px 14px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+<html lang="en" style="background:#e51636">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+<title>${escapeHtml(STORE_NAME)}</title>
+<style>
+body,table,td{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
+@media only screen and (max-width:480px){
+.gr-pad{padding:18px 8px !important}
+.gr-card{padding:22px 18px !important}
+.gr-h1{font-size:32px !important}
+}
+</style>
+</head>
+<body style="margin:0;padding:0;width:100%;background:#e51636;font-family:'Figtree',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2a44">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#e51636">
+<tr><td align="center" class="gr-pad" style="padding:28px 14px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:520px">
 <tr><td align="center" style="color:#ffffff;padding:0 6px 22px">
 ${logo}
 <p style="margin:0 0 14px;font-size:12px;letter-spacing:2px;font-weight:700;text-transform:uppercase">${escapeHtml(STORE_NAME)}</p>
-<h1 style="margin:0;font-size:38px;line-height:1.08;font-weight:800">We are sorry, ${escapeHtml(parts.first)}. Let us make it right.</h1>
+<h1 class="gr-h1" style="margin:0;font-size:38px;line-height:1.08;font-weight:800">We are sorry, ${escapeHtml(parts.first)}. Let us make it right.</h1>
 </td></tr>
-<tr><td style="background:#ffffff;border-radius:24px;padding:26px 28px">
+<tr><td class="gr-card" style="background:#ffffff;border-radius:24px;padding:26px 28px">
 ${parts.card}
 </td></tr>
 <tr><td align="center" style="padding:22px 6px 0;color:#ffffff;font-size:13px;line-height:1.6">
@@ -197,7 +217,7 @@ ${itemsBox(input.items)}
 <p style="margin:24px 0 16px;border-top:2px dotted #d3d6db;font-size:0;line-height:0">&nbsp;</p>
 ${qr}
 <p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>${signOff}
-<p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
+<p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5;word-break:break-all;overflow-wrap:anywhere">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
 
   return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
 }
