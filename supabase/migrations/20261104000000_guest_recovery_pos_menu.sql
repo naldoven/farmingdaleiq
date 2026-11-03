@@ -3,8 +3,7 @@
 --
 -- The first seed was 68 items and thin on breakfast. This adds the missing
 -- breakfast items (biscuits, muffins, burritos, bowls, chicken and waffles,
--- yeast rolls), the lunch chicken and waffles sandwiches, the honey pepper
--- pimento sandwich, two more wraps, the other nugget and strip counts, soups,
+-- yeast rolls), the lunch chicken and waffles sandwiches, two more wraps, the other nugget and strip counts, soups,
 -- parfaits, filets and other sides, more drinks, floats and frosted sodas, and
 -- a few add-ons. Options such as cheese choice, bun type or no hash brown are
 -- left out on purpose: they change an item, they are not items.
@@ -31,7 +30,6 @@ values
   ('Family Meal', 'Family Meal', 'Whole order', 250),
 
   -- Sandwiches and wraps
-  ('Honey Pepper Pimento Sandwich', 'Honey Pepper Pimento Sandwich', 'Sandwiches', 1310),
   ('Chicken & Waffles Sandwich', 'Chicken & Waffles Sandwich', 'Sandwiches', 1320),
   ('Spicy Chicken & Waffles Sandwich', 'Chicken & Waffles Sandwich', 'Sandwiches', 1330),
   ('Grilled Chicken & Waffles Sandwich', 'Chicken & Waffles Sandwich', 'Sandwiches', 1340),
