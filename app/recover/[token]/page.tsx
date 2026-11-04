@@ -11,6 +11,7 @@ import {
 } from "@/app/(app)/guest-recovery/constants";
 import { expiryLine, isExpired } from "@/app/(app)/guest-recovery/expiry";
 import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
+import { EnlargeableQr } from "@/components/guest-recovery/enlargeable-qr";
 import { hasPermission } from "@/lib/auth/permissions";
 import { firstNameOf, reasonCopy, recoveryLink } from "@/lib/guest-recovery/messages";
 import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
@@ -28,8 +29,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+// "Visit us" is its own full-width tile with the address; these two sit under it.
 const STEPS = [
-  { icon: MapPin, label: "Visit us" },
   { icon: Receipt, label: "Bring your receipt" },
   { icon: QrCode, label: "Show this page" },
 ] as const;
@@ -158,19 +159,10 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-4">
-                {svg && (
-                  <div className="shrink-0 rounded-xl bg-white p-2">
-                    {/* A data-URI image, not inlined markup: nothing from the generated SVG is ever parsed as page HTML. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`}
-                      alt="Your code"
-                      className="size-[120px]"
-                    />
-                  </div>
-                )}
-                <p className="text-[14px] leading-snug">
+              <div className="flex flex-col items-center gap-3 text-center">
+                {/* Big on purpose, and tap to enlarge: a team member scans this off a phone screen. */}
+                {svg && <EnlargeableQr src={`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`} />}
+                <p className="text-[15px] leading-snug">
                   <span className="font-extrabold">Show this to a team member.</span>
                   <br />
                   Bring your receipt.
@@ -193,17 +185,27 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
         )}
 
         {owed && !spotlight && (
-          <ul className="mt-6 grid grid-cols-3 gap-2.5">
-            {STEPS.map(({ icon: Icon, label }) => (
-              <li
-                key={label}
-                className="flex flex-col items-center gap-1.5 rounded-2xl border-[1.5px] border-white px-1.5 py-3 text-center text-[13px] font-bold leading-tight"
-              >
-                <Icon aria-hidden className="size-5" />
-                {label}
-              </li>
-            ))}
-          </ul>
+          <div className="mt-6 space-y-2.5">
+            <a
+              href={STORE_MAP_URL}
+              className="flex flex-col items-center gap-1 rounded-2xl border-[1.5px] border-white px-3 py-3.5 text-center"
+            >
+              <MapPin aria-hidden className="size-5" />
+              <span className="text-[15px] font-extrabold leading-tight">Visit us</span>
+              <span className="text-[14px] leading-snug underline">{STORE_ADDRESS}</span>
+            </a>
+            <ul className="grid grid-cols-2 gap-2.5">
+              {STEPS.map(({ icon: Icon, label }) => (
+                <li
+                  key={label}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl border-[1.5px] border-white px-1.5 py-3 text-center text-[13px] font-bold leading-tight"
+                >
+                  <Icon aria-hidden className="size-5" />
+                  {label}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {sentBy && owed && !spotlight && (
@@ -218,7 +220,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
 
         <p className="mt-7 text-center text-[15px] font-extrabold">My pleasure to serve you again.</p>
         <p className="mt-1.5 text-center text-[12px] leading-relaxed">
-          Good at {STORE_NAME} only.
+          Redeemable at {STORE_NAME} only.
           {storePhone && (
             <>
               {" "}
@@ -230,11 +232,13 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
             </>
           )}
         </p>
-        <p className="mt-1.5 text-center text-[12px] leading-relaxed">
-          <a href={STORE_MAP_URL} className="underline">
-            {STORE_ADDRESS}
-          </a>
-        </p>
+        {!(owed && !spotlight) && (
+          <p className="mt-1.5 text-center text-[12px] leading-relaxed">
+            <a href={STORE_MAP_URL} className="underline">
+              {STORE_ADDRESS}
+            </a>
+          </p>
+        )}
       </div>
     </main>
   );

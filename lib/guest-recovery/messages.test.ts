@@ -211,6 +211,20 @@ describe("email look (red page, white card)", () => {
     expect(buildEmail(base).html).toMatch(/word-break:break-all[^>]*>If the button does not work/);
   });
 
+  it("draws the email's QR large enough to scan off a phone", () => {
+    const html = buildEmail({ ...base, qrContentId: "recovery-qr" }).html;
+    expect(html).toContain('width="260" height="260" alt="Your code"');
+    expect(html).toContain("max-width:100%");
+  });
+
+  it("says 'Redeemable at', not 'Good at', and links the QR to the page where it can be enlarged", () => {
+    const email = buildEmail({ ...base, qrContentId: "recovery-qr", goodUntil: "Good until Feb 1, 2027" });
+    expect(email.text).toContain("Redeemable at Chick-fil-A Farmingdale only");
+    expect(email.html).toContain("Redeemable at Chick-fil-A Farmingdale only");
+    for (const part of [email.text, email.html]) expect(part).not.toContain("Good at");
+    expect(email.html).toContain(`<a href="${LINK}"><img src="cid:recovery-qr"`);
+  });
+
   it("keeps the code button and the plain link", () => {
     const email = buildEmail(base);
     expect(email.html).toContain("Show my code");

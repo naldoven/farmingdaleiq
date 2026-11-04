@@ -7,7 +7,7 @@ import QRCode from "qrcode";
  */
 
 export function qrPng(text: string): Promise<Buffer> {
-  return QRCode.toBuffer(text, { type: "png", width: 360, margin: 2, errorCorrectionLevel: "M" });
+  return QRCode.toBuffer(text, { type: "png", width: 720, margin: 2, errorCorrectionLevel: "M" });
 }
 
 export function qrSvg(text: string): Promise<string> {

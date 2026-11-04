@@ -131,6 +131,36 @@ describe("the public guest page", () => {
     expect(html).toContain("Nolan");
   });
 
+  it("puts the store address under 'Visit us', and draws the QR large enough to scan off a phone", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example.com");
+    const html = await render(TOKEN);
+    vi.unstubAllEnvs();
+    const visit = html.indexOf("Visit us");
+    expect(visit).toBeGreaterThan(-1);
+    expect(html.slice(visit, visit + 400)).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+    // The address is shown once on this page, in the tile, not again in the footer.
+    expect(html.split("1991 Broadhollow Rd, Farmingdale, NY 11735").length - 1).toBe(1);
+    expect(html).toContain("max-w-[280px]");
+    // Tapping the code enlarges it.
+    expect(html).toContain("Enlarge your code");
+    expect(html).toContain("data:image/svg+xml");
+    expect(html).toContain("Show this page");
+  });
+
+  it("keeps the address in the footer where there is no Visit us tile", async () => {
+    serviceReturning(
+      { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "spotlight", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
+      [{ name: "Cobb Salad", qty: 1 }],
+    );
+    const html = await render(TOKEN);
+    expect(html).not.toContain("Visit us");
+    expect(html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
+  });
+
   it("shows the store address, linked to a map", async () => {
     serviceReturning(
       { id: "r1", guest_name: "Nolan Patrick", status: "owed", path: "standard", created_at: "2026-10-22T19:00:00.000Z", given_at: null, expires_at: "2099-02-01T17:00:00.000Z" },
@@ -139,6 +169,8 @@ describe("the public guest page", () => {
     const html = await render(TOKEN);
     expect(html).toContain("1991 Broadhollow Rd, Farmingdale, NY 11735");
     expect(html).toContain("google.com/maps/search");
+    expect(html).toContain("Redeemable at Chick-fil-A Farmingdale only.");
+    expect(html).not.toContain("Good at");
   });
 
   it("says what went wrong in words that fit the reason, and calls the gift 'on us' not 'owed'", async () => {

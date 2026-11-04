@@ -193,7 +193,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     `Come back and we will make it right. On your next visit to ${STORE_NAME}, bring your receipt and show this link to any team member:`,
     input.link,
     "",
-    `Good at ${STORE_NAME} only: ${STORE_ADDRESS}. Bring your receipt.`,
+    `Redeemable at ${STORE_NAME} only: ${STORE_ADDRESS}. Bring your receipt.`,
     ...(input.goodUntil ? [input.goodUntil + "."] : []),
     ...(sender ? ["", "All the best,", sender, STORE_NAME] : []),
     "",
@@ -207,7 +207,7 @@ export function buildEmail(input: MessageInput & { qrContentId?: string }): Buil
     : "";
 
   const qr = input.qrContentId
-    ? `<p style="margin:0;text-align:center"><img src="cid:${escapeHtml(input.qrContentId)}" width="160" height="160" alt="Your code" style="display:inline-block"></p>`
+    ? `<p style="margin:0;text-align:center"><a href="${escapeHtml(input.link)}"><img src="cid:${escapeHtml(input.qrContentId)}" width="260" height="260" alt="Your code" style="display:inline-block;width:260px;max-width:100%;height:auto;border:0"></a></p>`
     : "";
 
   const card = `${problemHtml(copy)}
@@ -216,7 +216,7 @@ ${itemsBox(input.items)}
 <p style="margin:22px 0 0;text-align:center"><a href="${escapeHtml(input.link)}" style="display:inline-block;background:#e51636;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;padding:14px 40px;border-radius:999px">Show my code</a></p>
 <p style="margin:24px 0 16px;border-top:2px dotted #d3d6db;font-size:0;line-height:0">&nbsp;</p>
 ${qr}
-<p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Good at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>${signOff}
+<p style="margin:12px 0 0;text-align:center;font-size:13px;line-height:1.5;color:#6b7280">${input.goodUntil ? `${escapeHtml(input.goodUntil)}. ` : ""}Redeemable at ${escapeHtml(STORE_NAME)} only. Bring your receipt.</p>${signOff}
 <p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.5;word-break:break-all;overflow-wrap:anywhere">If the button does not work, copy this link into your browser:<br>${escapeHtml(input.link)}</p>`;
 
   return { subject, html: brandedEmail({ first, card, questions, logoUrl: input.logoUrl }), text };
