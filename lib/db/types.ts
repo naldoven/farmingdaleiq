@@ -289,6 +289,7 @@ export type Database = {
       }
       catering_driver_settings: {
         Row: {
+          directors_discord_role_id: string | null
           escalation_profile_id: string | null
           id: boolean
           reminders_live_from: string | null
@@ -296,6 +297,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          directors_discord_role_id?: string | null
           escalation_profile_id?: string | null
           id?: boolean
           reminders_live_from?: string | null
@@ -303,6 +305,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          directors_discord_role_id?: string | null
           escalation_profile_id?: string | null
           id?: boolean
           reminders_live_from?: string | null

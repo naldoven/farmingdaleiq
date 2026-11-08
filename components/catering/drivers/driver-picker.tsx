@@ -261,7 +261,7 @@ function DriverPicker({
     const size = rosterById.get(id)?.carSize;
     return size ? [size] : [];
   });
-  const warning = largeOrderWarning(order.headcount, selectedSizes);
+  const warning = largeOrderWarning(order, selectedSizes);
   const atCap = selected.length >= MAX_DRIVERS_PER_ORDER;
   const hadDrivers = order.drivers.length > 0;
   const clearing = selected.length === 0 && hadDrivers;

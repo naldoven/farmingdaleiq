@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CAR_SIZES, DELIVERY_PLATFORMS, MAX_DRIVERS_PER_ORDER } from "@/app/(app)/catering/drivers/logic";
+import { DISCORD_USER_ID_PATTERN } from "@/lib/discord/user-id";
 
 /**
  * Input validation for the driver reservation actions
@@ -36,6 +37,20 @@ export type SaveDriverInput = z.infer<typeof saveDriverSchema>;
 /** null clears the contact; escalations then reach Discord only. */
 export const escalationContactSchema = z.object({ profileId: z.string().uuid().nullable() });
 export type EscalationContactInput = z.infer<typeof escalationContactSchema>;
+
+/**
+ * The Discord role escalations tag (the directors). Blank clears it, and the
+ * post then goes out without a tag. Same shape check as a Discord user id,
+ * because a malformed <@&id> makes Discord reject the whole message.
+ */
+export const directorsRoleSchema = z.object({
+  roleId: z
+    .string()
+    .trim()
+    .regex(DISCORD_USER_ID_PATTERN, "A Discord role ID is a long number, 17 to 20 digits.")
+    .nullable(),
+});
+export type DirectorsRoleInput = z.infer<typeof directorsRoleSchema>;
 
 export const DRIVER_VIEWS = ["today", "tomorrow", "week", "roster"] as const;
 export type DriverView = (typeof DRIVER_VIEWS)[number];

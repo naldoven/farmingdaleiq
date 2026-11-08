@@ -12,6 +12,7 @@ const order = (overrides: Partial<BoardOrder>): BoardOrder => ({
   eventDate: "2026-10-26",
   eventTime: "11:30:00",
   headcount: 30,
+  packageMeals: null,
   platform: "roadway",
   drivers: [{ profileId: "me", name: "Messiah Cole" }],
   ...overrides,

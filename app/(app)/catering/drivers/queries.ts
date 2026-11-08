@@ -4,6 +4,7 @@ import {
   ACTIVE_DELIVERY_STAGES,
   CAR_SIZES,
   DELIVERY_PLATFORMS,
+  PACKAGE_MEAL_CATEGORIES,
   REMINDER_KINDS,
   buildDriverScorecard,
   type BoardOrder,
@@ -79,6 +80,23 @@ export async function loadOrderDrivers(
   return byOrder;
 }
 
+/** Package meals per order: the qty of its items in the package-meal menu categories. */
+async function loadPackageMeals(supabase: Client, orderIds: string[]): Promise<Map<string, number>> {
+  const meals = new Map<string, number>();
+  if (orderIds.length === 0) return meals;
+  const { data, error } = await supabase
+    .from("catering_order_items")
+    .select("order_id, qty, catering_menu_items(category)")
+    .in("order_id", orderIds);
+  if (error) throw new Error(`Could not load order items: ${error.message}`);
+  for (const row of data ?? []) {
+    const category = row.catering_menu_items?.category;
+    if (!category || !(PACKAGE_MEAL_CATEGORIES as readonly string[]).includes(category)) continue;
+    meals.set(row.order_id, (meals.get(row.order_id) ?? 0) + row.qty);
+  }
+  return meals;
+}
+
 /** Open delivery orders between two dates (inclusive), with their drivers. */
 export async function loadDeliveryOrders(
   supabase: Client,
@@ -95,16 +113,15 @@ export async function loadDeliveryOrders(
     .order("event_time", { nullsFirst: false });
   if (error) throw new Error(`Could not load delivery orders: ${error.message}`);
   const rows = data ?? [];
-  const drivers = await loadOrderDrivers(
-    supabase,
-    rows.map((row) => row.id),
-  );
+  const ids = rows.map((row) => row.id);
+  const [drivers, packageMeals] = await Promise.all([loadOrderDrivers(supabase, ids), loadPackageMeals(supabase, ids)]);
   return rows.map((row) => ({
     id: row.id,
     guestName: row.guest_name,
     eventDate: row.event_date,
     eventTime: row.event_time,
     headcount: row.headcount,
+    packageMeals: packageMeals.get(row.id) ?? null,
     platform: asPlatform(row.delivery_platform),
     drivers: drivers.get(row.id) ?? [],
   }));
@@ -171,6 +188,12 @@ export async function loadActivePeople(supabase: Client): Promise<PersonOption[]
   const { data, error } = await supabase.from("profiles").select("id, name").eq("active", true).order("name");
   if (error) throw new Error(`Could not load the team: ${error.message}`);
   return data ?? [];
+}
+
+export async function loadDirectorsRoleId(supabase: Client): Promise<string | null> {
+  const { data, error } = await supabase.from("catering_driver_settings").select("directors_discord_role_id").maybeSingle();
+  if (error) throw new Error(`Could not load driver settings: ${error.message}`);
+  return data?.directors_discord_role_id ?? null;
 }
 
 export async function loadEscalationContact(supabase: Client): Promise<PersonOption | null> {

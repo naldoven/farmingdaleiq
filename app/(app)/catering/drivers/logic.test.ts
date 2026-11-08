@@ -9,6 +9,8 @@ import {
   groupBoardOrders,
   nextOpenDay,
   isStoreClosedDay,
+  isEscalationKind,
+  isLargeOrder,
   largeOrderWarning,
   nightPassDate,
   planDriverChanges,
@@ -68,6 +70,7 @@ function ctx(now: Date, orders: ReminderOrder[], overrides: Partial<ReminderCont
     log: [],
     dayparts: DAYPARTS,
     leadersByDaypart: { Morning: ["deja"], Lunch: ["lunch-lead"], Night: ["night-lead"] },
+    directorIds: ["dana", "marcus"],
     escalationContactId: "jasmin",
     ...overrides,
   };
@@ -96,78 +99,74 @@ describe("store calendar", () => {
 });
 
 describe("planDueReminders: night pass", () => {
-  it("pings the Night leader at 7 PM about tomorrow's deliveries that have no driver", () => {
+  it("sends no timed ping in the evening: the Night leader reserves on the confirmation calls", () => {
+    const lisa = order({ id: "lisa" });
+    expect(planDueReminders(ctx(at(MON, "19:00"), [lisa]))).toEqual([]);
+    expect(planDueReminders(ctx(at(MON, "21:59"), [lisa]))).toEqual([]);
+  });
+
+  it("gives the Night leader a 10 PM last call about tomorrow's deliveries that have no driver", () => {
     const due = planDueReminders(
-      ctx(at(MON, "19:00"), [order({ id: "lisa" }), order({ id: "maria", reserved: true })]),
+      ctx(at(MON, "22:00"), [order({ id: "lisa" }), order({ id: "maria", reserved: true })]),
     );
     expect(due).toEqual([
-      { orderId: "lisa", kind: "night_ping", folded: false, recipientIds: ["night-lead"], noLeaderDaypart: null },
+      { orderId: "lisa", kind: "night_last_call", folded: false, recipientIds: ["night-lead"], noLeaderDaypart: null },
     ]);
   });
 
   it("sends nothing when every delivery already has a driver", () => {
-    expect(planDueReminders(ctx(at(MON, "19:00"), [order({ id: "maria", reserved: true })]))).toEqual([]);
+    expect(planDueReminders(ctx(at(MON, "22:00"), [order({ id: "maria", reserved: true })]))).toEqual([]);
   });
 
-  it("does not ping before 7 PM", () => {
-    expect(planDueReminders(ctx(at(MON, "18:59"), [order({ id: "lisa" })]))).toEqual([]);
-  });
-
-  it("still sends a 7 PM ping missed during downtime, until the 10 PM last call takes over", () => {
-    expect(kinds(planDueReminders(ctx(at(MON, "21:30"), [order({ id: "lisa" })])))).toEqual(["lisa:night_ping"]);
-    expect(kinds(planDueReminders(ctx(at(MON, "22:00"), [order({ id: "lisa" })])))).toEqual([
-      "lisa:night_last_call",
-    ]);
-  });
-
-  it("leaves an order that arrived after 7 PM for the 10 PM last call", () => {
-    const late = order({ id: "late", createdAt: at(MON, "20:00").toISOString() });
-    expect(planDueReminders(ctx(at(MON, "20:01"), [late]))).toEqual([]);
-    expect(kinds(planDueReminders(ctx(at(MON, "22:00"), [late])))).toEqual(["late:night_last_call"]);
-  });
-
-  it("never repeats a reminder already in the log", () => {
-    const lisa = order({ id: "lisa" });
-    const log = [sent(lisa, "night_ping", at(MON, "19:00"))];
-    expect(planDueReminders(ctx(at(MON, "19:05"), [lisa], { log }))).toEqual([]);
-  });
-
-  it("does not send a last call after the Night daypart ends", () => {
+  it("still sends a 10 PM last call missed during downtime, until the Night daypart ends", () => {
+    expect(kinds(planDueReminders(ctx(at(MON, "22:40"), [order({ id: "lisa" })])))).toEqual(["lisa:night_last_call"]);
     expect(planDueReminders(ctx(at(MON, "23:00"), [order({ id: "lisa" })]))).toEqual([]);
   });
 
-  it("leaves an order that arrived after 10 PM to the morning pass", () => {
+  it("never repeats a last call already in the log", () => {
+    const lisa = order({ id: "lisa" });
+    const log = [sent(lisa, "night_last_call", at(MON, "22:00"))];
+    expect(planDueReminders(ctx(at(MON, "22:05"), [lisa], { log }))).toEqual([]);
+  });
+
+  it("leaves an order that arrived after 10 PM to the 6 AM check", () => {
     const overnight = order({ id: "kevin", createdAt: at(MON, "22:30").toISOString(), eventTime: "09:30:00" });
     expect(planDueReminders(ctx(at(MON, "22:31"), [overnight]))).toEqual([]);
-    expect(kinds(planDueReminders(ctx(at(TUE, "07:00"), [overnight])))).toEqual(["kevin:morning_ping"]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "06:00"), [overnight])))).toEqual(["kevin:opening_ping"]);
   });
 
   it("runs Saturday's night pass for Monday, and nothing on Sunday", () => {
     const monday = order({ id: "mon", eventDate: NEXT_MON, createdAt: at(SAT, "12:00").toISOString() });
-    expect(kinds(planDueReminders(ctx(at(SAT, "19:00"), [monday])))).toEqual(["mon:night_ping"]);
-    expect(planDueReminders(ctx(at(SUN, "19:00"), [monday]))).toEqual([]);
+    expect(kinds(planDueReminders(ctx(at(SAT, "22:00"), [monday])))).toEqual(["mon:night_last_call"]);
+    expect(planDueReminders(ctx(at(SUN, "22:00"), [monday]))).toEqual([]);
   });
 
-  it("goes to the escalation contact, and says so, when no Night leader is posted", () => {
-    const due = planDueReminders(ctx(at(MON, "19:00"), [order({ id: "lisa" })], { leadersByDaypart: {} }));
+  it("goes to the directors, and says so, when no Night leader is posted", () => {
+    const due = planDueReminders(ctx(at(MON, "22:00"), [order({ id: "lisa" })], { leadersByDaypart: {} }));
     expect(due).toEqual([
-      { orderId: "lisa", kind: "night_ping", folded: false, recipientIds: ["jasmin"], noLeaderDaypart: "Night" },
+      {
+        orderId: "lisa",
+        kind: "night_last_call",
+        folded: false,
+        recipientIds: ["dana", "marcus"],
+        noLeaderDaypart: "Night",
+      },
     ]);
   });
 });
 
 describe("planDueReminders: go-live", () => {
-  it("leaves go-live day's deliveries alone, so day one does not flood the escalation contact", () => {
+  it("leaves go-live day's deliveries alone, so day one does not flood the directors", () => {
     const liveFrom = at(TUE, "10:00").toISOString();
     const today = order({ id: "today", eventTime: "12:15:00" });
     expect(planDueReminders(ctx(at(TUE, "11:15"), [today], { liveFrom }))).toEqual([]);
   });
 
-  it("covers the next day in full, even when go-live lands after 7 PM", () => {
+  it("covers the next day in full, even when go-live lands late in the evening", () => {
     const liveFrom = at(MON, "20:00").toISOString();
     const lisa = order({ id: "lisa" });
-    expect(kinds(planDueReminders(ctx(at(MON, "20:01"), [lisa], { liveFrom })))).toEqual(["lisa:night_ping"]);
-    expect(kinds(planDueReminders(ctx(at(TUE, "06:00"), [lisa], { liveFrom })))).toEqual(["lisa:night_escalation"]);
+    expect(kinds(planDueReminders(ctx(at(MON, "22:00"), [lisa], { liveFrom })))).toEqual(["lisa:night_last_call"]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "06:00"), [lisa], { liveFrom })))).toEqual(["lisa:opening_ping"]);
   });
 
   it("still covers a same-day order that arrives after go-live", () => {
@@ -181,107 +180,151 @@ describe("planDueReminders: rescheduled orders", () => {
   it("starts the reminders over when an open order moves to another day", () => {
     const tuesday = order({ id: "moved" });
     const log = [
-      sent(tuesday, "night_ping", at(MON, "19:00")),
       sent(tuesday, "night_last_call", at(MON, "22:00")),
-      sent(tuesday, "night_escalation", at(TUE, "06:00")),
-      sent(tuesday, "morning_ping", at(TUE, "07:00")),
+      sent(tuesday, "opening_ping", at(TUE, "06:00")),
+      sent(tuesday, "morning_ping", at(TUE, "09:00")),
     ];
     const thursday = { ...tuesday, eventDate: "2026-10-15" };
-    expect(kinds(planDueReminders(ctx(at("2026-10-14", "19:00"), [thursday], { log })))).toEqual(["moved:night_ping"]);
-    expect(kinds(planDueReminders(ctx(at("2026-10-15", "10:30"), [thursday], { log })))).toEqual([
-      "moved:before_30_escalation",
+    expect(kinds(planDueReminders(ctx(at("2026-10-14", "22:00"), [thursday], { log })))).toEqual([
+      "moved:night_last_call",
+    ]);
+    expect(kinds(planDueReminders(ctx(at("2026-10-15", "09:00"), [thursday], { log })))).toEqual([
+      "moved:morning_ping",
     ]);
   });
 
   it("starts the same-day reminders over when the time moves later", () => {
-    const eleven = order({ id: "moved", eventTime: "11:00:00", createdAt: at(TUE, "09:00").toISOString() });
-    const log = [sent(eleven, "arrival", at(TUE, "09:00")), sent(eleven, "before_60", at(TUE, "10:00"))];
-    const two = { ...eleven, eventTime: "14:00:00" };
+    const early = order({ id: "moved", eventTime: "12:30:00", createdAt: at(TUE, "10:30").toISOString() });
+    const log = [sent(early, "arrival", at(TUE, "10:30")), sent(early, "before_60", at(TUE, "11:30"))];
+    const later = { ...early, eventTime: "15:00:00" };
     // Same day, so the arrival ping is not repeated; the 60- and 30-minute
     // reminders follow the new time.
-    expect(kinds(planDueReminders(ctx(at(TUE, "13:00"), [two], { log })))).toEqual(["moved:before_60"]);
-    expect(kinds(planDueReminders(ctx(at(TUE, "13:30"), [two], { log: [...log, sent(two, "before_60", at(TUE, "13:00"))] })))).toEqual([
-      "moved:before_30_escalation",
-    ]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "14:00"), [later], { log })))).toEqual(["moved:before_60"]);
+    expect(
+      kinds(planDueReminders(ctx(at(TUE, "14:30"), [later], { log: [...log, sent(later, "before_60", at(TUE, "14:00"))] }))),
+    ).toEqual(["moved:before_30_escalation"]);
   });
 
   it("does not repeat a pass ping when the time changes a little inside its window", () => {
     const eleven = order({ id: "nudged", eventTime: "11:00:00", createdAt: at(TUE, "01:00").toISOString() });
-    const log = [sent(eleven, "morning_ping", at(TUE, "07:00")), sent(eleven, "morning_last_call", at(TUE, "08:00"))];
+    const log = [sent(eleven, "morning_ping", at(TUE, "09:00"))];
     const nudged = { ...eleven, eventTime: "11:05:00" };
-    expect(planDueReminders(ctx(at(TUE, "08:30"), [nudged], { log }))).toEqual([]);
+    expect(planDueReminders(ctx(at(TUE, "09:30"), [nudged], { log }))).toEqual([]);
   });
 });
 
-describe("planDueReminders: escalations", () => {
-  it("escalates at 6 AM what was still open at the 10 PM last call", () => {
+describe("planDueReminders: opening ping and escalations", () => {
+  it("pings the directors at 6 AM about everything open, including orders that came in overnight", () => {
     const george = order({ id: "george", eventTime: "12:15:00" });
     const kevin = order({ id: "kevin", eventTime: "09:30:00", createdAt: at(TUE, "02:00").toISOString() });
     const due = planDueReminders(ctx(at(TUE, "06:00"), [george, kevin]));
     expect(due).toEqual([
-      { orderId: "george", kind: "night_escalation", folded: false, recipientIds: ["jasmin"], noLeaderDaypart: null },
+      { orderId: "george", kind: "opening_ping", folded: false, recipientIds: ["dana", "marcus"], noLeaderDaypart: "Opening" },
+      { orderId: "kevin", kind: "opening_ping", folded: false, recipientIds: ["dana", "marcus"], noLeaderDaypart: "Opening" },
     ]);
   });
 
-  it("does not escalate before 6 AM", () => {
+  it("is a ping, not an escalation: it never counts against a leader on the scorecard", () => {
+    expect(isEscalationKind("opening_ping")).toBe(false);
+    expect(isEscalationKind("night_escalation")).toBe(true);
+  });
+
+  it("does not ping before 6 AM", () => {
     expect(planDueReminders(ctx(at(TUE, "05:59"), [order({ id: "george" })]))).toEqual([]);
   });
 
-  it("escalates 30 minutes before delivery to the escalation contact", () => {
+  it("hands over to the 9 AM ping once 9 AM arrives", () => {
+    const george = order({ id: "george" });
+    expect(kinds(planDueReminders(ctx(at(TUE, "08:59"), [george])))).toEqual(["george:opening_ping"]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "09:00"), [george])))).toEqual(["george:morning_ping"]);
+  });
+
+  it("escalates 30 minutes before delivery to all the directors", () => {
     const rosa = order({ id: "rosa", eventTime: "12:15:00", createdAt: at(TUE, "11:00").toISOString() });
     const log = [sent(rosa, "arrival", at(TUE, "11:00")), sent(rosa, "before_60", at(TUE, "11:15"))];
     expect(planDueReminders(ctx(at(TUE, "11:45"), [rosa], { log }))).toEqual([
-      { orderId: "rosa", kind: "before_30_escalation", folded: false, recipientIds: ["jasmin"], noLeaderDaypart: null },
+      {
+        orderId: "rosa",
+        kind: "before_30_escalation",
+        folded: false,
+        recipientIds: ["dana", "marcus"],
+        noLeaderDaypart: null,
+      },
     ]);
   });
 
-  it("still plans an escalation with no escalation contact set, so Discord gets it", () => {
-    const due = planDueReminders(ctx(at(TUE, "06:00"), [order({ id: "george" })], { escalationContactId: null }));
+  it("falls back to the backup contact only when no director is found", () => {
+    const rosa = order({ id: "rosa", eventTime: "12:15:00", createdAt: at(TUE, "11:00").toISOString() });
+    const log = [sent(rosa, "arrival", at(TUE, "11:00")), sent(rosa, "before_60", at(TUE, "11:15"))];
+    const due = planDueReminders(ctx(at(TUE, "11:45"), [rosa], { log, directorIds: [] }));
+    expect(due[0].recipientIds).toEqual(["jasmin"]);
+  });
+
+  it("still plans an escalation with no directors and no backup contact, so Discord gets it", () => {
+    const rosa = order({ id: "rosa", eventTime: "12:15:00", createdAt: at(TUE, "11:00").toISOString() });
+    const log = [sent(rosa, "arrival", at(TUE, "11:00")), sent(rosa, "before_60", at(TUE, "11:15"))];
+    const due = planDueReminders(ctx(at(TUE, "11:45"), [rosa], { log, directorIds: [], escalationContactId: null }));
     expect(due).toEqual([
-      { orderId: "george", kind: "night_escalation", folded: false, recipientIds: [], noLeaderDaypart: null },
+      { orderId: "rosa", kind: "before_30_escalation", folded: false, recipientIds: [], noLeaderDaypart: null },
     ]);
   });
 
-  it("folds the 30-minute escalation into the 6 AM one for an early delivery", () => {
+  it("gives an early delivery still open at 6 AM both the Opening ping and the escalation", () => {
     const early = order({ id: "early", eventTime: "06:30:00" });
     expect(kinds(planDueReminders(ctx(at(TUE, "06:00"), [early])))).toEqual([
-      "early:before_30_escalation:folded",
-      "early:night_escalation",
+      "early:before_30_escalation",
+      "early:opening_ping",
     ]);
   });
 
   it("handles the fall-back DST change: Saturday Oct 31 covers Monday Nov 2 at 6 AM EST", () => {
     const mon = order({ id: "mon", eventDate: "2026-11-02", createdAt: at("2026-10-31", "12:00").toISOString() });
-    expect(kinds(planDueReminders(ctx(at("2026-10-31", "19:00"), [mon])))).toEqual(["mon:night_ping"]);
+    expect(kinds(planDueReminders(ctx(at("2026-10-31", "22:00"), [mon])))).toEqual(["mon:night_last_call"]);
     expect(planDueReminders(ctx(at("2026-11-02", "05:59"), [mon]))).toEqual([]);
-    expect(kinds(planDueReminders(ctx(at("2026-11-02", "06:00"), [mon])))).toEqual(["mon:night_escalation"]);
+    expect(kinds(planDueReminders(ctx(at("2026-11-02", "06:00"), [mon])))).toEqual(["mon:opening_ping"]);
   });
 });
 
 describe("planDueReminders: morning pass and same day", () => {
-  it("pings the Morning leader at 7 AM and gives a last call at 8 AM", () => {
-    const kevin = order({ id: "kevin", eventTime: "10:30:00", createdAt: at(TUE, "02:00").toISOString() });
-    expect(planDueReminders(ctx(at(TUE, "07:00"), [kevin]))).toEqual([
+  it("pings the Morning leader at 9 AM and gives a last call at 10 AM", () => {
+    const kevin = order({ id: "kevin", eventTime: "12:30:00", createdAt: at(TUE, "02:00").toISOString() });
+    expect(planDueReminders(ctx(at(TUE, "09:00"), [kevin]))).toEqual([
       { orderId: "kevin", kind: "morning_ping", folded: false, recipientIds: ["deja"], noLeaderDaypart: null },
     ]);
-    const log = [sent(kevin, "morning_ping", at(TUE, "07:00"))];
-    expect(kinds(planDueReminders(ctx(at(TUE, "08:00"), [kevin], { log })))).toEqual(["kevin:morning_last_call"]);
+    const log = [sent(kevin, "morning_ping", at(TUE, "09:00"))];
+    expect(kinds(planDueReminders(ctx(at(TUE, "10:00"), [kevin], { log })))).toEqual(["kevin:morning_last_call"]);
   });
 
-  it("folds the 60-minute ping into the 8 AM last call for a 9 AM delivery", () => {
-    const nine = order({ id: "nine", eventTime: "09:00:00", createdAt: at(TUE, "01:00").toISOString() });
-    const log = [sent(nine, "morning_ping", at(TUE, "07:00"))];
-    const due = planDueReminders(ctx(at(TUE, "08:00"), [nine], { log }));
+  it("leaves an order that arrived between 9 and 10 AM for the 10 AM last call", () => {
+    const mid = order({ id: "mid", eventTime: "13:00:00", createdAt: at(TUE, "09:30").toISOString() });
+    expect(planDueReminders(ctx(at(TUE, "09:31"), [mid]))).toEqual([]);
+    expect(kinds(planDueReminders(ctx(at(TUE, "10:00"), [mid])))).toEqual(["mid:morning_last_call"]);
+  });
+
+  it("stops the morning pass at 11 AM", () => {
+    const kevin = order({ id: "kevin", eventTime: "13:00:00", createdAt: at(TUE, "02:00").toISOString() });
+    const log = [sent(kevin, "morning_ping", at(TUE, "09:00"))];
+    expect(planDueReminders(ctx(at(TUE, "11:00"), [kevin], { log }))).toEqual([]);
+  });
+
+  it("folds the 60-minute ping into the 10 AM last call for an 11 AM delivery", () => {
+    const eleven = order({ id: "eleven", eventTime: "11:00:00", createdAt: at(TUE, "01:00").toISOString() });
+    const log = [sent(eleven, "morning_ping", at(TUE, "09:00"))];
+    const due = planDueReminders(ctx(at(TUE, "10:00"), [eleven], { log }));
     expect(due).toEqual([
-      { orderId: "nine", kind: "morning_last_call", folded: false, recipientIds: ["deja"], noLeaderDaypart: null },
-      { orderId: "nine", kind: "before_60", folded: true, recipientIds: [], noLeaderDaypart: null },
+      { orderId: "eleven", kind: "morning_last_call", folded: false, recipientIds: ["deja"], noLeaderDaypart: null },
+      { orderId: "eleven", kind: "before_60", folded: true, recipientIds: [], noLeaderDaypart: null },
     ]);
   });
 
-  it("pings the leader of the daypart in progress the moment a same-day order arrives after 8 AM", () => {
+  it("pings the leader of the daypart in progress the moment a same-day order arrives after 10 AM", () => {
     const rosa = order({ id: "rosa", eventTime: "12:15:00", createdAt: at(TUE, "11:00").toISOString() });
     expect(planDueReminders(ctx(at(TUE, "11:00"), [rosa]))).toEqual([
       { orderId: "rosa", kind: "arrival", folded: false, recipientIds: ["lunch-lead"], noLeaderDaypart: null },
+    ]);
+    const justAfter = order({ id: "after", eventTime: "13:00:00", createdAt: at(TUE, "10:01").toISOString() });
+    expect(planDueReminders(ctx(at(TUE, "10:01"), [justAfter]))).toEqual([
+      { orderId: "after", kind: "arrival", folded: false, recipientIds: ["deja"], noLeaderDaypart: null },
     ]);
   });
 
@@ -305,8 +348,8 @@ describe("planDueReminders: morning pass and same day", () => {
 
   it("gives an order with no delivery time the passes but not the 60 and 30 minute reminders", () => {
     const noTime = order({ id: "notime", eventTime: null, createdAt: at(TUE, "01:00").toISOString() });
-    expect(kinds(planDueReminders(ctx(at(TUE, "07:00"), [noTime])))).toEqual(["notime:morning_ping"]);
-    const log = [sent(noTime, "morning_ping", at(TUE, "07:00")), sent(noTime, "morning_last_call", at(TUE, "08:00"))];
+    expect(kinds(planDueReminders(ctx(at(TUE, "09:00"), [noTime])))).toEqual(["notime:morning_ping"]);
+    const log = [sent(noTime, "morning_ping", at(TUE, "09:00")), sent(noTime, "morning_last_call", at(TUE, "10:00"))];
     expect(planDueReminders(ctx(at(TUE, "12:00"), [noTime], { log }))).toEqual([]);
   });
 
@@ -315,10 +358,10 @@ describe("planDueReminders: morning pass and same day", () => {
     expect(kinds(planDueReminders(ctx(at(TUE, "13:00"), [noTime])))).toEqual(["notime:arrival"]);
   });
 
-  it("sends a same-day ping to the escalation contact when no daypart is in progress", () => {
+  it("sends a same-day ping to the directors when no daypart is in progress", () => {
     const early = order({ id: "early", eventTime: "06:45:00" });
     expect(planDueReminders(ctx(at(TUE, "05:45"), [early]))).toEqual([
-      { orderId: "early", kind: "before_60", folded: false, recipientIds: ["jasmin"], noLeaderDaypart: "current" },
+      { orderId: "early", kind: "before_60", folded: false, recipientIds: ["dana", "marcus"], noLeaderDaypart: "current" },
     ]);
   });
 });
@@ -394,6 +437,37 @@ describe("buildReminderEvents", () => {
     expect(event.payload.title).toBe("Driver not reserved: night pass missed");
     expect(event.payload.message).toBe("George 12:15 PM (ezCater + Roadway). Still open after the 10 PM last call.");
     expect(event.payload.user_ids).toEqual(["jasmin"]);
+  });
+
+  it("carries the directors role on escalations only, and only when it is a real id", () => {
+    const george = order({ id: "george", guestName: "George", eventTime: "12:15:00" });
+    const escalation: DueReminder = {
+      orderId: "george",
+      kind: "before_30_escalation",
+      folded: false,
+      recipientIds: ["dana"],
+      noLeaderDaypart: null,
+    };
+    const ping: DueReminder = { ...escalation, kind: "before_60" };
+    const [tagged] = buildReminderEvents([escalation], [george], today, "123456789012345678");
+    expect(tagged.payload.discord_role_id).toBe("123456789012345678");
+    expect(buildReminderEvents([escalation], [george], today, null)[0].payload).not.toHaveProperty("discord_role_id");
+    expect(buildReminderEvents([escalation], [george], today, "not-an-id")[0].payload).not.toHaveProperty(
+      "discord_role_id",
+    );
+    expect(buildReminderEvents([ping], [george], today, "123456789012345678")[0].payload).not.toHaveProperty(
+      "discord_role_id",
+    );
+  });
+
+  it("says the Opening director was not posted, when the 6 AM ping falls to the directors", () => {
+    const george = order({ id: "george", guestName: "George", eventTime: "12:15:00" });
+    const due: DueReminder[] = [
+      { orderId: "george", kind: "opening_ping", folded: false, recipientIds: ["dana"], noLeaderDaypart: "Opening" },
+    ];
+    const [event] = buildReminderEvents(due, [george], today);
+    expect(event.eventKey).toBe("catering_driver_reminder");
+    expect(event.payload.message).toMatch(/^No Opening director is posted, so this came to you\./);
   });
 
   it("says so when no shift leader was posted", () => {
@@ -500,7 +574,7 @@ describe("Drivers page helpers", () => {
   });
 
   it("groups by day with open orders first and a reserved count", () => {
-    const base = { headcount: 20, platform: "roadway" as const };
+    const base = { headcount: 20, packageMeals: null, platform: "roadway" as const };
     const days = groupBoardOrders([
       { ...base, id: "lisa", guestName: "Lisa", eventDate: TUE, eventTime: "11:00:00", drivers: [{ profileId: "m", name: "Messiah" }] },
       { ...base, id: "george", guestName: "George", eventDate: TUE, eventTime: "12:15:00", drivers: [] },
@@ -567,11 +641,28 @@ describe("picker helpers", () => {
     ]);
   });
 
+  it("calls an order large only when it is over 50 package meals", () => {
+    expect(isLargeOrder({ packageMeals: 50, headcount: 80 })).toBe(false);
+    expect(isLargeOrder({ packageMeals: 51, headcount: 10 })).toBe(true);
+    expect(isLargeOrder({ packageMeals: 48, headcount: null })).toBe(false);
+  });
+
+  it("falls back to guests, same cutoff, when the order has no packaged-meal items", () => {
+    expect(isLargeOrder({ packageMeals: null, headcount: 50 })).toBe(false);
+    expect(isLargeOrder({ packageMeals: null, headcount: 51 })).toBe(true);
+    expect(isLargeOrder({ packageMeals: 0, headcount: 51 })).toBe(true);
+    expect(isLargeOrder({ packageMeals: null, headcount: null })).toBe(false);
+  });
+
   it("warns when a large order has no large car picked", () => {
-    expect(largeOrderWarning(45, ["small"])).toBe("Large order (45 guests). Pick at least one large car.");
-    expect(largeOrderWarning(45, ["small", "large"])).toBeNull();
-    expect(largeOrderWarning(45, [])).toBeNull();
-    expect(largeOrderWarning(20, ["small"])).toBeNull();
-    expect(largeOrderWarning(null, ["small"])).toBeNull();
+    const meals = { packageMeals: 60, headcount: 30 };
+    expect(largeOrderWarning(meals, ["small"])).toBe("Large order (60 package meals). Pick at least one large car.");
+    expect(largeOrderWarning(meals, ["small", "large"])).toBeNull();
+    expect(largeOrderWarning(meals, [])).toBeNull();
+    expect(largeOrderWarning({ packageMeals: 20, headcount: 90 }, ["small"])).toBeNull();
+    expect(largeOrderWarning({ packageMeals: null, headcount: 55 }, ["small"])).toBe(
+      "Large order (55 guests). Pick at least one large car.",
+    );
+    expect(largeOrderWarning({ packageMeals: null, headcount: null }, ["small"])).toBeNull();
   });
 });

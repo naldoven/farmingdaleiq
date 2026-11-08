@@ -25,6 +25,19 @@ function asPlatform(value: string): DeliveryPlatform {
   return (DELIVERY_PLATFORMS as readonly string[]).includes(value) ? (value as DeliveryPlatform) : "roadway";
 }
 
+/** "The directors" for escalations and for reminders with no leader posted (Jasmin, 2026-11-02). */
+const DIRECTOR_ROLE_NAMES = ["Director"];
+
+async function loadDirectorIds(supabase: Admin): Promise<{ ids: string[]; error?: string }> {
+  const { data: roles, error: rolesError } = await supabase.from("roles").select("id").in("name", DIRECTOR_ROLE_NAMES);
+  if (rolesError) return { ids: [], error: rolesError.message };
+  const roleIds = (roles ?? []).map((role) => role.id);
+  if (roleIds.length === 0) return { ids: [] };
+  const { data, error } = await supabase.from("profiles").select("id").in("role_id", roleIds).eq("active", true);
+  if (error) return { ids: [], error: error.message };
+  return { ids: (data ?? []).map((profile) => profile.id) };
+}
+
 function asKind(value: string): ReminderKind | null {
   return (REMINDER_KINDS as readonly string[]).includes(value) ? (value as ReminderKind) : null;
 }
@@ -49,7 +62,7 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
   // migration ran or when the first delivery order showed up.
   const { data: settings, error: settingsError } = await supabase
     .from("catering_driver_settings")
-    .select("escalation_profile_id, reminders_live_from")
+    .select("escalation_profile_id, reminders_live_from, directors_discord_role_id")
     .maybeSingle();
   if (settingsError) return { status: "error", error: settingsError.message };
   let liveFrom = settings?.reminders_live_from ?? null;
@@ -135,12 +148,16 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
       : [];
   });
 
+  const directors = await loadDirectorIds(supabase);
+  if (directors.error) return { status: "error", error: directors.error };
+
   const due = planDueReminders({
     now,
     orders,
     log,
     dayparts: dayparts.map((d) => ({ name: d.name, start: d.start_time, end: d.end_time })),
     leadersByDaypart,
+    directorIds: directors.ids,
     escalationContactId: settings?.escalation_profile_id ?? null,
     liveFrom,
   });
@@ -167,7 +184,7 @@ export async function runDriverReminders(supabase: Admin, now: Date): Promise<Dr
 
   const claimed = new Set((claimedRows ?? []).map((row) => `${row.order_id}|${row.kind}`));
   const mine = due.filter((reminder) => claimed.has(`${reminder.orderId}|${reminder.kind}`));
-  const events = buildReminderEvents(mine, orders, today);
+  const events = buildReminderEvents(mine, orders, today, settings?.directors_discord_role_id ?? null);
   if (events.length === 0) return { status: "sent", claimed: mine.length, events: 0 };
 
   const { error: insertError } = await supabase

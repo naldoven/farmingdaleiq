@@ -190,7 +190,14 @@ export function buildDiscordMessage(
   const recipientId = isDiscordUserId(opts.recipientDiscordId)
     ? opts.recipientDiscordId
     : undefined;
-  const mentionText = recipientId ? mention(recipientId) : "";
+  // Driver escalations tag the directors role. The id comes from a saved
+  // setting and rides in the event payload; it gets the same snowflake check
+  // as a user id, so a bad value falls back to a plain post.
+  const roleId =
+    key === "catering_driver_escalation" && isDiscordUserId(payload.discord_role_id as string | undefined)
+      ? (payload.discord_role_id as string)
+      : undefined;
+  const mentionText = [roleId ? `<@&${roleId}>` : "", recipientId ? mention(recipientId) : ""].filter(Boolean).join(" ");
 
   const content = assembleContent(`${emoji} **${title}**`, detail, mentionText);
 
@@ -198,9 +205,11 @@ export function buildDiscordMessage(
   // never be left to parse mentions out of it: a typed "@everyone" would ping
   // the whole server. The recipient's own <@id> is the only intended ping, so
   // it is the only id re-allowed.
-  const allowed_mentions: DiscordAllowedMentions = recipientId
-    ? { parse: [], users: [recipientId] }
-    : { parse: [] };
+  const allowed_mentions: DiscordAllowedMentions = {
+    parse: [],
+    ...(recipientId ? { users: [recipientId] } : {}),
+    ...(roleId ? { roles: [roleId] } : {}),
+  };
 
   // A found-and-fixed post shows its photo. Only that event, and only a
   // signed link to a finds/ photo in our own bucket: the event row is the
