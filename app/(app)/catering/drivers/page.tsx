@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { DriverDayCard } from "@/components/catering/drivers/day-card";
 import { DriverPickerProvider } from "@/components/catering/drivers/driver-picker";
+import { DirectorsRoleForm } from "@/components/catering/drivers/directors-role-form";
 import { EscalationContactForm } from "@/components/catering/drivers/escalation-contact-form";
 import { AddDriverForm, RosterDriverRow } from "@/components/catering/drivers/roster-editor";
 import { DriverViewTabs } from "@/components/catering/drivers/view-tabs";
@@ -14,6 +15,7 @@ import { driverViewRange, groupBoardOrders } from "@/app/(app)/catering/drivers/
 import {
   loadActivePeople,
   loadDeliveryOrders,
+  loadDirectorsRoleId,
   loadEscalationContact,
   loadOnSetupByDate,
   loadRoster,
@@ -24,7 +26,7 @@ import { emptyOrdersMessage, tomorrowTabLabel } from "@/app/(app)/catering/drive
 /**
  * /catering/drivers (ARCHITECTURE.md "Catering" > "Driver reservations" and
  * the page map): delivery orders by day with the ones still needing a driver
- * first, the driver picker, the roster, and the escalation contact.
+ * first, the driver picker, the roster, and the escalation settings.
  *
  * Reading needs catering.view. The three flags below only decide which
  * controls render; every write re-checks its own key in drivers/actions.ts and
@@ -129,9 +131,10 @@ async function RosterView({
   canReserve: boolean;
   canSetContact: boolean;
 }) {
-  const [roster, contact, people] = await Promise.all([
+  const [roster, contact, directorsRoleId, people] = await Promise.all([
     loadRoster(supabase),
     loadEscalationContact(supabase),
+    loadDirectorsRoleId(supabase),
     canReserve || canSetContact ? loadActivePeople(supabase) : Promise.resolve([]),
   ]);
   // Someone off the list is still on the roster (their row has the switch to
@@ -166,14 +169,30 @@ async function RosterView({
         </SectionCard>
       )}
 
-      <SectionCard title="Escalation contact">
+      <SectionCard title="Directors in Discord">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-[15px] font-semibold text-ink">
+              {directorsRoleId ? "Tagged on escalations" : "Not set. Escalations post without a tag."}
+            </p>
+            <p className="text-[13px] text-muted-ink">
+              When a delivery still has no driver 30 minutes before it leaves, every director gets a push and
+              this Discord role is tagged in the leaders channel. In Discord, right-click the role and choose
+              Copy Role ID.
+            </p>
+          </div>
+          {canSetContact && <DirectorsRoleForm current={directorsRoleId} />}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Backup contact">
         <div className="flex flex-col gap-3">
           <div>
             <p className="text-[15px] font-semibold text-ink">
               {contact ? contact.name : "Nobody set. Escalations only post to Discord."}
             </p>
             <p className="text-[13px] text-muted-ink">
-              Gets a push when a delivery still has no driver at 6 AM, or 30 minutes before it leaves.
+              Gets the escalation only when no active director can be found.
             </p>
           </div>
           {canSetContact && <EscalationContactForm current={contact} people={people} />}

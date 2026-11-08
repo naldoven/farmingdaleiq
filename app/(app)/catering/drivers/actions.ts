@@ -27,10 +27,12 @@ import {
   type DeliveryPlatform,
 } from "@/app/(app)/catering/drivers/logic";
 import {
+  directorsRoleSchema,
   escalationContactSchema,
   saveDriverSchema,
   setDeliveryPlatformSchema,
   setOrderDriversSchema,
+  type DirectorsRoleInput,
   type EscalationContactInput,
   type SaveDriverInput,
   type SetDeliveryPlatformInput,
@@ -227,7 +229,37 @@ export async function saveDriver(input: SaveDriverInput): Promise<ActionResult> 
   }
 }
 
-/** Who gets driver escalations. One person; null leaves escalations to Discord only. */
+/** The Discord role escalations tag. null clears it; the post then goes out untagged. */
+export async function setDirectorsRole(input: DirectorsRoleInput): Promise<ActionResult> {
+  try {
+    await requirePermission("settings.manage");
+    const parsed = directorsRoleSchema.parse(input);
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: updated, error } = await supabase
+      .from("catering_driver_settings")
+      .update({
+        directors_discord_role_id: parsed.roleId,
+        updated_by: user?.id ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", true)
+      .select("id")
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!updated) return { ok: false, error: "Driver settings are missing. Apply the driver reservations migration." };
+
+    revalidatePath("/catering/drivers");
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/** Fallback contact when no director can be found. One person; null leaves escalations to Discord only. */
 export async function setEscalationContact(input: EscalationContactInput): Promise<ActionResult> {
   try {
     await requirePermission("settings.manage");

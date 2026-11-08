@@ -1,5 +1,6 @@
 import { formatDigestClock } from "@/app/(app)/catering/logic";
 import { neutralizeDiscordMentions } from "@/lib/discord/mentions";
+import { isDiscordUserId } from "@/lib/discord/user-id";
 import { addStoreCalendarDays, formatStoreDateTimeInput, storeDateTimeInputToIso, storeLocalDate } from "@/lib/time";
 
 /**
@@ -43,17 +44,29 @@ export const CAR_SIZE_LABELS: Record<CarSize, string> = { small: "Small car", la
 /** Orders a driver can still be reserved for; the insert policy checks the same list. */
 export const ACTIVE_DELIVERY_STAGES = ["new", "confirm", "setup", "out"] as const;
 
-// SEED-DEFAULT: the guest count that needs a large car. Jasmin's review page
-// asks for the real number (question 3).
-export const LARGE_ORDER_HEADCOUNT = 40;
+/**
+ * A large order is more than 50 package meals (Jasmin, 2026-11-02: a sedan
+ * fits about 48 plus the warming bags). Counted from the order's items in
+ * these menu categories; an order with none of them falls back to the same
+ * number read as guests.
+ */
+export const LARGE_ORDER_MEALS = 50;
+export const PACKAGE_MEAL_CATEGORIES = ["Packaged Meals", "Boxed Meals"] as const;
 
 /** Most drivers an order can carry; big orders sometimes need a second car. */
 export const MAX_DRIVERS_PER_ORDER = 4;
 
+/**
+ * night_ping and night_escalation are retired (2026-11): the Night leader now
+ * reserves while making the confirmation calls, and 6 AM is a ping to the
+ * Opening director, not an escalation. They stay in the list so old log rows
+ * still read and the scorecard still counts the escalations already sent.
+ */
 export const REMINDER_KINDS = [
   "night_ping",
   "night_last_call",
   "night_escalation",
+  "opening_ping",
   "morning_ping",
   "morning_last_call",
   "arrival",
@@ -61,6 +74,7 @@ export const REMINDER_KINDS = [
   "before_30_escalation",
 ] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
+type ScheduledKind = Exclude<ReminderKind, "night_ping" | "night_escalation">;
 
 export const ESCALATION_KINDS: ReadonlySet<ReminderKind> = new Set(["night_escalation", "before_30_escalation"]);
 
@@ -71,18 +85,16 @@ export function isEscalationKind(kind: ReminderKind): boolean {
 /**
  * Store wall-clock times. Each reminder has a window: it goes out on the first
  * cron run inside it, so one missed during downtime still goes out late, but
- * never after the next step has taken over (a 7 PM ping is not sent at 10:30
- * PM, and a last call never wakes the Night leader after the Night daypart).
+ * never after the next step has taken over (a 6 AM ping is not sent at 9:30
+ * AM, and a last call never wakes the Night leader after the Night daypart).
  */
 export const REMINDER_TIMES = {
-  nightPing: "19:00",
   nightLastCall: "22:00",
   nightClose: "23:00",
-  nightEscalation: "06:00",
-  nightEscalationClose: "08:00",
-  morningPing: "07:00",
-  morningLastCall: "08:00",
-  morningClose: "09:00",
+  openingPing: "06:00",
+  morningPing: "09:00",
+  morningLastCall: "10:00",
+  morningClose: "11:00",
 } as const;
 export const BEFORE_PING_MINUTES = 60;
 export const BEFORE_ESCALATION_MINUTES = 30;
@@ -91,6 +103,8 @@ export const FOLD_MINUTES = 10;
 
 export const NIGHT_DAYPART = "Night";
 export const MORNING_DAYPART = "Morning";
+/** Not a real daypart: the label for the Opening director's 6 AM ping. */
+export const OPENING_DAYPART = "Opening";
 /** noLeaderDaypart value when no daypart covers the current time at all. */
 export const NO_DAYPART = "current";
 
@@ -133,6 +147,9 @@ export interface ReminderContext {
   dayparts: DaypartWindow[];
   /** shift_leader_id of today's posted setups, by daypart name. */
   leadersByDaypart: Record<string, string[]>;
+  /** Who gets a reminder when no leader is posted, and every escalation: all active directors. */
+  directorIds: string[];
+  /** Used only when no director could be found. */
   escalationContactId: string | null;
   /**
    * When reminders went live (catering_driver_settings.reminders_live_from,
@@ -151,7 +168,7 @@ export interface DueReminder {
   /** Due but not sent: a ping about the same order went out moments earlier. */
   folded: boolean;
   recipientIds: string[];
-  /** Set when no shift leader was posted, so the escalation contact got it instead. */
+  /** Set when no shift leader was posted, so the directors got it instead. */
   noLeaderDaypart: string | null;
 }
 
@@ -220,10 +237,11 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
   }
 
   const contact = ctx.escalationContactId ? [ctx.escalationContactId] : [];
+  const directors = ctx.directorIds.length > 0 ? [...ctx.directorIds] : contact;
   const leadersFor = (daypart: string | null) => {
     const ids = daypart ? (ctx.leadersByDaypart[daypart] ?? []) : [];
     if (ids.length > 0) return { recipientIds: [...ids], noLeaderDaypart: null };
-    return { recipientIds: contact, noLeaderDaypart: daypart ?? NO_DAYPART };
+    return { recipientIds: directors, noLeaderDaypart: daypart ?? NO_DAYPART };
   };
   const currentDaypart = daypartAt(ctx.now, ctx.dayparts);
   const parsedLive = ctx.liveFrom ? Date.parse(ctx.liveFrom) : Number.NaN;
@@ -239,11 +257,9 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
     const parsedCreated = Date.parse(order.createdAt);
     const created = Number.isNaN(parsedCreated) ? 0 : parsedCreated;
     const pass = nightPassDate(order.eventDate);
-    const nightPing = storeInstant(pass, REMINDER_TIMES.nightPing);
     const nightLastCall = storeInstant(pass, REMINDER_TIMES.nightLastCall);
     const nightClose = storeInstant(pass, REMINDER_TIMES.nightClose);
-    const escalation = storeInstant(order.eventDate, REMINDER_TIMES.nightEscalation);
-    const escalationClose = storeInstant(order.eventDate, REMINDER_TIMES.nightEscalationClose);
+    const openingPing = storeInstant(order.eventDate, REMINDER_TIMES.openingPing);
     const morningPing = storeInstant(order.eventDate, REMINDER_TIMES.morningPing);
     const morningLastCall = storeInstant(order.eventDate, REMINDER_TIMES.morningLastCall);
     const morningClose = storeInstant(order.eventDate, REMINDER_TIMES.morningClose);
@@ -252,10 +268,11 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
 
     // A pass covers the orders that existed when it fired; anything newer is
     // picked up by the next step, so nobody is pinged twice in a few minutes.
-    const isDue: Record<ReminderKind, boolean> = {
-      night_ping: within(nightPing, nightLastCall) && created <= nightPing,
+    // The Opening director covers everything open at 6 AM, including orders
+    // that came in overnight; the 9 AM ping picks up what arrived after.
+    const isDue: Record<ScheduledKind, boolean> = {
       night_last_call: within(nightLastCall, nightClose) && created <= nightLastCall,
-      night_escalation: within(escalation, escalationClose) && created <= nightLastCall,
+      opening_ping: within(openingPing, morningPing) && created <= openingPing,
       morning_ping: within(morningPing, morningLastCall) && created <= morningPing,
       morning_last_call: within(morningLastCall, morningClose) && created <= morningLastCall,
       arrival: created > morningLastCall && now >= created && now < (delivery ?? dayClose),
@@ -278,7 +295,9 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
           ? row.slot === slot
           : row.slot.slice(0, 10) === order.eventDate),
       );
-    const due = REMINDER_KINDS.filter((kind) => isDue[kind] && !spent(kind));
+    const due = REMINDER_KINDS.filter(
+      (kind): kind is ScheduledKind => kind in isDue && isDue[kind as ScheduledKind] && !spent(kind),
+    );
     if (due.length === 0) continue;
 
     const recentSince = now - FOLD_MINUTES * MINUTE_MS;
@@ -287,7 +306,7 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
         (row) => !row.folded && isEscalationKind(row.kind) === escalations && Date.parse(row.sentAt) > recentSince,
       );
     const foldBefore60 = due.some((k) => k !== "before_60" && !isEscalationKind(k)) || recently(false);
-    const foldBefore30 = due.includes("night_escalation") || recently(true);
+    const foldBefore30 = recently(true);
 
     for (const kind of due) {
       const folded = (kind === "before_60" && foldBefore60) || (kind === "before_30_escalation" && foldBefore30);
@@ -295,13 +314,17 @@ export function planDueReminders(ctx: ReminderContext): DueReminder[] {
         out.push({ orderId: order.id, kind, folded: true, recipientIds: [], noLeaderDaypart: null });
         continue;
       }
+      // Setups has no Opening director yet, so the 6 AM ping goes to the
+      // directors until it does.
       const target = isEscalationKind(kind)
-        ? { recipientIds: contact, noLeaderDaypart: null }
-        : kind.startsWith("night_")
-          ? leadersFor(NIGHT_DAYPART)
-          : kind.startsWith("morning_")
-            ? leadersFor(MORNING_DAYPART)
-            : leadersFor(currentDaypart);
+        ? { recipientIds: directors, noLeaderDaypart: null }
+        : kind === "opening_ping"
+          ? { recipientIds: directors, noLeaderDaypart: OPENING_DAYPART }
+          : kind.startsWith("night_")
+            ? leadersFor(NIGHT_DAYPART)
+            : kind.startsWith("morning_")
+              ? leadersFor(MORNING_DAYPART)
+              : leadersFor(currentDaypart);
       out.push({ orderId: order.id, kind, folded: false, ...target });
     }
   }
@@ -318,6 +341,8 @@ export interface ReminderEvent {
     order_ids: string[];
     reminder_kind: ReminderKind;
     event_date: string;
+    /** Discord role the post tags. Escalations only; see lib/discord/format.ts. */
+    discord_role_id?: string;
   };
 }
 
@@ -350,6 +375,7 @@ function reminderTitle(kind: ReminderKind, count: number, total: number, day: { 
   const needs = count === 1 ? "needs" : "need";
   switch (kind) {
     case "night_ping":
+    case "opening_ping":
     case "morning_ping":
       return `${day.possessive} deliveries: ${count} of ${total} still ${needs} a driver`;
     case "night_last_call":
@@ -373,7 +399,12 @@ function reminderTitle(kind: ReminderKind, count: number, total: number, day: { 
  * Messages carry the guest name as entered, the time, and the app only: never
  * a phone number or address.
  */
-export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[], today: string): ReminderEvent[] {
+export function buildReminderEvents(
+  due: DueReminder[],
+  orders: ReminderOrder[],
+  today: string,
+  directorsRoleId: string | null = null,
+): ReminderEvent[] {
   const byId = new Map(orders.map((order) => [order.id, order]));
   const groups = new Map<string, { kind: ReminderKind; eventDate: string; reminder: DueReminder; orders: ReminderOrder[] }>();
 
@@ -407,7 +438,9 @@ export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[],
         ? null
         : daypart === NO_DAYPART
           ? "No shift leader is on right now, so this came to you."
-          : `No ${daypart} shift leader is posted, so this came to you.`;
+          : daypart === OPENING_DAYPART
+            ? "No Opening director is posted, so this came to you."
+            : `No ${daypart} shift leader is posted, so this came to you.`;
     // Name the apps outright whenever the orders agree, so a single ezCater
     // order says "ezCater and Roadway" rather than "the app shown".
     const samePlatform = listed.every((order) => order.platform === listed[0].platform);
@@ -432,6 +465,7 @@ export function buildReminderEvents(due: DueReminder[], orders: ReminderOrder[],
         order_ids: listed.map((order) => order.id),
         reminder_kind: group.kind,
         event_date: group.eventDate,
+        ...(escalation && isDiscordUserId(directorsRoleId) ? { discord_role_id: directorsRoleId } : {}),
       },
     };
   });
@@ -551,6 +585,8 @@ export interface BoardOrder {
   eventDate: string;
   eventTime: string | null;
   headcount: number | null;
+  /** Package meals on the order's items; null when it has none. */
+  packageMeals: number | null;
   platform: DeliveryPlatform;
   drivers: { profileId: string; name: string }[];
 }
@@ -662,13 +698,27 @@ export function driverAssignedMessage(order: {
   };
 }
 
-export function isLargeOrder(headcount: number | null): boolean {
-  return headcount !== null && headcount >= LARGE_ORDER_HEADCOUNT;
+type LargeOrderInput = { packageMeals: number | null; headcount: number | null };
+
+/** Package meals when the order has them; guests stand in when it has none. */
+export function largeOrderSize(order: LargeOrderInput): { count: number; unit: "package meals" | "guests" } | null {
+  if (order.packageMeals !== null && order.packageMeals > 0) {
+    return { count: order.packageMeals, unit: "package meals" };
+  }
+  if (order.headcount !== null) return { count: order.headcount, unit: "guests" };
+  return null;
+}
+
+/** More than 50, so exactly 50 still fits one sedan. */
+export function isLargeOrder(order: LargeOrderInput): boolean {
+  const size = largeOrderSize(order);
+  return size !== null && size.count > LARGE_ORDER_MEALS;
 }
 
 /** Shown once a driver is picked for a large order and none of the picks has a large car. */
-export function largeOrderWarning(headcount: number | null, selectedCarSizes: CarSize[]): string | null {
-  if (!isLargeOrder(headcount) || selectedCarSizes.length === 0) return null;
+export function largeOrderWarning(order: LargeOrderInput, selectedCarSizes: CarSize[]): string | null {
+  const size = largeOrderSize(order);
+  if (!size || !isLargeOrder(order) || selectedCarSizes.length === 0) return null;
   if (selectedCarSizes.includes("large")) return null;
-  return `Large order (${headcount} guests). Pick at least one large car.`;
+  return `Large order (${size.count} ${size.unit}). Pick at least one large car.`;
 }

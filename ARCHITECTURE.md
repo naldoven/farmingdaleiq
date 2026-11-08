@@ -365,20 +365,29 @@ module in this app. Farmingdale's KitchenIQ already carries catering checklists
   `/catering/drivers` lists today's, tomorrow's, and this week's delivery
   orders with open ones first.
 - **Driver reminders**: only orders with no driver are ever listed, in store
-  time, and Sunday is closed, so Saturday's night pass covers Monday.
-  - Night pass: a 7 PM ping and a 10 PM last call to the posted Night shift
+  time, and Sunday is closed, so Saturday's night pass covers Monday. The
+  schedule follows Jasmin's 2026-11-02 review.
+  - Night before: no timed ping, because the Night leader reserves while making
+    the confirmation calls. A 10 PM last call goes to the posted Night shift
     leader, listing the next open day's open deliveries.
-  - Morning pass: a 7 AM ping and an 8 AM last call to the posted Morning
-    shift leader, listing today's.
-  - Same day: an order that arrives after 8 AM on its delivery day pings the
+  - Delivery day: a 6 AM ping to the Opening director for everything still open,
+    including orders that came in overnight; a 9 AM ping and a 10 AM last call to
+    the posted Morning shift leader. Setups has no Opening director yet, so the
+    6 AM ping goes to the directors and says so.
+  - Same day: an order that arrives after 10 AM on its delivery day pings the
     leader of the daypart in progress right away, and any open order pings
     that leader 60 minutes before its delivery time (skipped when a leader was
     pinged about it in the previous 10 minutes).
-  - Escalations go to one escalation contact (set by `settings.manage`) and the
-    leaders Discord channel: at 6 AM for orders still open since the 10 PM last
-    call, and 30 minutes before delivery for any order still open.
-  - With no posted leader for the daypart, the ping goes to the escalation
-    contact and says so. Leader pings also post to the catering channel.
+  - The 30-minute escalation (any order still open 30 minutes before delivery)
+    goes to every active Director and the leaders Discord channel, which tags the
+    Discord role saved on the Drivers page (`directors_discord_role_id`, set by
+    `settings.manage`). The old escalation contact is only a fallback when no
+    active director is found.
+  - With no posted leader for the daypart, the ping goes to the directors and
+    says so. Leader pings also post to the catering channel.
+  - A large order is more than 50 package meals, counted from the order's items
+    in the "Packaged Meals" and "Boxed Meals" categories (a sedan fits about 48).
+    An order with none falls back to guests over 50.
   - Each reminder goes out once per order, even across overlapping cron runs,
     and one missed during downtime still goes out while its window is open.
     An open order moved to another day gets its reminders again; one moved

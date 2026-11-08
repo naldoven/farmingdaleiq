@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  directorsRoleSchema,
   escalationContactSchema,
   parseDriverView,
   saveDriverSchema,
@@ -50,6 +51,15 @@ describe("other driver schemas", () => {
   it("allows clearing the escalation contact", () => {
     expect(escalationContactSchema.safeParse({ profileId: null }).success).toBe(true);
     expect(escalationContactSchema.safeParse({ profileId: A }).success).toBe(true);
+  });
+
+  it("takes a Discord role id, or null to clear it, and nothing else", () => {
+    expect(directorsRoleSchema.safeParse({ roleId: "123456789012345678" }).success).toBe(true);
+    expect(directorsRoleSchema.safeParse({ roleId: null }).success).toBe(true);
+    expect(directorsRoleSchema.safeParse({ roleId: " 123456789012345678 " }).success).toBe(true);
+    expect(directorsRoleSchema.safeParse({ roleId: "directors" }).success).toBe(false);
+    expect(directorsRoleSchema.safeParse({ roleId: "<@&123456789012345678>" }).success).toBe(false);
+    expect(directorsRoleSchema.safeParse({ roleId: "" }).success).toBe(false);
   });
 
   it("falls back to Today for an unknown tab", () => {

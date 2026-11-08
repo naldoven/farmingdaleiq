@@ -217,4 +217,26 @@ describe("buildDiscordMessage photo", () => {
   it("routes found-and-fixed posts to Discord", () => {
     expect(DISCORD_ROUTABLE_EVENT_KEYS).toContain("cleaning_atd_find");
   });
+
+  describe("driver escalations tag the directors role", () => {
+    const payload = { title: "Delivery in 30 minutes has no driver", message: "Rosa 12:15 PM (Roadway).", discord_role_id: VALID_ID };
+
+    it("puts the role in the message and allows only that role to be pinged", () => {
+      const msg = buildDiscordMessage("catering_driver_escalation", payload);
+      expect(msg.content.endsWith(`<@&${VALID_ID}>`)).toBe(true);
+      expect(msg.allowed_mentions).toEqual({ parse: [], roles: [VALID_ID] });
+    });
+
+    it("ignores a role id that is not a number, so Discord cannot reject the post", () => {
+      const msg = buildDiscordMessage("catering_driver_escalation", { ...payload, discord_role_id: "everyone>" });
+      expect(msg.content).not.toContain("<@&");
+      expect(msg.allowed_mentions).toEqual({ parse: [] });
+    });
+
+    it("never tags a role on any other event, even if the payload carries one", () => {
+      const msg = buildDiscordMessage("catering_driver_reminder", payload);
+      expect(msg.content).not.toContain("<@&");
+      expect(msg.allowed_mentions).toEqual({ parse: [] });
+    });
+  });
 });

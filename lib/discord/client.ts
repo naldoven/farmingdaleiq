@@ -8,6 +8,7 @@
 export type DiscordAllowedMentions = {
   parse: Array<"users" | "roles" | "everyone">;
   users?: string[];
+  roles?: string[];
 };
 
 // `type` aliases, not interfaces: the outbox stores the whole message in a

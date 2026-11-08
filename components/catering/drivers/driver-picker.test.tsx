@@ -51,6 +51,7 @@ function order(over: Partial<BoardOrder> = {}): BoardOrder {
     eventDate: "2026-10-13",
     eventTime: "12:15:00",
     headcount: 45,
+    packageMeals: 60,
     platform: "roadway",
     drivers: [],
     ...over,
@@ -139,7 +140,7 @@ describe("driver picker", () => {
 
     expect(within(dialog).queryByText(/Large order/)).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Dee Park/ }));
-    expect(within(dialog).getByText("Large order (45 guests). Pick at least one large car.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Large order (60 package meals). Pick at least one large car.")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Tom Kim/ }));
     expect(within(dialog).queryByText(/Large order/)).not.toBeInTheDocument();
   });
