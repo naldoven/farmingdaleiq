@@ -147,3 +147,79 @@ describe("logRecoverySchema", () => {
     expect(logRecoverySchema.parse({ ...valid, smsConsent: true }).smsConsent).toBe(true);
   });
 });
+
+describe("logRecoverySchema item mods and fault check", () => {
+  const withItem = (item: Record<string, unknown>) => ({ ...valid, items: [{ menuItemId: MENU_ID, qty: 1, ...item }] });
+
+  it("takes removals, additions, a note and the two fault answers, and derives the source", () => {
+    const parsed = logRecoverySchema.parse(
+      withItem({
+        removed: [" Pickles ", "Tomato"],
+        added: ["Extra sauce"],
+        modNote: "  cut in half ",
+        receiptOk: true,
+        itemOk: false,
+      }),
+    );
+    expect(parsed.items[0]).toMatchObject({
+      removed: ["Pickles", "Tomato"],
+      added: ["Extra sauce"],
+      modNote: "cut in half",
+      receiptOk: true,
+      itemOk: false,
+      faultSource: "made_wrong",
+    });
+  });
+
+  it("an item with no mods and no answers comes out clean, so old forms still work", () => {
+    const parsed = logRecoverySchema.parse(withItem({}));
+    expect(parsed.items[0]).toMatchObject({
+      removed: [],
+      added: [],
+      modNote: null,
+      receiptOk: null,
+      itemOk: null,
+      faultSource: null,
+    });
+  });
+
+  it("derives not_sure when only one answer is given", () => {
+    const parsed = logRecoverySchema.parse(withItem({ receiptOk: true }));
+    expect(parsed.items[0].faultSource).toBe("not_sure");
+  });
+
+  it("derives order_entry when the receipt was wrong", () => {
+    expect(logRecoverySchema.parse(withItem({ receiptOk: false, itemOk: true })).items[0].faultSource).toBe("order_entry");
+  });
+
+  it("derives bagging when both were right", () => {
+    expect(logRecoverySchema.parse(withItem({ receiptOk: true, itemOk: true })).items[0].faultSource).toBe("bagging");
+  });
+
+  it("keeps two lines of the same menu item apart, each with its own mods", () => {
+    const parsed = logRecoverySchema.parse({
+      ...valid,
+      items: [
+        { menuItemId: MENU_ID, qty: 1, removed: ["Pickles"] },
+        { menuItemId: MENU_ID, qty: 1, removed: ["Tomato"] },
+      ],
+    });
+    expect(parsed.items).toHaveLength(2);
+    expect(parsed.items[0].removed).toEqual(["Pickles"]);
+    expect(parsed.items[1].removed).toEqual(["Tomato"]);
+  });
+
+  it("drops repeated removals and rejects too many, a long name, or a long note", () => {
+    expect(logRecoverySchema.parse(withItem({ removed: ["Pickles", "pickles", "Pickles"] })).items[0].removed).toEqual(["Pickles"]);
+    expect(logRecoverySchema.safeParse(withItem({ removed: Array.from({ length: 13 }, (_, i) => `x${i}`) })).success).toBe(false);
+    expect(logRecoverySchema.safeParse(withItem({ removed: ["x".repeat(41)] })).success).toBe(false);
+    expect(logRecoverySchema.safeParse(withItem({ modNote: "x".repeat(121) })).success).toBe(false);
+  });
+
+  it("an other (free-text) item can carry a note but never a removal list", () => {
+    const ok = logRecoverySchema.safeParse({ ...valid, items: [{ name: "Peach milkshake", qty: 1, modNote: "no whip" }] });
+    expect(ok.success).toBe(true);
+    const bad = logRecoverySchema.safeParse({ ...valid, items: [{ name: "Peach milkshake", qty: 1, removed: ["Whip"] }] });
+    expect(bad.success).toBe(false);
+  });
+});

@@ -80,7 +80,7 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
 
   const { data: items, error: itemsError } = await client
     .from("guest_recovery_items")
-    .select("name, qty")
+    .select("name, qty, removed, added, mod_note")
     .eq("recovery_id", recoveryId)
     .order("name");
   if (itemsError) throw new Error(itemsError.message);
@@ -107,7 +107,13 @@ async function loadSendRecovery(client: ServiceClient, recoveryId: string): Prom
     goodUntil: goodUntilLabel(row.expires_at),
     sentBy,
     reason: row.reason,
-    items: (items ?? []).map((item) => ({ name: item.name, qty: item.qty })),
+    items: (items ?? []).map((item) => ({
+      name: item.name,
+      qty: item.qty,
+      removed: item.removed ?? [],
+      added: item.added ?? [],
+      modNote: item.mod_note,
+    })),
   };
 }
 

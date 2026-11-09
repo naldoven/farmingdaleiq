@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { RecoveryStatus, SendChannel, SendStatus } from "@/app/(app)/guest-recovery/constants";
+import {
+  FAULT_SOURCES,
+  type FaultSource,
+  type RecoveryStatus,
+  type SendChannel,
+  type SendStatus,
+} from "@/app/(app)/guest-recovery/constants";
 import type { MenuItemView, RecoveryView, WorkerView } from "@/app/(app)/guest-recovery/types";
 import type { Database } from "@/lib/db/types";
 
@@ -50,7 +56,11 @@ async function hydrate(supabase: Client, list: HydrateRow[]): Promise<RecoveryVi
   ];
 
   const [itemsResult, sendsResult, namesResult, priorResult] = await Promise.all([
-    supabase.from("guest_recovery_items").select("id, recovery_id, name, family, qty").in("recovery_id", ids).order("name"),
+    supabase
+      .from("guest_recovery_items")
+      .select("id, recovery_id, name, family, qty, removed, added, mod_note, receipt_ok, item_ok, fault_source")
+      .in("recovery_id", ids)
+      .order("name"),
     supabase
       .from("guest_recovery_sends")
       .select("id, recovery_id, channel, kind, status, error, created_at, sent_at")
@@ -89,7 +99,20 @@ async function hydrate(supabase: Client, list: HydrateRow[]): Promise<RecoveryVi
     priorCount: priors.get(r.id) ?? 0,
     items: (itemsResult.data ?? [])
       .filter((i) => i.recovery_id === r.id)
-      .map((i) => ({ id: i.id, name: i.name, family: i.family, qty: i.qty })),
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        family: i.family,
+        qty: i.qty,
+        removed: i.removed ?? [],
+        added: i.added ?? [],
+        modNote: i.mod_note,
+        receiptOk: i.receipt_ok,
+        itemOk: i.item_ok,
+        faultSource: (FAULT_SOURCES as readonly string[]).includes(i.fault_source ?? "")
+          ? (i.fault_source as FaultSource)
+          : null,
+      })),
     sends: (sendsResult.data ?? [])
       .filter((s) => s.recovery_id === r.id)
       .map((s) => ({
@@ -154,7 +177,7 @@ export async function loadRecoveryIdByToken(supabase: Client, token: string): Pr
 export async function loadActiveMenu(supabase: Client): Promise<MenuItemView[]> {
   const { data, error } = await supabase
     .from("recovery_menu_items")
-    .select("id, name, family, category, sort, active")
+    .select("id, name, family, category, sort, active, modifiable, ingredients, addons")
     .eq("active", true)
     .order("sort");
   if (error) throw new Error(`Could not load the menu: ${error.message}`);

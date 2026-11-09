@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { addMenuItem, setMenuItemActive } from "@/app/(app)/guest-recovery/menu-actions";
+import { addMenuItem, setMenuItemActive, setMenuItemMods } from "@/app/(app)/guest-recovery/menu-actions";
 
 const mockRequirePermission = vi.mocked(requirePermission);
 const mockCreateClient = vi.mocked(createClient);
@@ -153,5 +153,47 @@ describe("setMenuItemActive", () => {
     const { from } = useClient([]);
     expect((await setMenuItemActive({ id: "nope", active: true })).ok).toBe(false);
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("setMenuItemMods", () => {
+  it("refuses a caller without guest_recovery.manage", async () => {
+    mockRequirePermission.mockRejectedValue(new PermissionError("guest_recovery.manage"));
+    const { from } = useClient([]);
+    expect(await setMenuItemMods({ id: ITEM_ID, modifiable: true, ingredients: "Pickles", addons: "" })).toEqual(DENIED);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("saves the cleaned lists and refreshes both pages", async () => {
+    const { calls } = useClient([{ data: [{ id: ITEM_ID }], error: null }]);
+    const result = await setMenuItemMods({
+      id: ITEM_ID,
+      modifiable: true,
+      ingredients: " Pickles, Tomato,, pickles ",
+      addons: "Extra sauce",
+    });
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(calls.find((c) => c.method === "update")?.args[0]).toEqual({
+      modifiable: true,
+      ingredients: ["Pickles", "Tomato"],
+      addons: ["Extra sauce"],
+    });
+    expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery/menu");
+    expect(mockRevalidate).toHaveBeenCalledWith("/guest-recovery/new");
+  });
+
+  it("turning changes off saves the flag", async () => {
+    const { calls } = useClient([{ data: [{ id: ITEM_ID }], error: null }]);
+    await setMenuItemMods({ id: ITEM_ID, modifiable: false, ingredients: "Pickles", addons: "" });
+    expect(calls.find((c) => c.method === "update")?.args[0]).toMatchObject({ modifiable: false });
+  });
+
+  it("reports an id that matches nothing, and a bad id", async () => {
+    useClient([{ data: [], error: null }]);
+    expect(await setMenuItemMods({ id: ITEM_ID, modifiable: true, ingredients: "", addons: "" })).toEqual({
+      ok: false,
+      error: "That item was not found.",
+    });
+    expect((await setMenuItemMods({ id: "nope", modifiable: true, ingredients: "", addons: "" })).ok).toBe(false);
   });
 });

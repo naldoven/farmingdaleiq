@@ -3,10 +3,10 @@
 import { useId, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Minus, Plus } from "lucide-react";
 
 import { logRecovery } from "@/app/(app)/guest-recovery/actions";
 import {
+  FAULT_LABELS,
   MAX_ITEMS,
   MAX_QTY,
   REASONS,
@@ -17,8 +17,10 @@ import {
 } from "@/app/(app)/guest-recovery/constants";
 import type { MenuItemView } from "@/app/(app)/guest-recovery/types";
 import { logRecoverySchema, normalizeUsPhone } from "@/app/(app)/guest-recovery/validation";
+import { faultAsked, newLine, OrderLineCard, Stepper, type OrderLine } from "@/components/guest-recovery/order-line";
 import { SectionCard } from "@/components/mobile";
 import { formatItems } from "@/lib/guest-recovery/messages";
+import { deriveFaultSource } from "@/lib/guest-recovery/mods";
 import { cn } from "@/lib/utils";
 
 const FIELD =
@@ -29,41 +31,6 @@ interface OtherItem {
   key: string;
   name: string;
   qty: number;
-}
-
-function Stepper({
-  qty,
-  label,
-  onChange,
-}: {
-  qty: number;
-  label: string;
-  onChange: (qty: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        aria-label={`Fewer ${label}`}
-        onClick={() => onChange(qty - 1)}
-        className="flex size-11 items-center justify-center rounded-lg border border-border text-ink"
-      >
-        <Minus className="size-4" />
-      </button>
-      <span className="w-6 text-center text-base font-bold tabular-nums" aria-live="polite">
-        {qty}
-      </span>
-      <button
-        type="button"
-        aria-label={`More ${label}`}
-        disabled={qty >= MAX_QTY}
-        onClick={() => onChange(qty + 1)}
-        className="flex size-11 items-center justify-center rounded-lg border border-border text-ink disabled:opacity-40"
-      >
-        <Plus className="size-4" />
-      </button>
-    </div>
-  );
 }
 
 /**
@@ -93,7 +60,8 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
   const [smsConsent, setSmsConsent] = useState(false);
   const [path, setPath] = useState<RecoveryPath | null>(null);
   const [reason, setReason] = useState<Reason | null>(null);
-  const [picked, setPicked] = useState<Record<string, number>>({});
+  // One line per order item. Two lines of the same menu item stay apart so each keeps its own changes.
+  const [lines, setLines] = useState<OrderLine[]>([]);
   const [others, setOthers] = useState<OtherItem[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -106,20 +74,38 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
   );
 
   const phoneOk = guestPhone.trim() !== "" && normalizeUsPhone(guestPhone) !== null;
-  const pickedCount = Object.keys(picked).length + others.length;
+  const pickedCount = lines.length + others.length;
+  const menuById = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu]);
 
   const selectedItems = [
-    ...menu.filter((m) => picked[m.id]).map((m) => ({ name: m.name, qty: picked[m.id] })),
+    ...lines.flatMap((line) => {
+      const item = menuById.get(line.menuItemId);
+      return item
+        ? [{ name: item.name, qty: line.qty, removed: line.removed, added: line.added, modNote: line.modNote.trim() || null }]
+        : [];
+    }),
     ...others.filter((o) => o.name.trim()).map((o) => ({ name: o.name.trim(), qty: o.qty })),
   ];
 
-  function setQty(id: string, qty: number) {
-    setPicked((current) => {
-      const next = { ...current };
-      if (qty <= 0) delete next[id];
-      else next[id] = Math.min(qty, MAX_QTY);
-      return next;
+  /**
+   * Add taps. An item that takes changes always starts a new line, so a second
+   * sandwich can have different changes. A plain item (nuggets, a drink) just
+   * counts up, as before.
+   */
+  function addItem(item: MenuItemView) {
+    setLines((current) => {
+      if (!item.modifiable) {
+        const existing = current.find((l) => l.menuItemId === item.id);
+        if (existing) {
+          return current.map((l) => (l === existing ? { ...l, qty: Math.min(l.qty + 1, MAX_QTY) } : l));
+        }
+      }
+      return [...current, newLine(item.id)];
     });
+  }
+
+  function changeLine(key: string, next: OrderLine | null) {
+    setLines((current) => (next ? current.map((l) => (l.key === key ? next : l)) : current.filter((l) => l.key !== key)));
   }
 
   function buildInput() {
@@ -134,7 +120,19 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
       reason: reason ?? undefined,
       path: path ?? undefined,
       items: [
-        ...Object.entries(picked).map(([menuItemId, qty]) => ({ menuItemId, qty })),
+        ...lines.map((line) => {
+          // Answers only count when the questions were showing for this line.
+          const asked = faultAsked(line, reason);
+          return {
+            menuItemId: line.menuItemId,
+            qty: line.qty,
+            removed: line.removed,
+            added: line.added,
+            modNote: line.modNote,
+            receiptOk: asked ? line.receiptOk : null,
+            itemOk: asked ? line.itemOk : null,
+          };
+        }),
         ...others.filter((o) => o.name.trim()).map((o) => ({ name: o.name.trim(), qty: o.qty })),
       ],
     };
@@ -187,6 +185,17 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
               <dt className="text-[13px] text-muted-ink">What was missing</dt>
               <dd className="font-semibold text-accent-ink">{formatItems(selectedItems)}</dd>
             </div>
+            {lines.some((l) => faultAsked(l, reason) && (l.receiptOk !== null || l.itemOk !== null)) && (
+              <div>
+                <dt className="text-[13px] text-muted-ink">Likely cause</dt>
+                <dd>
+                  {lines
+                    .filter((l) => faultAsked(l, reason) && (l.receiptOk !== null || l.itemOk !== null))
+                    .map((l) => `${menuById.get(l.menuItemId)?.name ?? "Item"}: ${FAULT_LABELS[deriveFaultSource(l.receiptOk, l.itemOk)]}`)
+                    .join(". ")}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-[13px] text-muted-ink">Why they called</dt>
               <dd>{reason ? REASON_LABELS[reason] : ""}</dd>
@@ -404,10 +413,27 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
             onChange={(e) => setSearch(e.target.value)}
             autoComplete="off"
           />
+          {lines.length > 0 && (
+            <ul className="space-y-2" aria-label="On the order">
+              {lines.map((line) => {
+                const item = menuById.get(line.menuItemId);
+                if (!item) return null;
+                return (
+                  <OrderLineCard
+                    key={line.key}
+                    line={line}
+                    item={item}
+                    reason={reason}
+                    onChange={(next) => changeLine(line.key, next)}
+                  />
+                );
+              })}
+            </ul>
+          )}
           {categories.map((category) => {
             const rows = visible.filter((m) => m.category === category);
             if (rows.length === 0) return null;
-            const hasPicked = rows.some((m) => picked[m.id]);
+            const hasPicked = rows.some((m) => lines.some((l) => l.menuItemId === m.id));
             return (
               <details key={category} open={Boolean(query) || hasPicked} className="rounded-lg border border-line">
                 <summary className="flex min-h-11 cursor-pointer items-center justify-between px-3 text-[15px] font-semibold">
@@ -416,22 +442,22 @@ export function NewRecoveryForm({ menu }: { menu: MenuItemView[] }) {
                 </summary>
                 <ul className="divide-y divide-line border-t border-line">
                   {rows.map((item) => {
-                    const qty = picked[item.id] ?? 0;
+                    const count = lines.filter((l) => l.menuItemId === item.id).reduce((sum, l) => sum + l.qty, 0);
                     return (
-                      <li key={item.id} className={cn("flex items-center justify-between gap-2 px-3 py-1", qty > 0 && "bg-accent-soft")}>
-                        <span className="text-[15px]">{item.name}</span>
-                        {qty > 0 ? (
-                          <Stepper qty={qty} label={item.name} onChange={(n) => setQty(item.id, n)} />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setQty(item.id, 1)}
-                            aria-label={`Add ${item.name}`}
-                            className="min-h-11 rounded-lg border border-border px-4 text-sm font-semibold text-ink"
-                          >
-                            Add
-                          </button>
-                        )}
+                      <li key={item.id} className={cn("flex items-center justify-between gap-2 px-3 py-1", count > 0 && "bg-accent-soft")}>
+                        <span className="text-[15px]">
+                          {item.name}
+                          {count > 0 && <span className="ml-2 text-[13px] font-bold text-accent-ink">x{count}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => addItem(item)}
+                          disabled={pickedCount >= MAX_ITEMS}
+                          aria-label={`Add ${item.name}`}
+                          className="min-h-11 rounded-lg border border-border px-4 text-sm font-semibold text-ink disabled:opacity-40"
+                        >
+                          {count > 0 && item.modifiable ? "Add another" : "Add"}
+                        </button>
                       </li>
                     );
                   })}

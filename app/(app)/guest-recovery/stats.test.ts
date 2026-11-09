@@ -213,3 +213,60 @@ describe("buildGuestRecoveryReport", () => {
     expect(run([], "2026-11", null).repeatGuests).toBeNull();
   });
 });
+
+describe("buildGuestRecoveryReport mods and faults", () => {
+  const line = (over: Record<string, unknown> = {}) => ({ family: "Deluxe", qty: 1, ...over });
+
+  it("an empty month has no fault totals and no NaN", () => {
+    const r = run([]);
+    expect(r.mods).toEqual({ lines: 0, recoveries: 0 });
+    expect(r.faultSources).toEqual([]);
+    expect(r.faultByFamily).toEqual([]);
+  });
+
+  it("counts item lines with changes and the recoveries that had them", () => {
+    const r = run([
+      row({ items: [line({ modded: true }), line({ modded: true }), line()] }),
+      row({ items: [line({ modded: true })] }),
+      row({ items: [line()] }),
+    ]);
+    expect(r.mods).toEqual({ lines: 3, recoveries: 2 });
+  });
+
+  it("counts item lines by source, biggest first, with labels, one per line not per quantity", () => {
+    const r = run([
+      row({ items: [line({ faultSource: "made_wrong", qty: 3 }), line({ faultSource: "bagging" })] }),
+      row({ items: [line({ faultSource: "made_wrong" })] }),
+      row({ items: [line({ faultSource: null })] }),
+    ]);
+    expect(r.faultSources).toEqual([
+      { source: "made_wrong", label: "Made wrong (kitchen or primary)", lines: 2 },
+      { source: "bagging", label: "Bagging or hand-off", lines: 1 },
+    ]);
+  });
+
+  it("breaks the faults down by item family", () => {
+    const r = run([
+      row({ items: [line({ faultSource: "made_wrong" }), line({ family: "Cobb Salad", faultSource: "order_entry" })] }),
+      row({ items: [line({ faultSource: "bagging" })] }),
+    ]);
+    expect(r.faultByFamily[0]).toEqual({
+      family: "Deluxe",
+      total: 2,
+      made_wrong: 1,
+      order_entry: 0,
+      bagging: 1,
+      not_sure: 0,
+    });
+    expect(r.faultByFamily[1].family).toBe("Cobb Salad");
+  });
+
+  it("leaves voided recoveries and other months out of the fault totals", () => {
+    const r = run([
+      row({ status: "void", items: [line({ faultSource: "made_wrong", modded: true })] }),
+      row({ createdAt: "2026-10-10T16:00:00Z", items: [line({ faultSource: "made_wrong" })] }),
+    ]);
+    expect(r.faultSources).toEqual([]);
+    expect(r.mods).toEqual({ lines: 0, recoveries: 0 });
+  });
+});

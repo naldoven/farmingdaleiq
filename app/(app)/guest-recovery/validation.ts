@@ -5,13 +5,17 @@ import {
   ITEM_NAME_MAX,
   MAX_EXPIRY_DAYS,
   MAX_ITEMS,
+  MAX_MODS,
   MAX_QTY,
   MIN_EXPIRY_DAYS,
+  MOD_NAME_MAX,
+  MOD_NOTE_MAX,
   NOTE_MAX,
   ORDER_NUMBER_MAX,
   PATHS,
   REASONS,
 } from "@/app/(app)/guest-recovery/constants";
+import { deriveFaultSource } from "@/lib/guest-recovery/mods";
 
 /**
  * Input validation for Guest Recovery actions. No "use server" so it is
@@ -32,6 +36,21 @@ export function normalizeUsPhone(raw: string): string | null {
   return `+1${national}`;
 }
 
+/** One removal or addition ("Pickles", "Extra sauce"). Repeats collapse, whatever the capitalization. */
+const modListSchema = z
+  .array(z.string().trim().min(1).max(MOD_NAME_MAX, "That change is too long"))
+  .max(MAX_MODS, `Up to ${MAX_MODS} changes per item`)
+  .default([])
+  .transform((list) => {
+    const seen = new Set<string>();
+    return list.filter((name) => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
+
 const itemSchema = z
   .object({
     menuItemId: z.uuid("That menu item is not valid").nullish(),
@@ -41,19 +60,46 @@ const itemSchema = z
       .int("Quantity must be a whole number")
       .min(1, "Quantity must be at least 1")
       .max(MAX_QTY, `Quantity can be up to ${MAX_QTY}`),
+    removed: modListSchema,
+    added: modListSchema,
+    modNote: z
+      .string()
+      .trim()
+      .max(MOD_NOTE_MAX, `That note is too long (up to ${MOD_NOTE_MAX} characters)`)
+      .nullish()
+      .transform((value) => (value ? value : null)),
+    // Did the receipt or sticker show what the guest ordered? Did the item match it? Null = not answered.
+    receiptOk: z.boolean().nullish(),
+    itemOk: z.boolean().nullish(),
   })
   .superRefine((item, ctx) => {
     if (!item.menuItemId && !item.name) {
       ctx.addIssue({ code: "custom", path: ["name"], message: "Pick an item or name the missing item" });
     }
+    // A free-text "other" item has no ingredient list to remove from or add to.
+    if (!item.menuItemId && (item.removed.length > 0 || item.added.length > 0)) {
+      ctx.addIssue({ code: "custom", path: ["removed"], message: "Changes only work on items from the menu" });
+    }
   })
-  .transform((item) => ({
-    menuItemId: item.menuItemId ?? null,
-    // A menu item takes its name from the menu row on the server; only an
-    // "other" line carries a name from the client.
-    name: item.menuItemId ? null : (item.name ?? null),
-    qty: item.qty,
-  }));
+  .transform((item) => {
+    const receiptOk = item.receiptOk ?? null;
+    const itemOk = item.itemOk ?? null;
+    const answered = receiptOk !== null || itemOk !== null;
+    return {
+      menuItemId: item.menuItemId ?? null,
+      // A menu item takes its name from the menu row on the server; only an
+      // "other" line carries a name from the client.
+      name: item.menuItemId ? null : (item.name ?? null),
+      qty: item.qty,
+      removed: item.removed,
+      added: item.added,
+      modNote: item.modNote,
+      receiptOk,
+      itemOk,
+      // The source is worked out here, never taken from the client.
+      faultSource: answered ? deriveFaultSource(receiptOk, itemOk) : null,
+    };
+  });
 
 export const logRecoverySchema = z
   .object({

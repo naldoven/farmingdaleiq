@@ -207,6 +207,40 @@ export function ReportingView({
         ) : null}
       </SectionCard>
 
+      <SectionCard title="Where mistakes happen">
+        <p className="mb-3 text-[13px] text-muted-ink">
+          Items with changes this month: {report.mods.lines} on {report.mods.recoveries}{" "}
+          {plural(report.mods.recoveries, "recovery", "recoveries")}. The causes below come from the two receipt
+          questions on the log form, counted by item line.
+        </p>
+        <BarList
+          rows={report.faultSources.map((x) => ({ label: x.label, count: x.lines }))}
+          empty="No wrong items or changes checked this month."
+          tone="warning"
+        />
+        {report.faultByFamily.length > 0 ? (
+          <div className="mt-4 border-t border-line pt-3">
+            <p className="mb-2 text-[15px] font-semibold text-ink">By item</p>
+            <BarList
+              rows={report.faultByFamily.slice(0, 8).map((f) => ({
+                label: f.family,
+                count: f.total,
+                note: [
+                  f.made_wrong > 0 ? `made wrong ${f.made_wrong}` : "",
+                  f.order_entry > 0 ? `order entry ${f.order_entry}` : "",
+                  f.bagging > 0 ? `bagging ${f.bagging}` : "",
+                  f.not_sure > 0 ? `not sure ${f.not_sure}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(", "),
+              }))}
+              empty=""
+              tone="warning"
+            />
+          </div>
+        ) : null}
+      </SectionCard>
+
       <SectionCard title="When it happens">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">

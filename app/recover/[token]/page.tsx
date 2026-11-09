@@ -14,6 +14,7 @@ import { loadRecoveryIdByToken } from "@/app/(app)/guest-recovery/queries";
 import { EnlargeableQr } from "@/components/guest-recovery/enlargeable-qr";
 import { hasPermission } from "@/lib/auth/permissions";
 import { firstNameOf, reasonCopy, recoveryLink } from "@/lib/guest-recovery/messages";
+import { formatMods } from "@/lib/guest-recovery/mods";
 import { resolveBaseUrl } from "@/lib/guest-recovery/base-url";
 import { readConfig } from "@/lib/guest-recovery/providers";
 import { qrSvg } from "@/lib/guest-recovery/qr";
@@ -77,7 +78,7 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
 
   const { data: items } = await service
     .from("guest_recovery_items")
-    .select("name, qty")
+    .select("name, qty, removed, added, mod_note")
     .eq("recovery_id", recovery.id)
     .order("name");
 
@@ -125,14 +126,21 @@ export default async function RecoverPage({ params }: { params: Promise<{ token:
             )}
             <p className="text-[13px] text-muted-ink">On us</p>
             <ul className="mt-3 space-y-2.5">
-              {rows.map((item) => (
-                <li key={item.name} className="flex items-center gap-3">
-                  <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-accent-soft text-[14px] font-extrabold text-accent-ink">
-                    {item.qty}
-                  </span>
-                  <span className="text-[20px] font-extrabold leading-tight text-accent-ink">{item.name}</span>
-                </li>
-              ))}
+              {rows.map((item, index) => {
+                const mods = formatMods({ removed: item.removed, added: item.added, note: item.mod_note });
+                return (
+                  // Index in the key: two lines of one item can differ only by their changes.
+                  <li key={`${item.name}-${index}`} className="flex items-center gap-3">
+                    <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-accent-soft text-[14px] font-extrabold text-accent-ink">
+                      {item.qty}
+                    </span>
+                    <span className="text-[20px] font-extrabold leading-tight text-accent-ink">
+                      {item.name}
+                      {mods && <span className="mt-0.5 block text-[15px] font-semibold text-ink">{mods}</span>}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
 
             <div className="-mx-6 my-5 border-t-2 border-dashed border-line" />

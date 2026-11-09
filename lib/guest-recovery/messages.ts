@@ -4,6 +4,7 @@ import {
   STORE_MAP_URL,
   STORE_NAME,
 } from "@/app/(app)/guest-recovery/constants";
+import { formatMods } from "@/lib/guest-recovery/mods";
 
 /**
  * The words a guest reads: the email and the text. Plain short sentences, no
@@ -15,6 +16,10 @@ import {
 export interface MessageItem {
   name: string;
   qty: number;
+  /** What the guest asked changed on this item. Shown in parentheses after the name. */
+  removed?: string[] | null;
+  added?: string[] | null;
+  modNote?: string | null;
 }
 
 export interface MessageInput {
@@ -34,9 +39,18 @@ export interface MessageInput {
   reason?: string | null;
 }
 
-/** "2 x Medium Mac & Cheese, Spicy Deluxe Sandwich". A count shows only above one. */
+/**
+ * "2 x Medium Mac & Cheese, Chick-fil-A Deluxe Sandwich (no pickles)". A count
+ * shows only above one, mods only when the item has some.
+ */
 export function formatItems(items: MessageItem[]): string {
-  return items.map((item) => (item.qty > 1 ? `${item.qty} x ${item.name}` : item.name)).join(", ");
+  return items
+    .map((item) => {
+      const mods = formatMods({ removed: item.removed, added: item.added, note: item.modNote });
+      const label = mods ? `${item.name} (${mods})` : item.name;
+      return item.qty > 1 ? `${item.qty} x ${label}` : label;
+    })
+    .join(", ");
 }
 
 export function firstNameOf(guestName: string): string {

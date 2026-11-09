@@ -420,6 +420,20 @@ hands over what was missed.
   On the Menu hub Guest Recovery is its own section with four rows, like Cleaning and
   Maintenance: Recoveries (tabs Current and Stats; Stats is for managers), Log a missing
   order, Scan a code, and Menu & settings (tabs Menu items, Settings).
+- **Item changes and the fault check** (2026-11-09): sandwiches, wraps and salads take
+  changes (no pickles, extra sauce, grilled nuggets); nuggets, strips, sides, drinks and
+  desserts do not. A menu item carries `modifiable`, an ingredient list guests can leave
+  off and an add-on list, all editable by `guest_recovery.manage` on the menu screen
+  (seeded defaults are a starting point). On the log form an item that takes changes shows
+  tap-to-remove chips, add-on chips and a short note, and each add starts its own line so
+  two sandwiches can differ. The database checks every removal and addition against that
+  item's own lists. Changes appear in the guest's email, text, link and the leader screens.
+  When an item has changes, or the reason is Wrong item, two receipt questions show: did the
+  receipt or sticker show what the guest ordered, and did the item in the box match it. The
+  app derives the likely source from them (receipt wrong = order entry; receipt right, item
+  not matching = made wrong, kitchen or primary; both right = bagging or hand-off; blank
+  = not sure) and stores it on the item. Stats shows counts by source and by item family
+  (voided recoveries left out).
 - **Reason and path** (required on the log form): one tap for why they called (Missing item,
   Wrong item, Quality problem, Took too long, Other), and whether the guest has the Chick-fil-A
   app. No app is the normal flow. App guests ("Spotlight") get an instant email and text saying
@@ -591,9 +605,9 @@ Cleaning:
 - `cleaning_coordinators` (user_id, added_by, added_at): the planning tag
 
 Guest Recovery:
-- `recovery_menu_items` (id, name, family, category, sort, active): the recovery menu; `family` groups sizes for reporting
+- `recovery_menu_items` (id, name, family, category, sort, active, modifiable, ingredients, addons): the recovery menu; `family` groups sizes for reporting
 - `guest_recoveries` (id, submission_id unique, token unique, guest_name, guest_email, guest_phone, order_number, note, status: owed|given|void, sms_consent, logged_by, created_at, given_at, given_by, voided_at, voided_by)
-- `guest_recovery_items` (id, recovery_id, menu_item_id, name, family, qty): name and family are snapshots so a renamed menu item does not rewrite history
+- `guest_recovery_items` (id, recovery_id, menu_item_id, name, family, qty, removed, added, mod_note, receipt_ok, item_ok, fault_source): name and family are snapshots so a renamed menu item does not rewrite history
 - `guest_recovery_sends` (id, recovery_id, channel: email|sms, kind: initial|resend, status: sending|sent|failed|skipped, error, sent_at, created_at): written only by the server; one initial send per channel
 - `guest_recoveries` also has: reason (missing_item|wrong_item|quality|too_slow|other, null on old rows), path (standard|spotlight), expires_at, assigned_to (the Spotlight owner)
 - `guest_recovery_settings` (id, expiry_days, overseer_id, backup_id, overseer_off, updated_by, updated_at): one row, changed only through database functions

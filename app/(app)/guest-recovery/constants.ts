@@ -20,6 +20,25 @@ export const ITEM_NAME_MAX = 80;
 export const MAX_ITEMS = 20;
 export const MAX_QTY = 20;
 
+/** Item mods: "no pickles", "extra sauce", and a short free-text note. */
+export const MAX_MODS = 12;
+export const MOD_NAME_MAX = 40;
+export const MOD_NOTE_MAX = 120;
+
+/**
+ * Where a wrong item or wrong mod most likely went wrong, worked out from the
+ * two Yes/No questions (see deriveFaultSource). Stored on the item.
+ */
+export const FAULT_SOURCES = ["made_wrong", "order_entry", "bagging", "not_sure"] as const;
+export type FaultSource = (typeof FAULT_SOURCES)[number];
+
+export const FAULT_LABELS: Record<FaultSource, string> = {
+  made_wrong: "Made wrong (kitchen or primary)",
+  order_entry: "Order entered wrong",
+  bagging: "Bagging or hand-off",
+  not_sure: "Not sure",
+};
+
 /** The redeem token is 64 hex characters (two uuids, dashes stripped). */
 export const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 

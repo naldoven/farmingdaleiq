@@ -2159,28 +2159,46 @@ export type Database = {
       }
       guest_recovery_items: {
         Row: {
+          added: string[]
+          fault_source: string | null
           family: string
           id: string
+          item_ok: boolean | null
           menu_item_id: string | null
+          mod_note: string | null
           name: string
           qty: number
+          receipt_ok: boolean | null
           recovery_id: string
+          removed: string[]
         }
         Insert: {
+          added?: string[]
+          fault_source?: string | null
           family: string
           id?: string
+          item_ok?: boolean | null
           menu_item_id?: string | null
+          mod_note?: string | null
           name: string
           qty?: number
+          receipt_ok?: boolean | null
           recovery_id: string
+          removed?: string[]
         }
         Update: {
+          added?: string[]
+          fault_source?: string | null
           family?: string
           id?: string
+          item_ok?: boolean | null
           menu_item_id?: string | null
+          mod_note?: string | null
           name?: string
           qty?: number
+          receipt_ok?: boolean | null
           recovery_id?: string
+          removed?: string[]
         }
         Relationships: [
           {
@@ -3193,25 +3211,34 @@ export type Database = {
       recovery_menu_items: {
         Row: {
           active: boolean
+          addons: string[]
           category: string
           family: string
           id: string
+          ingredients: string[]
+          modifiable: boolean
           name: string
           sort: number
         }
         Insert: {
           active?: boolean
+          addons?: string[]
           category: string
           family: string
           id?: string
+          ingredients?: string[]
+          modifiable?: boolean
           name: string
           sort?: number
         }
         Update: {
           active?: boolean
+          addons?: string[]
           category?: string
           family?: string
           id?: string
+          ingredients?: string[]
+          modifiable?: boolean
           name?: string
           sort?: number
         }
