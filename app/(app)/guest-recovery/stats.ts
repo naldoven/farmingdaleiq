@@ -1,4 +1,7 @@
 import {
+  FAULT_LABELS,
+  FAULT_SOURCES,
+  type FaultSource,
   FAST_SEND_MINUTES,
   NO_REASON_LABEL,
   REASON_LABELS,
@@ -20,7 +23,14 @@ export interface ReportRow {
   givenAt: string | null;
   loggedBy: string;
   loggedByName: string;
-  items: { family: string; qty: number }[];
+  items: {
+    family: string;
+    qty: number;
+    /** The item carried changes (no pickles, extra sauce, a note). */
+    modded?: boolean;
+    /** Where a wrong item or mod most likely went wrong; null when the fault check was not asked. */
+    faultSource?: string | null;
+  }[];
   /** Null for recoveries logged before reasons existed. */
   reason: string | null;
   /** Earliest sent_at of any successful send. */
@@ -51,6 +61,17 @@ export interface GuestRecoveryReport {
   /** Void recoveries count here, like missingItems. Key "none" = not recorded. */
   reasons: { reason: string; label: string; recoveries: number }[];
   repeatGuests: { recoveries: number; guests: number } | null;
+  /**
+   * Item lines that carried changes, and the recoveries they sat on. Item lines,
+   * not quantities: two sandwiches on one line with the same change count once.
+   * Voided recoveries are left out here and in the two fault lists, because a
+   * void means it was logged by mistake.
+   */
+  mods: { lines: number; recoveries: number };
+  /** Item lines by where the fault was, biggest first. Only lines where the fault check was asked. */
+  faultSources: { source: FaultSource; label: string; lines: number }[];
+  /** The same lines grouped by item family, so the item that keeps going wrong shows first. */
+  faultByFamily: ({ family: string; total: number } & Record<FaultSource, number>)[];
   byDaypart: { name: string; count: number }[];
   byWeekday: { day: string; count: number }[];
   loggedBy: { name: string; count: number }[];
@@ -183,6 +204,37 @@ export function buildGuestRecoveryReport(
     }))
     .sort((a, b) => b.recoveries - a.recoveries || a.label.localeCompare(b.label));
 
+  let moddedLines = 0;
+  let moddedRecoveries = 0;
+  const sourceCounts = new Map<FaultSource, number>();
+  const familyFaults = new Map<string, { family: string; total: number } & Record<FaultSource, number>>();
+  for (const r of live) {
+    let hadMods = false;
+    for (const item of r.items) {
+      if (item.modded) {
+        moddedLines += 1;
+        hadMods = true;
+      }
+      const source = item.faultSource;
+      if (!source || !(FAULT_SOURCES as readonly string[]).includes(source)) continue;
+      const known = source as FaultSource;
+      sourceCounts.set(known, (sourceCounts.get(known) ?? 0) + 1);
+      const entry =
+        familyFaults.get(item.family) ??
+        { family: item.family, total: 0, made_wrong: 0, order_entry: 0, bagging: 0, not_sure: 0 };
+      entry.total += 1;
+      entry[known] += 1;
+      familyFaults.set(item.family, entry);
+    }
+    if (hadMods) moddedRecoveries += 1;
+  }
+  const faultSources = [...sourceCounts]
+    .map(([source, lines]) => ({ source, label: FAULT_LABELS[source], lines }))
+    .sort((a, b) => b.lines - a.lines || a.label.localeCompare(b.label));
+  const faultByFamily = [...familyFaults.values()].sort(
+    (a, b) => b.total - a.total || a.family.localeCompare(b.family),
+  );
+
   const partsSorted = [...opts.dayParts].sort((a, b) => a.sort - b.sort);
   const partCounts = partsSorted.map(() => 0);
   let other = 0;
@@ -221,6 +273,9 @@ export function buildGuestRecoveryReport(
     totalRecoveries: inMonth.length,
     reasons,
     repeatGuests: opts.repeat ?? null,
+    mods: { lines: moddedLines, recoveries: moddedRecoveries },
+    faultSources,
+    faultByFamily,
     byDaypart,
     byWeekday: WEEKDAYS.map((day, i) => ({ day, count: weekdayCounts[i] })),
     loggedBy: [...loggerCounts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),

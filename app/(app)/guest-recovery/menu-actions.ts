@@ -7,6 +7,7 @@ import type { ActionResult } from "@/app/(app)/guest-recovery/action-types";
 import { menuItemInputSchema } from "@/app/(app)/guest-recovery/validation";
 import { requirePermission } from "@/lib/auth/permissions";
 import { toActionError } from "@/lib/errors/action-error";
+import { parseList } from "@/lib/guest-recovery/mods";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -66,6 +67,49 @@ export async function addMenuItem(input: {
             : "That item is already on the menu",
       };
     }
+
+    revalidateMenu();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+const setModsSchema = z.object({
+  id: z.uuid("That item is not valid"),
+  modifiable: z.boolean(),
+  // Typed as "Pickles, Tomato" in the manager; parseList cleans and caps them.
+  ingredients: z.string().max(600, "That list is too long"),
+  addons: z.string().max(600, "That list is too long"),
+});
+
+/**
+ * Whether an item takes changes, and the ingredient and add-on lists the log
+ * form offers for it. Past recoveries keep what they were logged with.
+ * Saving the same values twice is harmless.
+ */
+export async function setMenuItemMods(input: {
+  id: string;
+  modifiable: boolean;
+  ingredients: string;
+  addons: string;
+}): Promise<ActionResult> {
+  try {
+    await requirePermission("guest_recovery.manage");
+    const parsed = setModsSchema.parse(input);
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("recovery_menu_items")
+      .update({
+        modifiable: parsed.modifiable,
+        ingredients: parseList(parsed.ingredients),
+        addons: parseList(parsed.addons),
+      })
+      .eq("id", parsed.id)
+      .select("id");
+    if (error) return { ok: false, error: error.message };
+    if (!data || data.length === 0) return { ok: false, error: "That item was not found." };
 
     revalidateMenu();
     return { ok: true, data: undefined };

@@ -51,7 +51,18 @@ export async function logRecovery(
       p_order_number: parsed.orderNumber,
       p_note: parsed.note,
       p_sms_consent: parsed.smsConsent,
-      p_items: parsed.items.map((item) => ({ menu_item_id: item.menuItemId, name: item.name, qty: item.qty })),
+      // The database re-checks every change against the menu item's own lists.
+      p_items: parsed.items.map((item) => ({
+        menu_item_id: item.menuItemId,
+        name: item.name,
+        qty: item.qty,
+        removed: item.removed,
+        added: item.added,
+        mod_note: item.modNote,
+        receipt_ok: item.receiptOk,
+        item_ok: item.itemOk,
+        fault_source: item.faultSource,
+      })),
       p_reason: parsed.reason,
       p_path: parsed.path,
     });

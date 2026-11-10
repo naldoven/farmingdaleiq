@@ -4,6 +4,7 @@ import { buildGuestRecoveryReport, type ReportRow } from "@/app/(app)/guest-reco
 import { ReportingView } from "@/components/guest-recovery/reporting-view";
 import { GuestRecoveryTabs } from "@/components/guest-recovery/section-tabs";
 import { hasPermission } from "@/lib/auth/permissions";
+import { hasMods } from "@/lib/guest-recovery/mods";
 import { createClient } from "@/lib/supabase/server";
 import { storeDateTimeInputToIso, storeLocalDate } from "@/lib/time";
 
@@ -84,7 +85,7 @@ export default async function GuestRecoveryReportingPage({
   const ids = recoveries.map((r) => r.id);
   const loggerIds = [...new Set(recoveries.map((r) => r.logged_by))];
 
-  const itemsByRecovery = new Map<string, { family: string; qty: number }[]>();
+  const itemsByRecovery = new Map<string, ReportRow["items"]>();
   const sendsByRecovery = new Map<string, { first: string | null; email: boolean; sms: boolean }>();
   const names = new Map<string, string>();
 
@@ -92,12 +93,17 @@ export default async function GuestRecoveryReportingPage({
     ...chunks(ids).map(async (part) => {
       const { data, error } = await supabase
         .from("guest_recovery_items")
-        .select("recovery_id, family, qty")
+        .select("recovery_id, family, qty, removed, added, mod_note, fault_source")
         .in("recovery_id", part);
       if (error) throw new Error("Could not load guest recovery items");
       for (const item of data ?? []) {
         const list = itemsByRecovery.get(item.recovery_id) ?? [];
-        list.push({ family: item.family, qty: item.qty });
+        list.push({
+          family: item.family,
+          qty: item.qty,
+          modded: hasMods({ removed: item.removed, added: item.added, note: item.mod_note }),
+          faultSource: item.fault_source,
+        });
         itemsByRecovery.set(item.recovery_id, list);
       }
     }),

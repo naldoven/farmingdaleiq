@@ -19,7 +19,7 @@ export default async function RecoveryMenuPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("recovery_menu_items")
-    .select("id, name, family, category, sort, active")
+    .select("id, name, family, category, sort, active, modifiable, ingredients, addons")
     .order("category")
     .order("sort");
   if (error) throw new Error(`Could not load the recovery menu: ${error.message}`);

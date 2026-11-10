@@ -88,7 +88,19 @@ describe("logRecovery", () => {
         p_guest_phone: "+16315550142",
         p_guest_email: "nolan@example.com",
         p_sms_consent: true,
-        p_items: [{ menu_item_id: MENU_ID, name: null, qty: 2 }],
+        p_items: [
+          {
+            menu_item_id: MENU_ID,
+            name: null,
+            qty: 2,
+            removed: [],
+            added: [],
+            mod_note: null,
+            receipt_ok: null,
+            item_ok: null,
+            fault_source: null,
+          },
+        ],
         p_reason: "missing_item",
         p_path: "standard",
       }),
@@ -130,6 +142,35 @@ describe("logRecovery", () => {
     const result = await logRecovery(input);
     expect(result).toEqual({ ok: false, error: "That menu item is not available" });
     expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("logRecovery: item changes", () => {
+  it("sends each line with its changes and a source worked out on the server, never the client's", async () => {
+    const rpc = mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: true }] });
+    mockSend.mockResolvedValue([{ channel: "email", result: "sent" }]);
+    await logRecovery({
+      ...input,
+      reason: "wrong_item",
+      items: [
+        { menuItemId: MENU_ID, qty: 1, removed: ["Pickles"], receiptOk: true, itemOk: false, faultSource: "bagging" },
+        { menuItemId: MENU_ID, qty: 1, removed: ["Tomato"] },
+      ] as never,
+    });
+    const items = (rpc.mock.calls[0] as unknown as [string, { p_items: Record<string, unknown>[] }])[1].p_items;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ removed: ["Pickles"], receipt_ok: true, item_ok: false, fault_source: "made_wrong" });
+    expect(items[1]).toMatchObject({ removed: ["Tomato"], fault_source: null });
+  });
+
+  it("a retry with the same submission id sends the same payload, so the database returns the first recovery", async () => {
+    const rpc = mockRpc({ data: [{ out_id: RECOVERY_ID, out_created: false }] });
+    mockSend.mockResolvedValue([]);
+    const withMods = { ...input, items: [{ menuItemId: MENU_ID, qty: 1, removed: ["Pickles"] }] as never };
+    await logRecovery(withMods);
+    await logRecovery(withMods);
+    const ids = rpc.mock.calls.map((c) => (c as unknown as [string, { p_submission_id: string }])[1].p_submission_id);
+    expect(new Set(ids).size).toBe(1);
   });
 });
 

@@ -339,3 +339,39 @@ describe("Spotlight messages (guest has the Chick-fil-A app)", () => {
     expect(buildSpotlightSms(withPhone)).toContain("Call 631-555-0100");
   });
 });
+
+describe("item mods in guest messages", () => {
+  const modded = [
+    { name: "Chick-fil-A Deluxe Sandwich", qty: 1, removed: ["Pickles", "Tomato"], added: [], modNote: null },
+    { name: "Cobb Salad", qty: 2, removed: [], added: ["Grilled nuggets"], modNote: null },
+  ];
+
+  it("formatItems puts the mods in parentheses after the item", () => {
+    expect(formatItems(modded)).toBe(
+      "Chick-fil-A Deluxe Sandwich (no pickles, no tomato), 2 x Cobb Salad (grilled nuggets)",
+    );
+  });
+
+  it("an item with no mods reads exactly as before", () => {
+    expect(formatItems([{ name: "Cobb Salad", qty: 1, removed: [], added: [], modNote: null }])).toBe("Cobb Salad");
+  });
+
+  it("the email, the text and the spotlight messages all carry the mods", () => {
+    const input = { ...base, items: modded };
+    expect(buildEmail(input).text).toContain("Chick-fil-A Deluxe Sandwich (no pickles, no tomato)");
+    expect(buildEmail(input).html).toContain("Chick-fil-A Deluxe Sandwich (no pickles, no tomato)");
+    expect(buildSms(input)).toContain("(no pickles, no tomato)");
+    expect(buildSpotlightEmail(input).text).toContain("(no pickles, no tomato)");
+    expect(buildSpotlightEmail(input).html).toContain("(no pickles, no tomato)");
+    expect(buildSpotlightSms(input)).toContain("(no pickles, no tomato)");
+  });
+
+  it("escapes a free-text note in the email html", () => {
+    const html = buildEmail({
+      ...base,
+      items: [{ name: "Cobb Salad", qty: 1, removed: [], added: [], modNote: "<script>x</script>" }],
+    }).html;
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+});

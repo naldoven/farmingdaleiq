@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import {
+  FAULT_LABELS,
   SPOTLIGHT_PROMISE_HOURS,
   SPOTLIGHT_REWARD_LIMIT,
   TOKEN_PATTERN,
@@ -130,6 +131,11 @@ export default async function GuestRecoveryDetailPage({
           {recovery.items.map((item) => (
             <li key={item.id} className="text-[19px] font-semibold text-accent-ink">
               {formatItems([item])}
+              {item.faultSource && (
+                <span className="mt-0.5 block text-[13px] font-medium text-muted-ink">
+                  Likely cause: {FAULT_LABELS[item.faultSource]}
+                </span>
+              )}
             </li>
           ))}
         </ul>
