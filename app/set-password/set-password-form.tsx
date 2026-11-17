@@ -7,14 +7,16 @@ import { AuthAlert } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createClient } from "@/lib/supabase/client";
+import { setNewPassword } from "@/app/set-password/actions";
 
 const MIN_LENGTH = 8;
 
 /**
- * Lets a user who arrived through the auth callback (invite or password
- * recovery, so they already hold a session) choose a new password via
- * supabase.auth.updateUser. On success it lands them on the app home.
+ * Lets a signed-in person choose a new password: someone who arrived through a
+ * setup or reset link, or someone a manager gave a temporary password (the
+ * middleware keeps them here until they change it). The save runs in the
+ * setNewPassword server action so the temporary-password flag clears in the
+ * same step. On success it lands them on the app home.
  */
 export function SetPasswordForm() {
   const router = useRouter();
@@ -40,12 +42,9 @@ export function SetPasswordForm() {
         }
 
         startTransition(async () => {
-          const supabase = createClient();
-          const { error: updateError } = await supabase.auth.updateUser({
-            password,
-          });
-          if (updateError) {
-            setError(updateError.message);
+          const result = await setNewPassword(password);
+          if (!result.ok) {
+            setError(result.error);
             return;
           }
           router.replace("/");

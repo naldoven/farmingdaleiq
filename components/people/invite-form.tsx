@@ -15,20 +15,22 @@ import {
 } from "@/components/ui/select";
 import { inviteUser } from "@/app/(app)/people/actions";
 import type { RoleOption } from "@/components/people/role-assign-form";
+import { SetupLinkPanel } from "@/components/people/setup-link-panel";
 
 const NO_ROLE_VALUE = "none";
 
 /**
- * Invite/create-user form. Calls the permission-guarded `inviteUser` server
- * action (app/(app)/people/actions.ts), which uses the Supabase Auth admin
- * API (service role, server-only) to create the account and send the invite
- * email, then fills in the profile row.
+ * Add-a-person form. Calls the permission-guarded `inviteUser` server action
+ * (app/(app)/people/actions.ts), which creates the account with the Supabase
+ * Auth admin API (service role, server-only), fills in the profile row, and
+ * returns a one-time setup link. No email is sent: the manager texts or
+ * shares the link (docs/STAFF-SIGN-IN-PLAN.md, Step 3).
  */
 export function InviteForm({ roles }: { roles: RoleOption[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [added, setAdded] = useState<{ name: string; link: string | null } | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -40,7 +42,7 @@ export function InviteForm({ roles }: { roles: RoleOption[] }) {
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
-        setDone(false);
+        setAdded(null);
         startTransition(async () => {
           const result = await inviteUser({
             name,
@@ -52,7 +54,7 @@ export function InviteForm({ roles }: { roles: RoleOption[] }) {
             setError(result.error);
             return;
           }
-          setDone(true);
+          setAdded({ name: name.trim(), link: result.data.link });
           setName("");
           setEmail("");
           setPhone("");
@@ -97,11 +99,21 @@ export function InviteForm({ roles }: { roles: RoleOption[] }) {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {done && <p className="text-sm text-success">Invite sent.</p>}
+      {added?.link ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-success">{added.name} was added.</p>
+          <SetupLinkPanel name={added.name} link={added.link} />
+        </div>
+      ) : added ? (
+        <p className="text-sm text-success">
+          {added.name} was added, but the setup link did not work. Open their profile and tap New
+          setup link.
+        </p>
+      ) : null}
 
       <div>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Sending invite..." : "Send invite"}
+          {isPending ? "Adding..." : "Add person"}
         </Button>
       </div>
     </form>

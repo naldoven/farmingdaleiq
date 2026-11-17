@@ -7,7 +7,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Invite/create-user page (PLAN.md P0 #6). Gated in the UI by people.manage;
+ * Add-a-person page (PLAN.md P0 #6). Gated in the UI by people.manage;
  * the real enforcement is `requirePermission("people.manage")` inside the
  * `inviteUser` server action (app/(app)/people/actions.ts). Visual/layout
  * redesign onto the KitchenIQ mobile system (docs/DESIGN-SYSTEM.md): the
@@ -27,7 +27,7 @@ export default async function InvitePage() {
       <Link href="/people" className="text-[13px] font-semibold text-accent">
         &larr; Roster
       </Link>
-      <SectionCard title="Invite a person">
+      <SectionCard title="Add a person">
         <InviteForm roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))} />
       </SectionCard>
     </div>

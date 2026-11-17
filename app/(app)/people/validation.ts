@@ -63,3 +63,25 @@ export const inviteUserSchema = z.object({
 });
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+/** "New setup link" on a profile. The email is looked up on the server. */
+export const newSetupLinkSchema = z.object({
+  profileId: z.string().uuid(),
+});
+
+export type NewSetupLinkInput = z.infer<typeof newSetupLinkSchema>;
+
+/**
+ * "Set temporary password" on a profile. 8 matches the set-password form; 72
+ * is the longest password Supabase (bcrypt) accepts. Not trimmed: a password
+ * is taken exactly as typed.
+ */
+export const temporaryPasswordSchema = z.object({
+  profileId: z.string().uuid(),
+  password: z
+    .string()
+    .min(8, "Use at least 8 characters.")
+    .max(72, "Use 72 characters or fewer."),
+});
+
+export type TemporaryPasswordInput = z.infer<typeof temporaryPasswordSchema>;

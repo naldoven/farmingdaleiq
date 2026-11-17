@@ -23,11 +23,13 @@
  *    the fast, friendly failure (nice error message, no round trip to
  *    Postgres); RLS is the real backstop if a caller ever skips step 1 (bug,
  *    direct API call, a future action that forgets the guard).
- * 3. The ONE exception: creating an auth user has no RLS equivalent (it isn't
- *    a table write), so createServiceRoleClient() is used for that single
- *    call in `inviteUser`, and only ever after requirePermission() already
- *    passed. Every other read/write in this file uses the normal
- *    per-request client.
+ * 3. The ONE exception: the Supabase Auth admin API has no RLS equivalent (it
+ *    isn't a table write). createServiceRoleClient() is used only for those
+ *    calls (creating the account in `inviteUser`, making a setup link,
+ *    setting a temporary password), and only ever after requirePermission()
+ *    AND, for anything aimed at an existing person, the rank guard
+ *    (lib/auth/rank-guard.ts) already passed. Every table read/write in this
+ *    file uses the normal per-request client.
  * 4. Actions return a discriminated `ActionResult` instead of throwing, so
  *    forms can render an inline error. PermissionError is caught and mapped
  *    to a generic message — never leak which permission key was missing.
@@ -37,21 +39,27 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 
 import { requirePermission } from "@/lib/auth/permissions";
+import { requireCanAssignRole, requireOutranks } from "@/lib/auth/rank-guard";
+import { makeSetupLink } from "@/lib/auth/setup-link";
 import { DISCORD_ID_TAKEN_MESSAGE, isUniqueViolation } from "@/lib/discord/id-conflict";
 import { toActionError } from "@/lib/errors/action-error";
+import { emitEvent, type EventKey } from "@/lib/events/bus";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/app/(app)/people/action-types";
 import {
   assignRoleSchema,
   inviteUserSchema,
+  newSetupLinkSchema,
   selfUpdateProfileSchema,
+  temporaryPasswordSchema,
   updateProfileSchema,
   type AssignRoleInput,
   type InviteUserInput,
+  type NewSetupLinkInput,
   type SelfUpdateProfileInput,
+  type TemporaryPasswordInput,
   type UpdateProfileInput,
 } from "@/app/(app)/people/validation";
 
@@ -188,6 +196,11 @@ export async function updateOwnProfile(
  * distinct, broader permission that governs editing role definitions and
  * role_permissions (out of scope for this module: see PLAN.md P0 #6, which
  * asks for role *assignment*, not a role/permission editor).
+ *
+ * The rank guard is the target-side half the database never checked: the
+ * privilege-guard trigger stops assigning a role senior to your own, but it
+ * let an Assistant Director demote a Director or a Location Manager. Now you
+ * can change a role only for someone ranked below you.
  */
 export async function assignRole(
   input: AssignRoleInput,
@@ -196,6 +209,7 @@ export async function assignRole(
     await requirePermission("people.manage");
 
     const parsed = assignRoleSchema.parse(input);
+    await requireOutranks(parsed.id);
     const supabase = await createClient();
 
     const { error } = await supabase
@@ -216,46 +230,65 @@ export async function assignRole(
 }
 
 /**
- * Creates a new employee: an auth user (via the Supabase Auth admin API,
- * service-role only) plus their profile row. `supabase/migrations/
- * 20260707000200_core.sql` already creates a bare profile row via the
- * `handle_new_auth_user` trigger the moment the auth user exists (store
- * default + lowest-rank role); this action then fills in the real name,
- * chosen role, and phone through the normal permission-guarded update path.
+ * Best-effort audit row for the sign-in tools (EVENT_KEYS "people_*"). Ids
+ * only: the link and the password never leave the action that made them. A
+ * failed audit write must not undo a link or password the manager already
+ * has, so it is logged and swallowed.
+ */
+async function auditSignIn(key: EventKey, actorId: string, targetId: string) {
+  try {
+    await emitEvent(key, { actor_id: actorId, target_id: targetId });
+  } catch (error) {
+    console.error(`[people] ${key} audit failed:`, error instanceof Error ? error.message : error);
+  }
+}
+
+function isEmailTaken(error: { code?: string; message?: string }): boolean {
+  return error.code === "email_exists" || /already (been )?registered/i.test(error.message ?? "");
+}
+
+/**
+ * Creates a new employee and hands back a setup link for the manager to text
+ * or share (docs/STAFF-SIGN-IN-PLAN.md, Step 3). No email is sent: the
+ * built-in Supabase sender allows 2 per hour, and the old invite email's link
+ * could never be read by /auth/callback, so every invite failed.
  *
- * SUPABASE_SERVICE_ROLE_KEY is read only inside createServiceRoleClient()
- * (lib/supabase/server.ts), server-side, and only for the one admin-API call
- * below — never returned to the caller, never used for the profile update.
+ * `admin.createUser` with email_confirm makes a confirmed account with no
+ * usable password. The `handle_new_auth_user` trigger
+ * (supabase/migrations/20260707000200_core.sql) creates the bare profile rows
+ * the moment the auth user exists; this action then fills in the real name,
+ * chosen role, and phone through the normal permission-guarded update path,
+ * so the database privilege guard still stops a manager assigning a role
+ * senior to their own.
+ *
+ * `link` is null when the account was made but the link step failed: the
+ * manager uses New setup link on the profile rather than adding them twice.
  */
 export async function inviteUser(
   input: InviteUserInput,
-): Promise<ActionResult<{ userId: string }>> {
+): Promise<ActionResult<{ userId: string; link: string | null }>> {
   try {
     await requirePermission("people.manage");
 
     const parsed = inviteUserSchema.parse(input);
+    // Before anything is created: a refused role would otherwise leave a
+    // half-made account that blocks a retry with "already has an account".
+    const { actorId } = await requireCanAssignRole(parsed.roleId);
     const admin = createServiceRoleClient();
 
-    // Point the invite link at our auth callback so the invited user lands on
-    // /set-password (via /auth/callback, which exchanges the code for a
-    // session). Without a redirectTo the invite defaults to the Supabase Site
-    // URL (the app root), where there is no code handler and the invite breaks.
-    const hdrs = await headers();
-    const forwardedProto = hdrs.get("x-forwarded-proto");
-    const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
-    const origin =
-      hdrs.get("origin") ??
-      (host ? `${forwardedProto ?? "https"}://${host}` : "");
-    const redirectTo = origin
-      ? `${origin}/auth/callback?next=${encodeURIComponent("/set-password")}`
-      : undefined;
-
-    const { data, error } = await admin.auth.admin.inviteUserByEmail(
-      parsed.email,
-      { data: { name: parsed.name }, redirectTo },
-    );
+    const { data, error } = await admin.auth.admin.createUser({
+      email: parsed.email,
+      email_confirm: true,
+      user_metadata: { name: parsed.name },
+    });
 
     if (error || !data.user) {
+      if (error && isEmailTaken(error)) {
+        return {
+          ok: false,
+          error: `${parsed.email} already has an account. Use New setup link on their profile.`,
+        };
+      }
       return {
         ok: false,
         error: error?.message ?? "Could not create the account.",
@@ -265,7 +298,7 @@ export async function inviteUser(
     const userId = data.user.id;
 
     // The trigger has already inserted a bare profiles row AND a
-    // profiles_private row (with the invited email) for userId at this point
+    // profiles_private row (with the email) for userId at this point
     // (handle_new_auth_user fires synchronously on auth.users insert). Fill in
     // the real name/role on profiles and the phone on profiles_private through
     // the normal per-request client so RLS's people.manage check applies here
@@ -292,8 +325,84 @@ export async function inviteUser(
       return { ok: false, error: phoneError.message };
     }
 
+    let link: string | null = null;
+    try {
+      link = await makeSetupLink(parsed.email);
+      await auditSignIn("people_setup_link_created", actorId, userId);
+    } catch (linkError) {
+      console.error(
+        "[people] setup link after invite failed:",
+        linkError instanceof Error ? linkError.message : linkError,
+      );
+    }
+
     revalidatePath("/people");
-    return { ok: true, data: { userId } };
+    return { ok: true, data: { userId, link } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * "New setup link" on a profile (docs/STAFF-SIGN-IN-PLAN.md, Step 4): for a
+ * link that expired, a forgotten password, or someone added before this
+ * existed. The email comes from the auth account on the server, never from
+ * the client, so a manager cannot aim a link at an address of their choosing.
+ * A new link replaces any older one for that person.
+ */
+export async function newSetupLink(
+  input: NewSetupLinkInput,
+): Promise<ActionResult<{ link: string }>> {
+  try {
+    await requirePermission("people.manage");
+
+    const parsed = newSetupLinkSchema.parse(input);
+    const { actorId } = await requireOutranks(parsed.profileId);
+
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.auth.admin.getUserById(parsed.profileId);
+    const email = data?.user?.email;
+    if (error || !email) {
+      return { ok: false, error: "This person has no sign-in email on file." };
+    }
+
+    const link = await makeSetupLink(email);
+    await auditSignIn("people_setup_link_created", actorId, parsed.profileId);
+    return { ok: true, data: { link } };
+  } catch (error) {
+    return { ok: false, error: toActionError(error) };
+  }
+}
+
+/**
+ * "Set temporary password" on a profile (docs/STAFF-SIGN-IN-PLAN.md, Step 5),
+ * for a manager standing next to the person. The flag goes in app_metadata,
+ * which only the service role can write; user_metadata would let the person
+ * clear it themselves. The middleware then keeps them on /set-password until
+ * they choose their own, and setNewPassword clears the flag.
+ */
+export async function setTemporaryPassword(
+  input: TemporaryPasswordInput,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("people.manage");
+
+    const parsed = temporaryPasswordSchema.parse(input);
+    const { actorId } = await requireOutranks(parsed.profileId);
+
+    const admin = createServiceRoleClient();
+    const { error } = await admin.auth.admin.updateUserById(parsed.profileId, {
+      password: parsed.password,
+      app_metadata: { must_change_password: true },
+    });
+    if (error) {
+      // Supabase's own message (for example a too-weak password), never the
+      // password itself.
+      return { ok: false, error: error.message };
+    }
+
+    await auditSignIn("people_temp_password_set", actorId, parsed.profileId);
+    return { ok: true, data: undefined };
   } catch (error) {
     return { ok: false, error: toActionError(error) };
   }

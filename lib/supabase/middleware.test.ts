@@ -29,6 +29,10 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/recovery")).toBe(false);
   });
 
+  it("opens the setup-link page to logged-out staff (it only shows a button)", () => {
+    expect(isPublicPath("/auth/confirm")).toBe(true);
+  });
+
   it("keeps private app routes behind authentication", () => {
     expect(isPublicPath("/maintenance")).toBe(false);
     expect(isPublicPath("/cleaning/walkthrough")).toBe(false);

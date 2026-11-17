@@ -5,6 +5,8 @@ import { AvatarInitials, HScroll, MetricCard, SectionCard, StatTile, StatusBadge
 import { ProfileEditForm } from "@/components/people/profile-edit-form";
 import { SelfProfileEditForm } from "@/components/people/self-profile-edit-form";
 import { RoleAssignForm } from "@/components/people/role-assign-form";
+import { SignInTools } from "@/components/people/sign-in-tools";
+import { canActOn, guardRank } from "@/lib/auth/rank-guard";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { computeBadges } from "@/lib/setups/badges";
 import { loadTraineeUserIds } from "@/lib/integration/people-badges";
@@ -153,6 +155,9 @@ export default async function ProfilePage({
   const actorRank =
     viewerProfile?.role_id != null ? roleRankById.get(viewerProfile.role_id) ?? null : null;
   const assignableRoles = assignableRolesForRank(roles ?? [], actorRank);
+  // Sign-in tools and role changes only for someone ranked below the viewer
+  // (lib/auth/rank-guard.ts). The server actions re-check this.
+  const outranksTarget = canActOn(actorRank, guardRank(profile.role_id, roleRankById), isSelf);
 
   const [
     { data: assignedTasks },
@@ -272,9 +277,15 @@ export default async function ProfilePage({
           initialRoleId={profile.role_id}
           roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))}
           assignableRoles={assignableRoles.map((r) => ({ id: r.id, name: r.name }))}
-          canEdit={canManage && !isSelf}
+          canEdit={canManage && outranksTarget}
         />
       </SectionCard>
+
+      {canManage && outranksTarget ? (
+        <SectionCard title="Sign-in">
+          <SignInTools profileId={profile.id} name={profile.name} />
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Profile">
         {profileVariant === "self-edit" ? (

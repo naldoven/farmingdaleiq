@@ -7,13 +7,16 @@ import type { Database } from "@/lib/db/types";
 // serves as the offline navigation fallback. It must be public (FIQ-13): if it
 // 302s to /login, the SW caches the login page under the offline key and the
 // offline screen shows the login page instead.
-// /set-password is deliberately NOT here: the /auth/callback handler exchanges
-// the invite/recovery code for a real session before redirecting there, so the
-// user is already authenticated and the normal auth guard lets them through.
+// /set-password is deliberately NOT here: the /auth/confirm button verifies the
+// setup or reset link and creates a real session before redirecting there, so
+// the user is already authenticated and the normal auth guard lets them through.
 const PUBLIC_PATHS = [
   "/login",
   "/forgot-password",
   "/auth/callback",
+  // The setup-link landing page. It only shows a Continue button; the token
+  // is spent by that tap, so a person with no session must be able to open it.
+  "/auth/confirm",
   "/manifest.webmanifest",
   "/sw.js",
   "/offline.html",
@@ -64,6 +67,23 @@ export function isPublicPath(pathname: string) {
 }
 
 /**
+ * True when a signed-in person was given a temporary password by a manager
+ * (setTemporaryPassword sets app_metadata.must_change_password) and is asking
+ * for any page other than /set-password, the /auth pages or a public path.
+ * Reads app_metadata only: people can edit their own user_metadata, so a flag
+ * there must never count. getUser() reads the user fresh from Supabase on
+ * every request, so a cleared flag takes effect on the next page load.
+ */
+export function mustChangePassword(
+  user: { app_metadata?: Record<string, unknown> | null } | null,
+  pathname: string,
+): boolean {
+  if (user?.app_metadata?.must_change_password !== true) return false;
+  if (pathname === "/set-password" || pathname.startsWith("/auth/")) return false;
+  return !isPublicPath(pathname);
+}
+
+/**
  * Refreshes the Supabase auth session on every request and redirects
  * unauthenticated users to /login for any non-public route. Called from the
  * root middleware.ts.
@@ -104,6 +124,15 @@ export async function updateSession(request: NextRequest) {
 
   if (user && pathname === "/login") {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (mustChangePassword(user, pathname)) {
+    const redirect = NextResponse.redirect(new URL("/set-password", request.url));
+    // Carry any refreshed session cookies across. Dropping them on a redirect
+    // that repeats on every page would make the next request reuse a rotated
+    // refresh token.
+    supabaseResponse.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
   }
 
   return supabaseResponse;
