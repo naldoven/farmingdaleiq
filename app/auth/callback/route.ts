@@ -4,9 +4,10 @@ import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * OAuth/PKCE callback for the email-link flows: invite, password recovery, and
- * magic link. Supabase redirects the browser here with a one-time `?code=`,
- * which we exchange for a real session (cookies get set on the response).
+ * Callback for the email-link flows. A `?token_hash=` recovery link (the
+ * Forgot password email) is forwarded untouched to /auth/confirm, which
+ * spends the token only when the person taps Continue. A PKCE `?code=`
+ * (magic link, older invites) is exchanged here for a real session.
  *
  * Where the user lands afterward is driven by a `next` param that WE set when
  * initiating each flow (the forgot-password page and the invite action point
@@ -25,24 +26,23 @@ export async function GET(request: NextRequest) {
   const fail = () =>
     NextResponse.redirect(new URL("/login?error=auth", origin));
 
-  const supabase = await createClient();
-
   if (tokenHash) {
-    // The recovery email template links here with ?token_hash=. verifyOtp needs
-    // no PKCE code_verifier cookie, so the link works in any browser or device.
-    // The old ?code= link only worked in the browser that requested the reset
-    // (Gmail's in-app browser or a second browser failed with bad_code_verifier).
+    // The recovery email template (Forgot password) links here with
+    // ?token_hash=. Do NOT verify on this GET: text and email apps open links
+    // to build previews, and a verify here spends the one-time token before
+    // the person taps it (2026-11-16: every texted link died that way). Hand
+    // off to /auth/confirm, which shows a button and verifies only on that tap.
+    // `next` is dropped on purpose: a recovery always ends on /set-password.
     if (type !== "recovery") return fail();
-    const { error } = await supabase.auth.verifyOtp({
-      type: "recovery",
-      token_hash: tokenHash,
-    });
-    if (error) return fail();
-    return NextResponse.redirect(new URL("/set-password", origin));
+    const confirm = new URL("/auth/confirm", origin);
+    confirm.searchParams.set("token_hash", tokenHash);
+    confirm.searchParams.set("type", "recovery");
+    return NextResponse.redirect(confirm);
   }
 
   if (!code) return fail();
 
+  const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) return fail();

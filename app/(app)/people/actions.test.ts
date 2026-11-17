@@ -40,6 +40,23 @@ vi.mock("@/lib/supabase/server", () => ({
   createServiceRoleClient: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/setup-link", () => ({
+  makeSetupLink: vi.fn(async () => "https://app.example.com/auth/confirm?token_hash=h&type=recovery"),
+}));
+
+vi.mock("@/lib/auth/rank-guard", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/auth/rank-guard")>(
+    "@/lib/auth/rank-guard",
+  );
+  return {
+    ...actual,
+    requireOutranks: vi.fn(async () => ({ actorId: "actor" })),
+    requireCanAssignRole: vi.fn(async () => ({ actorId: "actor" })),
+  };
+});
+
+vi.mock("@/lib/events/bus", () => ({ emitEvent: vi.fn(async () => undefined) }));
+
 import { PermissionError, requirePermission } from "@/lib/auth/permissions";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import {
@@ -299,7 +316,7 @@ describe("PPL2b: PII writes are routed to profiles_private", () => {
     const adminClient = {
       auth: {
         admin: {
-          inviteUserByEmail: vi.fn(async () => ({
+          createUser: vi.fn(async () => ({
             data: { user: { id: PROFILE_ID } },
             error: null,
           })),

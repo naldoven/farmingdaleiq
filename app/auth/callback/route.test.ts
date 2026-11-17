@@ -27,22 +27,19 @@ describe("/auth/callback", () => {
     verifyOtp.mockReset().mockResolvedValue({ error: null });
   });
 
-  it("verifies a token_hash link without any PKCE cookie, then lands on /set-password", async () => {
+  it("forwards a token_hash link to /auth/confirm WITHOUT spending the token", async () => {
+    // A text or email app opens a link to build its preview. If this GET
+    // verified the token, the preview would use it up before the person tapped
+    // it (seen live 2026-11-16: every texted link verified twice in one second).
     const res = await call("token_hash=abc123&type=recovery&next=%2Fset-password");
-    expect(verifyOtp).toHaveBeenCalledWith({ type: "recovery", token_hash: "abc123" });
+    expect(verifyOtp).not.toHaveBeenCalled();
     expect(exchangeCodeForSession).not.toHaveBeenCalled();
-    expect(location(res)).toBe("/set-password");
+    expect(location(res)).toBe("/auth/confirm?token_hash=abc123&type=recovery");
   });
 
-  it("forces /set-password for a recovery token_hash even if next is missing or hostile", async () => {
+  it("drops a hostile next param when forwarding a token_hash link", async () => {
     const res = await call("token_hash=abc&type=recovery&next=https%3A%2F%2Fevil.com");
-    expect(location(res)).toBe("/set-password");
-  });
-
-  it("sends an expired or used token_hash to /login?error=auth", async () => {
-    verifyOtp.mockResolvedValue({ error: { message: "expired" } });
-    const res = await call("token_hash=abc&type=recovery");
-    expect(location(res)).toBe("/login?error=auth");
+    expect(location(res)).toBe("/auth/confirm?token_hash=abc&type=recovery");
   });
 
   it("rejects a token_hash with an unsupported type", async () => {

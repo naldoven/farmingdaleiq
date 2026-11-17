@@ -13,7 +13,7 @@ import type { EmailComparison } from "@/app/(app)/people/rollout/logic";
  * Paste-and-compare for the leader email list. The server action compares
  * against existing accounts and returns only what the manager pasted, sorted
  * into matched / missing / invalid. Nothing is stored, and no address goes
- * into a URL: "Invite a person" is a plain link.
+ * into a URL: "Add a person" is a plain link.
  */
 export function RolloutEmailCheck() {
   const [isPending, startTransition] = useTransition();
@@ -98,7 +98,7 @@ export function RolloutEmailCheck() {
                 ))}
               </ul>
               <Link href="/people/invite" className="text-[13px] font-semibold text-accent">
-                Invite a person
+                Add a person
               </Link>
             </div>
           )}

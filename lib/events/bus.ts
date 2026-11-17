@@ -93,6 +93,13 @@ export const EVENT_KEYS = [
   "waste_entry_deleted",
   "waste_item_changed",
   "waste_category_changed",
+
+  // People sign-in tools (docs/STAFF-SIGN-IN-PLAN.md, Step 7). Audit trail only,
+  // like the waste keys: not notifiable, no Discord route. The payload carries
+  // actor_id and target_id and nothing else, never the link or the password.
+  // target_id (not user_id) so no consumer ever reads the person as a recipient.
+  "people_setup_link_created",
+  "people_temp_password_set",
 ] as const;
 
 export type EventKey = (typeof EVENT_KEYS)[number];

@@ -8,11 +8,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Password setup for invited employees and password resets. This page stays
- * behind auth (it is NOT in middleware's PUBLIC_PATHS): the /auth/callback
- * handler exchanges the invite/recovery code for a real session before
- * redirecting here, so the user is already authenticated by the time they
- * arrive and the standard middleware guard lets them through.
+ * Password setup for new staff, password resets, and people a manager gave a
+ * temporary password. This page stays behind auth (it is NOT in middleware's
+ * PUBLIC_PATHS): the /auth/confirm button turns the setup or reset link into a
+ * real session before redirecting here, so the user is already authenticated
+ * by the time they arrive and the standard middleware guard lets them through.
  */
 export default function SetPasswordPage() {
   return (
