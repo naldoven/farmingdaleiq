@@ -68,9 +68,14 @@ any time.
 ### Step 2. Preview-proof link page
 
 - New `app/auth/confirm/page.tsx`. Opening it does nothing to the token. It shows
-  "Set up your FarmingdaleIQ password" and one button.
-- The button posts to a server action that calls `verifyOtp({ type, token_hash })`
-  and redirects to `/set-password`. Failure redirects to `/login?error=auth`.
+  "Choose your password" with the new-password fields.
+- The form posts to a server action that checks the password first, then calls
+  `verifyOtp({ type, token_hash })` and saves the password in the same request, then
+  opens the app. A failed verify redirects to `/login?error=auth`. Doing both in one
+  step means a link never gives anyone a signed-in session without a new password.
+- Someone already signed in on that browser is asked to sign out first, and the
+  action sends them home without touching the token, so a link cannot swap a
+  signed-in person into another account.
 - Add `/auth/confirm` to `PUBLIC_PATHS` in `lib/supabase/middleware.ts`.
 - `/auth/callback`: the `token_hash` branch stops verifying and redirects to
   `/auth/confirm` with the same params. Forgot password emails become preview-proof
@@ -171,12 +176,18 @@ ships, a manager uses New setup link on the profile instead.
 
 Security review notes (2026-11-16):
 
-- Opening a setup or reset link flags the account for a forced password change. A
+- A setup or reset link only works together with a new password, in one step. A
   manager who opens a subordinate's link themselves therefore replaces that person's
   password, which the person notices, instead of silently using the app as them.
-- The forced change is enforced by the middleware on app pages. A flagged session is
-  still a real Supabase session, so direct database API calls work until the password
-  is changed. Accepted: the person behind it already holds that account's access.
+- The forced change after a temporary password is enforced by the middleware on app
+  pages. A flagged session is still a real Supabase session, so direct database API
+  calls work until the password is changed. Accepted: the manager who set the
+  temporary password already chose to share that account's access, and the admin
+  password change signs the person out everywhere, so it does not go unnoticed.
+- A signed-out person who opens a link someone else sent them could set a password
+  on that other account (true of any password-reset link). Low risk here: the page
+  only asks for a password and the store has no payment or personal data entry that
+  a swapped account would capture.
 - A setup link is a key inside a URL. It can appear in Vercel request logs and in a
   chat app's preview fetch, and it stays usable until used or expired (24 hours after
   Step 0). Send it only to the person.
